@@ -39,8 +39,8 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
         params: Dictionary containing:
             - node_id (str, required): ID of the node to add a dependency to
             - dependency_id (str, required): ID of the new dependency node
-            - expectation (str, optional): What node_id expects from dependency_id
-            - promise (str, optional): What dependency_id promises to output
+            - expectation (str, required): What node_id expects from dependency_id
+            - promise (str, required): What dependency_id promises to output
 
     Returns:
         Dict with:
@@ -66,6 +66,21 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     dependency_id = params["dependency_id"]
     expectation = params.get("expectation")
     promise = params.get("promise")
+
+    # Validate required contract fields
+    if not expectation or not expectation.strip():
+        return {
+            "success": False,
+            "message": "Missing required parameter: expectation",
+            "data": {},
+        }
+
+    if not promise or not promise.strip():
+        return {
+            "success": False,
+            "message": "Missing required parameter: promise",
+            "data": {},
+        }
 
     try:
         with storage.lock():

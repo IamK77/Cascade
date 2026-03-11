@@ -278,7 +278,7 @@ class TestCancellationPropagator:
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
+        cascade.add_edge("a", "b", expectation="Expect from a", promise="Promise to b")
 
         propagator = CancellationPropagator(cascade)
         propagator.cancel_node("a")
@@ -292,7 +292,7 @@ class TestCancellationPropagator:
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
+        cascade.add_edge("a", "b", expectation="Expect from a", promise="Promise to b")
 
         propagator = CancellationPropagator(cascade)
         propagator.cancel_node("a", cascade=True)

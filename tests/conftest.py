@@ -59,12 +59,12 @@ def sample_cascade():
     cascade.add_node(Node(id="d", state=NodeState.PENDING))
     cascade.add_node(Node(id="e", state=NodeState.PENDING))
 
-    # Add edges
-    cascade.add_edge("a", "b")
-    cascade.add_edge("a", "c")
-    cascade.add_edge("b", "d")
-    cascade.add_edge("b", "e")
-    cascade.add_edge("c", "e")
+    # Add edges with required contracts
+    cascade.add_edge("a", "b", expectation="Expect output from a", promise="A promises to b")
+    cascade.add_edge("a", "c", expectation="Expect output from a", promise="A promises to c")
+    cascade.add_edge("b", "d", expectation="Expect output from b", promise="B promises to d")
+    cascade.add_edge("b", "e", expectation="Expect output from b", promise="B promises to e")
+    cascade.add_edge("c", "e", expectation="Expect output from c", promise="C promises to e")
 
     return cascade
 
@@ -88,7 +88,7 @@ def sample_cascade_with_context():
     cascade.add_node(Node(id="a", state=NodeState.READY, context=context_a))
     cascade.add_node(Node(id="b", state=NodeState.PENDING, context=context_b))
 
-    cascade.add_edge("a", "b")
+    cascade.add_edge("a", "b", expectation="Expect output from a", promise="A promises output")
 
     return cascade
 

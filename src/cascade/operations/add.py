@@ -14,6 +14,8 @@
 
 """Add node operation."""
 
+from typing import Any
+
 from cascade.operations.base import NodeOperation, OperationResult
 from cascade.protocols.node_protocol import NodeProtocol
 
@@ -26,6 +28,7 @@ class AddOperation(NodeOperation):
         node: NodeProtocol,
         dependencies: list[str] | None = None,
         dependents: list[str] | None = None,
+        contracts: dict[str, dict[str, str]] | None = None,
     ) -> OperationResult:
         """Add a node with optional dependency relationships.
 
@@ -33,12 +36,14 @@ class AddOperation(NodeOperation):
             node: Node to add
             dependencies: List of node IDs this node depends on
             dependents: List of node IDs that depend on this node
+            contracts: Dict mapping node_id -> {expectation, promise} for each edge
 
         Returns:
             OperationResult with outcome
         """
         dependencies = dependencies or []
         dependents = dependents or []
+        contracts = contracts or {}
         affected_nodes = [node.id]
 
         if node.id in self._cascade.nodes:
@@ -68,16 +73,43 @@ class AddOperation(NodeOperation):
                 message=error,
             )
 
+        # Validate contracts for all edges
+        all_edge_nodes = set(dependencies) | set(dependents)
+        for edge_node_id in all_edge_nodes:
+            if edge_node_id not in contracts:
+                return OperationResult(
+                    success=False,
+                    affected_nodes=[],
+                    message=f"Missing contract for '{edge_node_id}'",
+                )
+            contract = contracts[edge_node_id]
+            if not contract.get("expectation") or not contract.get("promise"):
+                return OperationResult(
+                    success=False,
+                    affected_nodes=[],
+                    message=f"Contract for '{edge_node_id}' must have expectation and promise",
+                )
+
         try:
             self._cascade.add_node(node)
             affected_nodes.append(node.id)
 
             for dep_id in dependencies:
-                self._cascade.add_edge(dep_id, node.id)
+                contract = contracts[dep_id]
+                self._cascade.add_edge(
+                    dep_id, node.id,
+                    expectation=contract["expectation"],
+                    promise=contract["promise"],
+                )
                 affected_nodes.append(dep_id)
 
             for dep_id in dependents:
-                self._cascade.add_edge(node.id, dep_id)
+                contract = contracts[dep_id]
+                self._cascade.add_edge(
+                    node.id, dep_id,
+                    expectation=contract["expectation"],
+                    promise=contract["promise"],
+                )
                 affected_nodes.append(dep_id)
 
             return OperationResult(

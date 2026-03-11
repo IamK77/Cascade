@@ -81,8 +81,8 @@ class Cascade:
         self,
         from_id: str,
         to_id: str,
-        expectation: str | None = None,
-        promise: str | None = None,
+        expectation: str,
+        promise: str,
     ) -> None:
         """Add a directed edge from from_id to to_id.
 
@@ -91,9 +91,16 @@ class Cascade:
         Args:
             from_id: Source node ID (the dependency)
             to_id: Target node ID (the dependent)
-            expectation: What to_id expects from from_id (optional)
-            promise: What from_id promises to provide to to_id (optional)
+            expectation: What to_id expects from from_id (required)
+            promise: What from_id promises to provide to to_id (required)
+
+        Raises:
+            ValueError: If expectation or promise is empty/None
         """
+        if not expectation or not expectation.strip():
+            raise ValueError(f"expectation is required for edge {from_id} -> {to_id}")
+        if not promise or not promise.strip():
+            raise ValueError(f"promise is required for edge {from_id} -> {to_id}")
         if from_id not in self.nodes or to_id not in self.nodes:
             raise ValueError(f"Both nodes must exist: {from_id}, {to_id}")
 
@@ -101,13 +108,10 @@ class Cascade:
         if to_id in self.adjacency_list[from_id]:
             # Update metadata even if edge exists
             edge_key = f"{from_id}->{to_id}"
-            if expectation is not None or promise is not None:
-                if edge_key not in self.edge_metadata:
-                    self.edge_metadata[edge_key] = {}
-                if expectation is not None:
-                    self.edge_metadata[edge_key]["expectation"] = expectation
-                if promise is not None:
-                    self.edge_metadata[edge_key]["promise"] = promise
+            self.edge_metadata[edge_key] = {
+                "expectation": expectation,
+                "promise": promise,
+            }
             return
 
         # Cycle detection
@@ -117,9 +121,12 @@ class Cascade:
         self.adjacency_list[from_id].add(to_id)
         self.reverse_adjacency[to_id].add(from_id)
 
-        # Store edge metadata
+        # Store edge metadata (contract is now required)
         edge_key = f"{from_id}->{to_id}"
-        self.edge_metadata[edge_key] = {"expectation": expectation, "promise": promise}
+        self.edge_metadata[edge_key] = {
+            "expectation": expectation,
+            "promise": promise,
+        }
 
         # Update in-degree
         target_node = self.nodes[to_id]

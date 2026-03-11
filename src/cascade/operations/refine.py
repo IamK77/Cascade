@@ -15,6 +15,7 @@
 """Refine node operation."""
 
 from collections.abc import Sequence
+from typing import Any
 
 from cascade.operations.base import NodeOperation, OperationResult
 from cascade.protocols.node_protocol import NodeProtocol
@@ -28,16 +29,24 @@ class RefineOperation(NodeOperation):
     discovers missing dependencies during execution.
     """
 
-    def execute(self, node_id: str, new_dependencies: Sequence[NodeProtocol]) -> OperationResult:
+    def execute(
+        self,
+        node_id: str,
+        new_dependencies: Sequence[NodeProtocol],
+        contracts: dict[str, dict[str, str]] | None = None,
+    ) -> OperationResult:
         """Refine a node by adding new dependency nodes.
 
         Args:
             node_id: ID of the node to refine (target node)
             new_dependencies: List of new nodes to add as dependencies
+            contracts: Dict mapping node_id -> {expectation, promise} for edges
 
         Returns:
             OperationResult with outcome
         """
+        contracts = contracts or {}
+
         valid, error = self._validate_node_exists(node_id)
         if not valid:
             # Fail-fast: error must exist when validation fails
@@ -61,17 +70,44 @@ class RefineOperation(NodeOperation):
                 )
             new_node_ids.append(node.id)
 
+        # Get contracts for original edges (for inheritance)
+        inherited_contracts: dict[str, dict[str, str]] = {}
+        for dep in original_dependencies:
+            metadata = self._cascade.get_edge_metadata(dep.id, node_id)
+            inherited_contracts[dep.id] = {
+                "expectation": metadata.get("expectation") or f"Output from {dep.id}",
+                "promise": metadata.get("promise") or f"Input for new nodes",
+            }
+
         try:
             for node in new_dependencies:
                 self._cascade.add_node(node)
                 new_node_ids.append(node.id)
                 affected_nodes.append(node.id)
 
-                self._cascade.add_edge(node.id, node_id)
+                # Edge: new_node -> target (target depends on new_node)
+                if node.id in contracts:
+                    contract = contracts[node.id]
+                    self._cascade.add_edge(
+                        node.id, node_id,
+                        expectation=contract["expectation"],
+                        promise=contract["promise"],
+                    )
+                else:
+                    return OperationResult(
+                        success=False,
+                        affected_nodes=[],
+                        message=f"Missing contract for new dependency '{node.id}'",
+                    )
 
                 # New nodes inherit target's original dependencies
                 for dep in original_dependencies:
-                    self._cascade.add_edge(dep.id, node.id)
+                    inherited = inherited_contracts[dep.id]
+                    self._cascade.add_edge(
+                        dep.id, node.id,
+                        expectation=inherited["expectation"],
+                        promise=inherited["promise"],
+                    )
                     affected_nodes.append(dep.id)
 
             return OperationResult(

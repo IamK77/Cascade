@@ -62,22 +62,51 @@ class SplitOperation(NodeOperation):
             new_node_ids.append(node.id)
 
         try:
+            # Collect edge metadata before removing parent
+            incoming_contracts: dict[str, dict[str, str]] = {}
+            for dependency in dependencies:
+                metadata = self._cascade.get_edge_metadata(dependency.id, parent_id)
+                incoming_contracts[dependency.id] = {
+                    "expectation": metadata.get("expectation") or f"Output from {dependency.id}",
+                    "promise": metadata.get("promise") or f"Input for split nodes from {dependency.id}",
+                }
+
+            outgoing_contracts: dict[str, dict[str, str]] = {}
+            for dependent in dependents:
+                metadata = self._cascade.get_edge_metadata(parent_id, dependent.id)
+                outgoing_contracts[dependent.id] = {
+                    "expectation": metadata.get("expectation") or f"Output from split nodes",
+                    "promise": metadata.get("promise") or f"Input for {dependent.id}",
+                }
+
             self._cascade.remove_node(parent_id)
 
             for node in new_nodes:
                 self._cascade.add_node(node)
                 affected_nodes.append(node.id)
 
-            # New nodes inherit parent's dependencies
+            # New nodes inherit parent's dependencies with contracts
             for dependency in dependencies:
+                contract = incoming_contracts[dependency.id]
                 for new_id in new_node_ids:
-                    self._cascade.add_edge(dependency.id, new_id)
+                    self._cascade.add_edge(
+                        dependency.id,
+                        new_id,
+                        expectation=contract["expectation"],
+                        promise=contract["promise"],
+                    )
                     affected_nodes.append(dependency.id)
 
-            # Parent's dependents now depend on all new nodes
+            # Parent's dependents now depend on all new nodes with contracts
             for dependent in dependents:
+                contract = outgoing_contracts[dependent.id]
                 for new_id in new_node_ids:
-                    self._cascade.add_edge(new_id, dependent.id)
+                    self._cascade.add_edge(
+                        new_id,
+                        dependent.id,
+                        expectation=contract["expectation"],
+                        promise=contract["promise"],
+                    )
                     affected_nodes.append(dependent.id)
 
             return OperationResult(

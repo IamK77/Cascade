@@ -56,7 +56,8 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             - node_id (str, required): Unique identifier for the node
             - dependencies (List[str], optional): List of node IDs this node depends on
             - dependents (List[str], optional): List of node IDs that depend on this node
-            - expectations (List[Dict], optional): List of {node_id, expectation, promise} for dependencies
+            - expectations (List[Dict], required if dependencies/dependents exist):
+              List of {node_id, expectation, promise} for each dependency/dependent edge
 
     Returns:
         Dict with:
@@ -75,6 +76,54 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     dependencies = params.get("dependencies", [])
     dependents = params.get("dependents", [])
     expectations = params.get("expectations", [])
+
+    # Build expectations map for validation and lookup
+    expectations_map: dict[str, dict[str, str]] = {}
+    for exp in expectations:
+        exp_node_id = exp.get("node_id")
+        expectation = exp.get("expectation")
+        promise = exp.get("promise")
+        if exp_node_id:
+            if not expectation or not expectation.strip():
+                return {
+                    "success": False,
+                    "message": f"expectation is required for node '{exp_node_id}' in expectations",
+                    "data": {},
+                }
+            if not promise or not promise.strip():
+                return {
+                    "success": False,
+                    "message": f"promise is required for node '{exp_node_id}' in expectations",
+                    "data": {},
+                }
+            expectations_map[exp_node_id] = {
+                "expectation": expectation,
+                "promise": promise,
+            }
+
+    # Validate that all dependencies have corresponding expectations
+    for dep_id in dependencies:
+        if dep_id not in expectations_map:
+            return {
+                "success": False,
+                "message": (
+                    f"Missing contract for dependency '{dep_id}'. "
+                    f"Each dependency must have expectation and promise in 'expectations' parameter."
+                ),
+                "data": {"missing_contract_for": dep_id},
+            }
+
+    # Validate that all dependents have corresponding expectations
+    for dep_id in dependents:
+        if dep_id not in expectations_map:
+            return {
+                "success": False,
+                "message": (
+                    f"Missing contract for dependent '{dep_id}'. "
+                    f"Each dependent must have expectation and promise in 'expectations' parameter."
+                ),
+                "data": {"missing_contract_for": dep_id},
+            }
 
     try:
         with storage.lock():
@@ -130,30 +179,26 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             affected_nodes = [node_id]
 
-            # Build expectations map for quick lookup
-            expectations_map = {}
-            for exp in expectations:
-                exp_node_id = exp.get("node_id")
-                if exp_node_id:
-                    expectations_map[exp_node_id] = {
-                        "expectation": exp.get("expectation"),
-                        "promise": exp.get("promise"),
-                    }
-
             # Add edges for dependencies (dep_id -> node_id means node depends on dep)
             for dep_id in dependencies:
-                exp_info = expectations_map.get(dep_id, {})
+                exp_info = expectations_map[dep_id]
                 cascade.add_edge(
                     dep_id,
                     node_id,
-                    expectation=exp_info.get("expectation"),
-                    promise=exp_info.get("promise"),
+                    expectation=exp_info["expectation"],
+                    promise=exp_info["promise"],
                 )
                 affected_nodes.append(dep_id)
 
             # Add edges for dependents (node_id -> dep_id means dep depends on node)
             for dep_id in dependents:
-                cascade.add_edge(node_id, dep_id)
+                exp_info = expectations_map[dep_id]
+                cascade.add_edge(
+                    node_id,
+                    dep_id,
+                    expectation=exp_info["expectation"],
+                    promise=exp_info["promise"],
+                )
                 affected_nodes.append(dep_id)
 
             # Verify graph is still a single connected DAG

@@ -32,6 +32,15 @@ from tools import (
 )
 
 
+def make_contract(node_id: str, expectation: str = "", promise: str = "") -> dict:
+    """Helper to create contract for tests."""
+    return {
+        "node_id": node_id,
+        "expectation": expectation or f"Expect output from {node_id}",
+        "promise": promise or f"Promise output to dependent",
+    }
+
+
 class TestGetTask:
     """Tests for get_task tool."""
 
@@ -44,6 +53,7 @@ class TestGetTask:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         result = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
@@ -71,16 +81,25 @@ class TestGetTask:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         result = get_task.get_task(temp_storage, {"task_id": "task_b", "agent_id": "agent_1"})
         assert result["success"] is False
 
     def test_agent_tracking(self, temp_storage):
-        # Create a chain: root -> task_a -> task_b
+        # Create a chain: root -> task_a, root -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {"node_id": "task_a", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_b", "dependencies": ["root"]})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_b",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
 
         # Agent 1 gets a task
         result1 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
@@ -118,6 +137,7 @@ class TestFinishTask:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         # Get and complete task_a
@@ -160,10 +180,12 @@ class TestFinishTask:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
         add_node.add_node(temp_storage, {
             "node_id": "task_c",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
@@ -227,12 +249,21 @@ class TestAddNode:
     def test_add_node_with_dependencies(self, temp_storage):
         # Create a proper chain: root -> task_a, root -> task_b, then new_task depends on both
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {"node_id": "task_a", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_b", "dependencies": ["root"]})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_b",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
 
         result = add_node.add_node(temp_storage, {
             "node_id": "new_task",
             "dependencies": ["task_a", "task_b"],
+            "expectations": [make_contract("task_a"), make_contract("task_b")],
         })
         assert result["success"] is True
 
@@ -249,6 +280,7 @@ class TestAddNode:
         result = add_node.add_node(temp_storage, {
             "node_id": "new_task",
             "dependencies": ["non_existent"],
+            "expectations": [make_contract("non_existent")],
         })
         assert result["success"] is False
         assert "not found" in result["message"]
@@ -271,6 +303,7 @@ class TestAddNode:
         result = add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
+            "expectations": [make_contract("root")],
         })
         assert result["success"] is True
 
@@ -280,12 +313,14 @@ class TestAddNode:
         add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
+            "expectations": [make_contract("root")],
         })
 
         # Add a new node that will be a dependency of existing node
         result = add_node.add_node(temp_storage, {
             "node_id": "new_parent",
-            "dependents": ["child"],  # child will now depend on new_parent
+            "dependents": ["child"],
+            "expectations": [make_contract("child", "Child expects input", "New parent provides input")],
         })
         assert result["success"] is True
 
@@ -301,6 +336,7 @@ class TestAddNode:
         add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
+            "expectations": [make_contract("root")],
         })
 
         # Try to add two nodes that form their own disconnected subgraph
@@ -311,9 +347,41 @@ class TestAddNode:
         assert result["success"] is False
         assert "Isolated nodes not allowed" in result["message"]
 
-        # Even with a self-contained dependency chain, if not connected to existing graph,
-        # it should be rejected. But we can't directly test this with current API
-        # because the first node of a new chain would be rejected as isolated.
+    def test_missing_contract_for_dependency(self, temp_storage):
+        """Test that adding node without contract for dependency fails."""
+        add_node.add_node(temp_storage, {"node_id": "root"})
+
+        result = add_node.add_node(temp_storage, {
+            "node_id": "child",
+            "dependencies": ["root"],
+            # Missing expectations
+        })
+        assert result["success"] is False
+        assert "Missing contract" in result["message"]
+
+    def test_empty_expectation_rejected(self, temp_storage):
+        """Test that empty expectation is rejected."""
+        add_node.add_node(temp_storage, {"node_id": "root"})
+
+        result = add_node.add_node(temp_storage, {
+            "node_id": "child",
+            "dependencies": ["root"],
+            "expectations": [{"node_id": "root", "expectation": "", "promise": "some promise"}],
+        })
+        assert result["success"] is False
+        assert "expectation is required" in result["message"]
+
+    def test_empty_promise_rejected(self, temp_storage):
+        """Test that empty promise is rejected."""
+        add_node.add_node(temp_storage, {"node_id": "root"})
+
+        result = add_node.add_node(temp_storage, {
+            "node_id": "child",
+            "dependencies": ["root"],
+            "expectations": [{"node_id": "root", "expectation": "some expectation", "promise": ""}],
+        })
+        assert result["success"] is False
+        assert "promise is required" in result["message"]
 
 
 class TestRefineNode:
@@ -322,13 +390,23 @@ class TestRefineNode:
     def test_refine_node(self, temp_storage):
         # Create proper chain: root -> task_a, root -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {"node_id": "task_a", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_b", "dependencies": ["root"]})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_b",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
 
         # Now add dependency: task_b -> task_a
         result = refine_node.refine_node(temp_storage, {
             "node_id": "task_b",
             "dependency_id": "task_a",
+            "expectation": "Expect output from task_a",
+            "promise": "Promise to provide results",
         })
 
         assert result["success"] is True
@@ -338,6 +416,33 @@ class TestRefineNode:
             # task_b now has two dependencies: root and task_a
             assert cascade.nodes["task_b"].in_degree == 2
 
+    def test_refine_node_requires_contract(self, temp_storage):
+        """Test that refine_node requires expectation and promise."""
+        add_node.add_node(temp_storage, {"node_id": "root"})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+
+        # Missing expectation
+        result = refine_node.refine_node(temp_storage, {
+            "node_id": "task_a",
+            "dependency_id": "root",
+            "promise": "some promise",
+        })
+        assert result["success"] is False
+        assert "expectation" in result["message"].lower()
+
+        # Missing promise
+        result = refine_node.refine_node(temp_storage, {
+            "node_id": "task_a",
+            "dependency_id": "root",
+            "expectation": "some expectation",
+        })
+        assert result["success"] is False
+        assert "promise" in result["message"].lower()
+
 
 class TestRemoveNode:
     """Tests for remove_node tool."""
@@ -345,8 +450,16 @@ class TestRemoveNode:
     def test_remove_node(self, temp_storage):
         # Create proper chain: root -> task_a -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {"node_id": "task_a", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_b", "dependencies": ["task_a"]})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_b",
+            "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
+        })
 
         result = remove_node.remove_node(temp_storage, {"node_id": "task_b"})
         assert result["success"] is True
@@ -364,6 +477,7 @@ class TestSplitNode:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         result = split_node.split_node(temp_storage, {
@@ -387,9 +501,21 @@ class TestListNodes:
     def test_list_all_nodes(self, temp_storage):
         # Create proper chain: root -> task_a, root -> task_b, root -> task_c
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {"node_id": "task_a", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_b", "dependencies": ["root"]})
-        add_node.add_node(temp_storage, {"node_id": "task_c", "dependencies": ["root"]})
+        add_node.add_node(temp_storage, {
+            "node_id": "task_a",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_b",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
+        add_node.add_node(temp_storage, {
+            "node_id": "task_c",
+            "dependencies": ["root"],
+            "expectations": [make_contract("root")],
+        })
 
         result = list_nodes.list_nodes(temp_storage, {})
         assert result["success"] is True
@@ -400,6 +526,7 @@ class TestListNodes:
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
+            "expectations": [make_contract("task_a")],
         })
 
         result = list_nodes.list_nodes(temp_storage, {"state_filter": "READY"})

@@ -17,7 +17,6 @@
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from cascade.storage.graph_storage import GraphStorage
 

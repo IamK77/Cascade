@@ -21,6 +21,11 @@ from cascade.core.node import Node
 from cascade.core.state import NodeState
 
 
+def make_contract(from_id: str, to_id: str) -> tuple[str, str]:
+    """Helper to create contract for tests."""
+    return (f"Expect from {from_id}", f"Promise to {to_id}")
+
+
 class TestCascadeCreation:
     """Tests for Cascade creation and basic operations."""
 
@@ -65,7 +70,8 @@ class TestCascadeEdges:
         """Test adding an edge."""
         empty_cascade.add_node(Node(id="a", state=NodeState.READY))
         empty_cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        empty_cascade.add_edge("a", "b")
+        exp, prom = make_contract("a", "b")
+        empty_cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         assert "b" in empty_cascade.adjacency_list["a"]
         assert "a" in empty_cascade.reverse_adjacency["b"]
@@ -75,27 +81,49 @@ class TestCascadeEdges:
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.READY))
-        cascade.add_edge("a", "b")
+        exp, prom = make_contract("a", "b")
+        cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         assert cascade.nodes["b"].in_degree == 1
         assert cascade.nodes["b"].state == NodeState.PENDING
 
     def test_add_duplicate_edge(self, sample_cascade):
-        """Test adding duplicate edge doesn't duplicate."""
-        sample_cascade.add_edge("a", "b")  # Already exists
+        """Test adding duplicate edge updates metadata."""
+        exp, prom = make_contract("a", "b")
+        sample_cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         # Should not increase in_degree again
         assert sample_cascade.nodes["b"].in_degree == 1
 
     def test_add_edge_nonexistent_nodes(self, empty_cascade):
         """Test adding edge with non-existent nodes raises error."""
+        exp, prom = make_contract("a", "b")
         with pytest.raises(ValueError, match="must exist"):
-            empty_cascade.add_edge("a", "b")
+            empty_cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
     def test_add_edge_creates_cycle(self, sample_cascade):
         """Test adding edge that creates cycle raises error."""
+        exp, prom = make_contract("e", "a")
         with pytest.raises(ValueError, match="cycle"):
-            sample_cascade.add_edge("e", "a")
+            sample_cascade.add_edge("e", "a", expectation=exp, promise=prom)
+
+    def test_add_edge_missing_expectation(self):
+        """Test adding edge without expectation raises error."""
+        cascade = Cascade()
+        cascade.add_node(Node(id="a", state=NodeState.READY))
+        cascade.add_node(Node(id="b", state=NodeState.READY))
+
+        with pytest.raises(ValueError, match="expectation is required"):
+            cascade.add_edge("a", "b", expectation="", promise="some promise")
+
+    def test_add_edge_missing_promise(self):
+        """Test adding edge without promise raises error."""
+        cascade = Cascade()
+        cascade.add_node(Node(id="a", state=NodeState.READY))
+        cascade.add_node(Node(id="b", state=NodeState.READY))
+
+        with pytest.raises(ValueError, match="promise is required"):
+            cascade.add_edge("a", "b", expectation="some expectation", promise="")
 
     def test_remove_edge(self, sample_cascade):
         """Test removing an edge."""
@@ -155,7 +183,8 @@ class TestTopologicalSort:
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
+        exp, prom = make_contract("a", "b")
+        cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         # Manually create cycle by modifying adjacency lists
         cascade.adjacency_list["b"].add("a")
@@ -177,7 +206,8 @@ class TestCycleDetection:
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
+        exp, prom = make_contract("a", "b")
+        cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         # Adding b -> a would create a cycle, so we manually create it
         cascade.adjacency_list["b"].add("a")
@@ -191,12 +221,15 @@ class TestCycleDetection:
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
         cascade.add_node(Node(id="c", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
-        cascade.add_edge("b", "c")
+        exp1, prom1 = make_contract("a", "b")
+        exp2, prom2 = make_contract("b", "c")
+        cascade.add_edge("a", "b", expectation=exp1, promise=prom1)
+        cascade.add_edge("b", "c", expectation=exp2, promise=prom2)
 
         # Adding c -> a would create a cycle, so it raises ValueError
+        exp3, prom3 = make_contract("c", "a")
         with pytest.raises(ValueError, match="cycle"):
-            cascade.add_edge("c", "a")
+            cascade.add_edge("c", "a", expectation=exp3, promise=prom3)
 
         # But we can manually create a cycle by modifying adjacency lists
         # to test the find_cycle method
@@ -431,7 +464,7 @@ class TestGetNodeView:
 
         cascade.add_node(node_a)
         cascade.add_node(node_b)
-        cascade.add_edge("a", "b", promise="Promise to output data")
+        cascade.add_edge("a", "b", expectation="Expect data", promise="Promise to output data")
 
         view = cascade.get_node_view("a")
 
@@ -461,8 +494,10 @@ class TestGraphConnectivity:
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
         cascade.add_node(Node(id="c", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
-        cascade.add_edge("b", "c")
+        exp1, prom1 = make_contract("a", "b")
+        exp2, prom2 = make_contract("b", "c")
+        cascade.add_edge("a", "b", expectation=exp1, promise=prom1)
+        cascade.add_edge("b", "c", expectation=exp2, promise=prom2)
         assert cascade.is_connected()
 
     def test_diamond_shape_is_connected(self):
@@ -477,10 +512,14 @@ class TestGraphConnectivity:
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
         cascade.add_node(Node(id="c", state=NodeState.PENDING))
         cascade.add_node(Node(id="d", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
-        cascade.add_edge("a", "c")
-        cascade.add_edge("b", "d")
-        cascade.add_edge("c", "d")
+        exp_ab, prom_ab = make_contract("a", "b")
+        exp_ac, prom_ac = make_contract("a", "c")
+        exp_bd, prom_bd = make_contract("b", "d")
+        exp_cd, prom_cd = make_contract("c", "d")
+        cascade.add_edge("a", "b", expectation=exp_ab, promise=prom_ab)
+        cascade.add_edge("a", "c", expectation=exp_ac, promise=prom_ac)
+        cascade.add_edge("b", "d", expectation=exp_bd, promise=prom_bd)
+        cascade.add_edge("c", "d", expectation=exp_cd, promise=prom_cd)
         assert cascade.is_connected()
 
     def test_disconnected_graph_not_connected(self):
@@ -489,7 +528,8 @@ class TestGraphConnectivity:
         # First component: a -> b
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
-        cascade.add_edge("a", "b")
+        exp, prom = make_contract("a", "b")
+        cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
         # Second component: c -> d (manually add without connecting to a, b)
         cascade.add_node(Node(id="c", state=NodeState.READY))
