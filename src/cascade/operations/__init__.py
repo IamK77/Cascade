@@ -12,19 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Node operations."""
+"""Compound node operations.
 
-from cascade.operations.add import AddOperation
+Operations exist when multiple Cascade primitives must be coordinated
+with non-trivial logic (e.g., contract inheritance, cascade deletion).
+Simple mutations (add node, add edge) go through Cascade directly.
+"""
+
 from cascade.operations.base import NodeOperation, OperationResult
-from cascade.operations.refine import RefineOperation
-from cascade.operations.remove import RemoveOperation
-from cascade.operations.split import SplitOperation
+from cascade.operations.remove import RemoveOperation, RemoveResult
+from cascade.operations.split import SplitOperation, SplitResult
 
 __all__ = [
     "NodeOperation",
     "OperationResult",
-    "AddOperation",
     "RemoveOperation",
+    "RemoveResult",
     "SplitOperation",
-    "RefineOperation",
+    "SplitResult",
 ]

@@ -12,75 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Refine Node Tool.
-
-Add a new dependency to an existing node.
-Use this when you discover that a task has a prerequisite that wasn't planned.
-The node will wait for the new dependency to complete before becoming ready.
-"""
+"""Refine Node Tool."""
 
 from typing import Any
 
-from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage
 
 
 def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     """Add a new dependency to an existing node.
 
-    Automatically handles locking, loading, saving.
-
-    This increases the node's in-degree and changes its state from READY to PENDING
-    if it was previously READY. The node will not become executable until the new
-    dependency also completes.
-
     Args:
         storage: GraphStorage instance
         params: Dictionary containing:
-            - node_id (str, required): ID of the node to add a dependency to
-            - dependency_id (str, required): ID of the new dependency node
-            - expectation (str, required): What node_id expects from dependency_id
-            - promise (str, required): What dependency_id promises to output
-
-    Returns:
-        Dict with:
-            - success (bool): Whether the operation succeeded
-            - message (str): Human-readable result message
-            - data (dict): Contains "node_id", "dependency_id", and "affected_nodes"
+            - node_id (str, required)
+            - dependency_id (str, required)
+            - expectation (str, required)
+            - promise (str, required)
     """
     if "node_id" not in params:
-        return {
-            "success": False,
-            "message": "Missing required parameter: node_id",
-            "data": {},
-        }
-
+        return {"success": False, "message": "Missing required parameter: node_id", "data": {}}
     if "dependency_id" not in params:
-        return {
-            "success": False,
-            "message": "Missing required parameter: dependency_id",
-            "data": {},
-        }
+        return {"success": False, "message": "Missing required parameter: dependency_id", "data": {}}
 
     node_id = params["node_id"]
     dependency_id = params["dependency_id"]
     expectation = params.get("expectation")
     promise = params.get("promise")
 
-    # Validate required contract fields
     if not expectation or not expectation.strip():
-        return {
-            "success": False,
-            "message": "Missing required parameter: expectation",
-            "data": {},
-        }
-
+        return {"success": False, "message": "Missing required parameter: expectation", "data": {}}
     if not promise or not promise.strip():
-        return {
-            "success": False,
-            "message": "Missing required parameter: promise",
-            "data": {},
-        }
+        return {"success": False, "message": "Missing required parameter: promise", "data": {}}
 
     try:
         with storage.lock():
@@ -88,28 +51,13 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             cascade = storage.load() or Cascade()
 
             if node_id not in cascade.nodes:
-                return {
-                    "success": False,
-                    "message": f"Node {node_id} not found",
-                    "data": {},
-                }
-
+                return {"success": False, "message": f"Node {node_id} not found", "data": {}}
             if dependency_id not in cascade.nodes:
-                return {
-                    "success": False,
-                    "message": f"Dependency {dependency_id} not found. Create it first with add_node.",
-                    "data": {},
-                }
+                return {"success": False, "message": f"Dependency {dependency_id} not found. Create it first with add_node.", "data": {}}
 
-            # Check if edge already exists
-            if dependency_id in cascade.reverse_adjacency.get(node_id, set()):
-                return {
-                    "success": False,
-                    "message": f"Node {node_id} already depends on {dependency_id}",
-                    "data": {},
-                }
+            if cascade.has_dependency(node_id, dependency_id):
+                return {"success": False, "message": f"Node {node_id} already depends on {dependency_id}", "data": {}}
 
-            # Check for cycle
             if cascade._has_path(node_id, dependency_id):
                 return {
                     "success": False,
@@ -117,31 +65,15 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     "data": {},
                 }
 
-            # Add edge with metadata (this handles in_degree automatically)
+            # add_edge handles readiness update automatically
             cascade.add_edge(dependency_id, node_id, expectation=expectation, promise=promise)
 
-            # Update node state if it was READY (now has unmet dependency)
-            node = cascade.nodes[node_id]
-            if node.state == NodeState.READY:
-                node.state = NodeState.PENDING
-
-            affected_nodes = [node_id, dependency_id]
-
             storage.save(cascade)
-
             return {
                 "success": True,
                 "message": f"Node {node_id} now depends on {dependency_id}",
-                "data": {
-                    "node_id": node_id,
-                    "dependency_id": dependency_id,
-                    "affected_nodes": affected_nodes,
-                },
+                "data": {"node_id": node_id, "dependency_id": dependency_id, "affected_nodes": [node_id, dependency_id]},
             }
 
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Operation failed: {e}",
-            "data": {},
-        }
+        return {"success": False, "message": f"Operation failed: {e}", "data": {}}

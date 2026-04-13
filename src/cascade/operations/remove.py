@@ -14,31 +14,27 @@
 
 """Remove node operation."""
 
+from dataclasses import dataclass
+
 from cascade.operations.base import NodeOperation, OperationResult
+
+
+@dataclass(frozen=True)
+class RemoveResult:
+    """Typed payload for RemoveOperation success."""
+
+    node_id: str
+    cascade: bool
 
 
 class RemoveOperation(NodeOperation):
     """Operation to remove a node from the DAG."""
 
-    def execute(self, node_id: str, cascade: bool = False) -> OperationResult:
-        """Remove a node from the DAG.
-
-        Args:
-            node_id: ID of the node to remove
-            cascade: If True, also remove all dependent nodes
-
-        Returns:
-            OperationResult with outcome
-        """
+    def execute(self, node_id: str, cascade: bool = False) -> OperationResult[RemoveResult]:
         valid, error = self._validate_node_exists(node_id)
         if not valid:
-            # Fail-fast: error must exist when validation fails
-            assert error is not None, "Validation failed but no error message provided"
-            return OperationResult(
-                success=False,
-                affected_nodes=[],
-                message=error,
-            )
+            assert error is not None
+            return OperationResult(success=False, affected_nodes=[], message=error)
 
         affected_nodes: set[str] = set()
 
@@ -50,7 +46,6 @@ class RemoveOperation(NodeOperation):
                         affected_nodes.add(dep.id)
                     for dep in self._cascade.get_dependencies(nid):
                         affected_nodes.add(dep.id)
-
                     self._cascade.remove_node(nid)
                     affected_nodes.add(nid)
                 except ValueError:
@@ -60,7 +55,6 @@ class RemoveOperation(NodeOperation):
                 affected_nodes.add(dep.id)
             for dep in self._cascade.get_dependencies(node_id):
                 affected_nodes.add(dep.id)
-
             self._cascade.remove_node(node_id)
             affected_nodes.add(node_id)
 
@@ -68,18 +62,10 @@ class RemoveOperation(NodeOperation):
             success=True,
             affected_nodes=list(affected_nodes),
             message=f"Node {node_id} removed successfully",
-            data={"node_id": node_id, "cascade": cascade},
+            data=RemoveResult(node_id=node_id, cascade=cascade),
         )
 
     def _collect_descendants(self, node_id: str) -> set[str]:
-        """Collect all descendant nodes using BFS.
-
-        Args:
-            node_id: Starting node ID
-
-        Returns:
-            Set of all descendant node IDs
-        """
         descendants: set[str] = {node_id}
         queue = [node_id]
         visited = {node_id}
@@ -94,14 +80,5 @@ class RemoveOperation(NodeOperation):
 
         return descendants
 
-    def remove(self, node_id: str, cascade: bool = False) -> OperationResult:
-        """Convenience method for remove operation.
-
-        Args:
-            node_id: ID of the node to remove
-            cascade: If True, also remove all dependent nodes
-
-        Returns:
-            OperationResult with outcome
-        """
+    def remove(self, node_id: str, cascade: bool = False) -> OperationResult[RemoveResult]:
         return self.execute(node_id, cascade)

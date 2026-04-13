@@ -12,73 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Node implementation for DAG."""
+"""Node implementation for DAG.
 
-from dataclasses import dataclass, field
+A Node is a pure data object — it knows its own identity, state, context,
+and agent assignment, but nothing about the graph structure it lives in.
 
+Notably, there is no `in_degree` field. Dependency count is a property of
+the graph, not the node. It is computed by Cascade from the adjacency
+structure and the states of upstream nodes.
+"""
+
+from dataclasses import dataclass
+
+from cascade.context.context import Context
 from cascade.core.state import NodeState
-from cascade.protocols.context_protocol import ContextProtocol
 
 
 @dataclass
 class Node:
-    """Concrete implementation of a DAG node.
+    """A task node in the DAG.
 
-    A node represents a task with:
-    - Unique identifier
-    - Execution state
-    - in_degree: count of uncompleted dependencies
-    - Optional context for information propagation
-    - Optional agent_id tracking which agent is working on this task
-
-    Note: promise and expectation are stored on edges (edge_metadata),
-    not on nodes. A node may have different promises to different downstream nodes.
+    Fields:
+        id: Unique identifier.
+        state: Current lifecycle state.
+        context: Optional context for information propagation.
+        agent_id: ID of the agent currently working on this task, if any.
     """
 
     id: str
     state: NodeState = NodeState.PENDING
-    in_degree: int = 0
-    context: ContextProtocol | None = None
-    agent_id: str | None = None  # Agent currently working on this task
+    context: Context | None = None
+    agent_id: str | None = None
 
     def update_state(self, new_state: NodeState) -> "Node":
-        """Update the node state.
-
-        Args:
-            new_state: New state to transition to
-
-        Returns:
-            Self for method chaining
+        """Transition to a new state.
 
         Raises:
-            ValueError: If state transition is invalid
+            ValueError: If the transition is invalid per NodeState rules.
+
+        Returns:
+            Self for method chaining.
         """
         if not self.state.can_transition_to(new_state):
             raise ValueError(f"Invalid state transition: {self.state} -> {new_state}")
         self.state = new_state
         return self
 
-    def decrement_in_degree(self) -> "Node":
-        """Decrement in-degree when a dependency completes.
-
-        Returns:
-            Self for method chaining
-        """
-        self.in_degree = max(0, self.in_degree - 1)
-        if self.in_degree == 0:
-            self.state = NodeState.READY
-        return self
-
-    def increment_in_degree(self) -> "Node":
-        """Increment in-degree when a new dependency is added.
-
-        Returns:
-            Self for method chaining
-        """
-        self.in_degree += 1
-        if self.state == NodeState.READY:
-            self.state = NodeState.PENDING
-        return self
-
     def __repr__(self) -> str:
-        return f"Node(id={self.id!r}, state={self.state}, in_degree={self.in_degree})"
+        parts = [f"id={self.id!r}", f"state={self.state}"]
+        if self.agent_id:
+            parts.append(f"agent={self.agent_id!r}")
+        return f"Node({', '.join(parts)})"

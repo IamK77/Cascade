@@ -52,14 +52,12 @@ def sample_cascade():
     """
     cascade = Cascade()
 
-    # Add nodes
     cascade.add_node(Node(id="a", state=NodeState.READY))
     cascade.add_node(Node(id="b", state=NodeState.PENDING))
     cascade.add_node(Node(id="c", state=NodeState.PENDING))
     cascade.add_node(Node(id="d", state=NodeState.PENDING))
     cascade.add_node(Node(id="e", state=NodeState.PENDING))
 
-    # Add edges with required contracts
     cascade.add_edge("a", "b", expectation="Expect output from a", promise="A promises to b")
     cascade.add_edge("a", "c", expectation="Expect output from a", promise="A promises to c")
     cascade.add_edge("b", "d", expectation="Expect output from b", promise="B promises to d")
@@ -101,7 +99,6 @@ def sample_cascade_with_contracts():
     cascade.add_node(Node(id="a", state=NodeState.READY))
     cascade.add_node(Node(id="b", state=NodeState.PENDING))
 
-    # Add edge with contract metadata
     cascade.add_edge(
         "a", "b",
         expectation="Expect config results",

@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""List Nodes Tool.
-
-List all nodes in the DAG with their basic information.
-Use this to get an overview of all tasks in the system.
-"""
+"""List Nodes Tool."""
 
 from typing import Any
 
@@ -24,25 +20,7 @@ from cascade.storage.graph_storage import GraphStorage
 
 
 def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
-    """List all nodes in the DAG.
-
-    Automatically handles locking, loading (read-only, no save needed).
-
-    Args:
-        storage: GraphStorage instance
-        params: Dictionary containing optional filters:
-            - state_filter (str, optional): Only return nodes in this state
-            - include_pending_only (bool, optional): Only return PENDING nodes
-
-    Returns:
-        Dict with:
-            - success (bool): Whether the operation succeeded
-            - message (str): Human-readable result message
-            - data (dict): Contains:
-                - nodes: List of node dicts with id, state, promise, in_degree
-                - count: Total number of nodes
-                - by_state: Dict grouping node IDs by state
-    """
+    """List all nodes in the DAG with basic information."""
     state_filter = params.get("state_filter")
     include_pending_only = params.get("include_pending_only", False)
 
@@ -60,26 +38,18 @@ def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 if include_pending_only and node.state.name != "PENDING":
                     continue
 
-                node_info = {
+                pending = cascade.pending_dependency_count(node_id)
+                node_info: dict[str, Any] = {
                     "id": node.id,
                     "state": node.state.name,
-                    "in_degree": node.in_degree,
+                    "pending_dependencies": pending,
                 }
-
                 nodes_list.append(node_info)
 
                 state_name = node.state.name
                 if state_name not in by_state:
                     by_state[state_name] = []
                 by_state[state_name].append(node_id)
-
-            if state_filter or include_pending_only:
-                by_state = {}
-                for node_info in nodes_list:
-                    state_name = str(node_info["state"])
-                    if state_name not in by_state:
-                        by_state[state_name] = []
-                    by_state[state_name].append(str(node_info["id"]))
 
             return {
                 "success": True,
@@ -95,9 +65,5 @@ def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         return {
             "success": False,
             "message": f"Failed to list nodes: {e}",
-            "data": {
-                "nodes": [],
-                "count": 0,
-                "by_state": {},
-            },
+            "data": {"nodes": [], "count": 0, "by_state": {}},
         }

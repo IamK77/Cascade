@@ -12,16 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Get Task Tool.
-
-Get a task to work on. This is the primary entry point for agents to get work.
-Returns full task information and marks it as ACTIVE.
-
-Agent Tracking:
-    - agent_id is REQUIRED
-    - Prevents agents from taking multiple tasks simultaneously
-    - Returns reminder if agent already has an ACTIVE task
-"""
+"""Get Task Tool."""
 
 from typing import Any
 
@@ -32,24 +23,15 @@ from cascade.storage.graph_storage import GraphStorage
 def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     """Get a task to work on.
 
-    Automatically handles locking, loading, saving.
-
     Args:
         storage: GraphStorage instance
         params: Dictionary containing:
             - agent_id (str, required): ID of the agent requesting work
-            - task_id (str, optional): Specific task to get, or omit for any available
-
-    Returns:
-        Dict with:
-            - success (bool): Whether a task was found/assigned
-            - message (str): Human-readable result
-            - data (dict): Contains task_info with full node details
+            - task_id (str, optional): Specific task to get
     """
     agent_id = params.get("agent_id")
     task_id = params.get("task_id")
 
-    # agent_id is required to prevent agents from taking multiple tasks
     if not agent_id:
         return {
             "success": False,
@@ -62,8 +44,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             from cascade.core.cascade import Cascade
             cascade = storage.load() or Cascade()
 
-            # Check if agent already has an ACTIVE task
-            # Each agent can only hold ONE task at a time
+            # One task per agent
             existing_node = cascade.find_agent_active_task(agent_id)
             if existing_node:
                 task_info = cascade.get_node_view(existing_node.id)
@@ -71,7 +52,6 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                     "success": True,
                     "message": (
                         f"You already have an active task: {existing_node.id}. "
-                        f"You can only hold ONE task at a time. "
                         f"Use finish_task() to complete it before getting a new task."
                     ),
                     "data": {
@@ -85,15 +65,10 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             if task_id:
                 if task_id not in cascade.nodes:
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} not found",
-                        "data": {},
-                    }
+                    return {"success": False, "message": f"Task {task_id} not found", "data": {}}
 
                 node = cascade.nodes[task_id]
 
-                # Check if task is already assigned to another agent
                 if node.agent_id and node.agent_id != agent_id and node.state == NodeState.ACTIVE:
                     return {
                         "success": False,
@@ -102,18 +77,13 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                     }
 
                 if node.state == NodeState.ACTIVE:
-                    # Reassign to same agent or agent taking over
                     node.agent_id = agent_id
                     task_info = cascade.get_node_view(task_id)
                     storage.save(cascade)
                     return {
                         "success": True,
                         "message": f"Task {task_id} is already active",
-                        "data": {
-                            "task_id": task_id,
-                            "state": "ACTIVE",
-                            "task_info": task_info,
-                        },
+                        "data": {"task_id": task_id, "state": "ACTIVE", "task_info": task_info},
                     }
 
                 if node.state.is_terminal():
@@ -124,10 +94,11 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                     }
 
                 if node.state == NodeState.PENDING:
+                    pending = cascade.pending_dependency_count(task_id)
                     return {
                         "success": False,
-                        "message": f"Task {task_id} is not ready (dependencies not met, in_degree={node.in_degree})",
-                        "data": {"state": "PENDING", "in_degree": node.in_degree},
+                        "message": f"Task {task_id} is not ready (dependencies not met, pending={pending})",
+                        "data": {"state": "PENDING", "pending_dependencies": pending},
                     }
 
                 node.update_state(NodeState.ACTIVE)
@@ -173,8 +144,4 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             }
 
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Operation failed: {e}",
-            "data": {},
-        }
+        return {"success": False, "message": f"Operation failed: {e}", "data": {}}

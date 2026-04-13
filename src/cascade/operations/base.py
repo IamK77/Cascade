@@ -16,38 +16,37 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from cascade.core.cascade import Cascade
 
+T = TypeVar("T")
+
 
 @dataclass
-class OperationResult:
-    """Result of a node operation."""
+class OperationResult(Generic[T]):
+    """Result of a node operation.
+
+    Generic over the data payload so each operation can declare what
+    it returns on success. On failure, data is None.
+    """
 
     success: bool
-    """Whether the operation succeeded."""
-
     affected_nodes: list[str]
-    """List of node IDs affected by the operation."""
-
     message: str
-    """Human-readable result message."""
-
-    data: dict[str, Any]
-    """Additional operation-specific data."""
+    data: T | None
 
     def __init__(
         self,
         success: bool,
         affected_nodes: list[str],
         message: str = "",
-        data: dict[str, Any] | None = None,
+        data: T | None = None,
     ):
         self.success = success
         self.affected_nodes = affected_nodes
         self.message = message
-        self.data = data or {}
+        self.data = data
 
     def __repr__(self) -> str:
         status = "Success" if self.success else "Failed"
@@ -55,63 +54,29 @@ class OperationResult:
 
 
 class NodeOperation(ABC):
-    """Base class for all node operations.
-
-    Operations modify the Cascade structure by adding, removing, splitting,
-    or refining nodes. All operations perform cycle detection.
-    """
+    """Base class for all node operations."""
 
     def __init__(self, cascade: Cascade):
-        """Create an operation for a Cascade.
-
-        Args:
-            cascade: The Cascade to operate on
-        """
         self._cascade = cascade
 
     @abstractmethod
-    def execute(self, *args: Any, **kwargs: Any) -> OperationResult:
-        """Execute the operation.
-
-        Returns:
-            OperationResult with outcome details
-        """
+    def execute(self, *args: Any, **kwargs: Any) -> OperationResult[Any]:
         ...
 
     def validate(self) -> tuple[bool, str | None]:
-        """Validate the operation before execution.
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        is_acyclic, error = self._cascade.find_cycle() is None, None
-        if self._cascade.has_cycle():
+        is_acyclic = self._cascade.find_cycle() is None
+        error = None
+        if not is_acyclic:
             cycle_info = self._cascade.find_cycle()
             error = f"Graph contains cycle: {cycle_info}"
         return is_acyclic, error
 
     def _validate_node_exists(self, node_id: str) -> tuple[bool, str | None]:
-        """Check if a node exists.
-
-        Args:
-            node_id: Node ID to check
-
-        Returns:
-            Tuple of (exists, error_message)
-        """
         if node_id not in self._cascade.nodes:
             return False, f"Node {node_id} not found"
         return True, None
 
     def _validate_nodes_exist(self, node_ids: list[str]) -> tuple[bool, str | None]:
-        """Check if multiple nodes exist.
-
-        Args:
-            node_ids: List of node IDs to check
-
-        Returns:
-            Tuple of (all_exist, error_message)
-        """
         for node_id in node_ids:
             valid, error = self._validate_node_exists(node_id)
             if not valid:

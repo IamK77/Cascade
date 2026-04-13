@@ -23,6 +23,7 @@ from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage, LockError
+from cascade.types import Contract, ContextKV, ContextLevel, EdgeId
 
 # Tools (framework-agnostic functions for LLM agents)
 from tools.add_node import add_node
@@ -35,6 +36,11 @@ from tools.remove_node import remove_node
 from tools.split_node import split_node
 
 __all__ = [
+    # Types
+    "Contract",
+    "ContextKV",
+    "ContextLevel",
+    "EdgeId",
     # Core
     "Cascade",
     "Node",
@@ -44,15 +50,16 @@ __all__ = [
     "CancellationToken",
     "CancelledError",
     "GraphStorage",
-    # Tools (structure operations)
+    "LockError",
+    # Tools (structure)
     "add_node",
     "remove_node",
     "split_node",
     "refine_node",
     "edit_node",
-    # Tools (execution operations)
+    # Tools (execution)
     "get_task",
     "finish_task",
-    # Tools (query operations)
+    # Tools (query)
     "list_nodes",
 ]

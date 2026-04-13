@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Node state enumeration."""
+"""Node state enumeration with transition rules encoded as data."""
 
 from enum import Enum, auto
 
@@ -21,12 +21,12 @@ class NodeState(Enum):
     """Node state in the DAG.
 
     States represent the lifecycle of a node in the task graph:
-    - READY: Node has no unmet dependencies and can be executed
-    - PENDING: Node has unmet dependencies and must wait
-    - ACTIVE: Node is currently being executed
-    - COMPLETED: Node has finished successfully
-    - CANCELLED: Node was cancelled (possibly due to cascade)
-    - FAILED: Node execution failed
+    - READY: All dependencies met, can be executed
+    - PENDING: Has unmet dependencies, must wait
+    - ACTIVE: Currently being executed by an agent
+    - COMPLETED: Finished successfully
+    - CANCELLED: Cancelled (possibly cascaded from upstream)
+    - FAILED: Execution failed
     """
 
     READY = auto()
@@ -41,45 +41,55 @@ class NodeState(Enum):
 
     def is_terminal(self) -> bool:
         """Check if this is a terminal state (no further transitions possible)."""
-        return self in (NodeState.COMPLETED, NodeState.CANCELLED, NodeState.FAILED)
+        return self in _TERMINAL_STATES
 
     def is_executable(self) -> bool:
-        """Check if node can be executed in this state."""
+        """Check if node can be claimed by an agent in this state."""
         return self == NodeState.READY
 
     def is_running(self) -> bool:
-        """Check if node is currently running."""
+        """Check if node is currently being executed."""
         return self == NodeState.ACTIVE
-
-    def is_finished(self) -> bool:
-        """Check if node has finished (successfully or not)."""
-        return self.is_terminal() and self != NodeState.READY
 
     def can_transition_to(self, new_state: "NodeState") -> bool:
         """Check if transition to new_state is valid.
 
-        Valid transitions:
-        - READY -> ACTIVE
-        - PENDING -> READY (when dependencies are met)
-        - ACTIVE -> COMPLETED
-        - ACTIVE -> FAILED
-        - Any -> CANCELLED
+        Transition rules are encoded in _VALID_TRANSITIONS — this method
+        is just a lookup, not a place to add ad-hoc logic.
         """
         if new_state == self:
             return True
-
-        if self == NodeState.READY and new_state == NodeState.ACTIVE:
-            return True
-        if self == NodeState.PENDING and new_state == NodeState.READY:
-            return True
-        if self == NodeState.ACTIVE and new_state in (
-            NodeState.COMPLETED,
-            NodeState.FAILED,
-        ):
-            return True
-        if new_state == NodeState.CANCELLED:
-            return True
-        return False
+        return new_state in _VALID_TRANSITIONS.get(self, frozenset())
 
     def __repr__(self) -> str:
         return f"NodeState.{self.name}"
+
+
+# ---------------------------------------------------------------------------
+# Transition rules — the single source of truth.
+#
+# Valid transitions:
+#   READY   -> ACTIVE, FAILED, CANCELLED
+#   PENDING -> READY, FAILED, CANCELLED
+#   ACTIVE  -> COMPLETED, FAILED, CANCELLED, READY (release)
+#   terminal states -> nothing (except self-transition, handled above)
+#
+# Notes:
+# - ACTIVE -> READY represents "release" (agent gives up task).
+# - PENDING/READY -> FAILED represents cascade failure (upstream dependency
+#   failed, so this task can never proceed).
+# ---------------------------------------------------------------------------
+_VALID_TRANSITIONS: dict[NodeState, frozenset[NodeState]] = {
+    NodeState.READY: frozenset({NodeState.ACTIVE, NodeState.FAILED, NodeState.CANCELLED}),
+    NodeState.PENDING: frozenset({NodeState.READY, NodeState.FAILED, NodeState.CANCELLED}),
+    NodeState.ACTIVE: frozenset({NodeState.COMPLETED, NodeState.FAILED, NodeState.CANCELLED, NodeState.READY}),
+    NodeState.COMPLETED: frozenset({NodeState.CANCELLED}),
+    NodeState.FAILED: frozenset({NodeState.CANCELLED}),
+    NodeState.CANCELLED: frozenset(),
+}
+
+_TERMINAL_STATES: frozenset[NodeState] = frozenset({
+    NodeState.COMPLETED,
+    NodeState.CANCELLED,
+    NodeState.FAILED,
+})

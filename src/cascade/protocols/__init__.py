@@ -12,9 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Protocol interface definitions."""
+"""Protocol interface definitions — deprecated.
 
-from cascade.protocols.context_protocol import ContextLevel, ContextProtocol
-from cascade.protocols.node_protocol import NodeProtocol
+Types formerly defined here have moved to cascade.types (ContextLevel, ContextKV)
+and concrete classes (Node, Context). This package is kept for backward
+compatibility but should not be extended.
+"""
 
-__all__ = ["NodeProtocol", "ContextProtocol", "ContextLevel"]
+from cascade.types import ContextLevel
+
+__all__ = ["ContextLevel"]

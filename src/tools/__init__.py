@@ -14,10 +14,11 @@
 
 """LLM Tools for Cascade Scheduler.
 
-Framework-agnostic tool functions for LLM agents to interact with
-the Cascade task scheduler. All tools automatically handle:
-- File locking for concurrent access
-- Loading and saving the graph
+Framework-agnostic tool functions for LLM agents. Each tool:
+- Takes (GraphStorage, dict) and returns dict (the LLM serialization boundary)
+- Handles file locking and persistence internally
+- Either calls Cascade primitives directly (simple ops) or
+  delegates to Operations (compound ops like split/remove)
 
 Tool Categories:
     1. Structure: add_node, remove_node, split_node, refine_node, edit_node
@@ -45,8 +46,6 @@ __all__ = [
     # Utilities
     "get_all_tools",
     "execute_tool",
-    # Storage
-    "GraphStorage",
 ]
 
 # Type alias for tool functions
@@ -81,21 +80,12 @@ def get_all_tools() -> dict[str, ToolFunc]:
 def execute_tool(storage: GraphStorage, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
     """Execute a tool by name.
 
-    Args:
-        storage: GraphStorage instance
-        tool_name: Name of the tool to execute
-        params: Parameters to pass to the tool
-
-    Returns:
-        Tool result dictionary
-
     Raises:
-        ValueError: If tool_name is not recognized
+        ValueError: If tool_name is not recognized.
     """
     tools = get_all_tools()
     if tool_name not in tools:
         available = ", ".join(tools.keys())
         raise ValueError(f"Unknown tool: {tool_name}. Available: {available}")
 
-    tool_fn = tools[tool_name]
-    return tool_fn(storage, params)
+    return tools[tool_name](storage, params)

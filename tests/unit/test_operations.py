@@ -12,29 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#
-
-"""Tests for node operations."""
-
-import pytest
+"""Tests for compound node operations (Split, Remove)."""
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.operations.add import AddOperation
 from cascade.operations.split import SplitOperation
 from cascade.operations.remove import RemoveOperation
-from cascade.operations.refine import RefineOperation
+from cascade.types import Contract
 
 
-from typing import Any
-
-
-def make_contracts(node_ids: list[str]) -> dict[str, dict[str, str]]:
+def make_contracts(node_ids: list[str]) -> dict[str, Contract]:
     """Helper to create contracts for multiple nodes."""
     return {
-        nid: {"expectation": f"Expect from {nid}", "promise": f"Promise to {nid}"}
+        nid: Contract(expectation=f"Expect from {nid}", promise=f"Promise to {nid}")
         for nid in node_ids
     }
-
-

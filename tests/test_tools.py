@@ -45,11 +45,7 @@ class TestGetTask:
     """Tests for get_task tool."""
 
     def test_get_any_task(self, temp_storage):
-        # Add a ready task first
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-        })
-        # Add a pending task
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
@@ -62,33 +58,25 @@ class TestGetTask:
         assert "task_info" in result["data"]
 
     def test_get_specific_task(self, temp_storage):
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-        })
-
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
         result = get_task.get_task(temp_storage, {"task_id": "task_a", "agent_id": "agent_1"})
         assert result["success"] is True
 
-        # Verify it's ACTIVE
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
     def test_get_task_not_ready(self, temp_storage):
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-        })
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
             "dependencies": ["task_a"],
             "expectations": [make_contract("task_a")],
         })
-
         result = get_task.get_task(temp_storage, {"task_id": "task_b", "agent_id": "agent_1"})
         assert result["success"] is False
 
     def test_agent_tracking(self, temp_storage):
-        # Create a chain: root -> task_a, root -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -101,28 +89,23 @@ class TestGetTask:
             "expectations": [make_contract("root")],
         })
 
-        # Agent 1 gets a task
         result1 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
         assert result1["success"] is True
 
-        # Agent 1 tries to get another task - should return reminder
         result2 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
         assert result2["success"] is True
         assert result2["data"].get("reminder") is True
 
     def test_no_available_tasks(self, temp_storage):
-        # Add a task and complete it
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         get_task.get_task(temp_storage, {"agent_id": "agent_1"})
         finish_task.finish_task(temp_storage, {"task_id": "task_a", "success": True})
 
-        # Now try to get a task
         result = get_task.get_task(temp_storage, {"agent_id": "agent_2"})
         assert result["success"] is False
 
     def test_agent_id_required(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-
         result = get_task.get_task(temp_storage, {})
         assert result["success"] is False
         assert "agent_id is required" in result["message"]
@@ -132,7 +115,6 @@ class TestFinishTask:
     """Tests for finish_task tool."""
 
     def test_complete_task(self, temp_storage):
-        # Setup: task_a -> task_b
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
@@ -140,22 +122,18 @@ class TestFinishTask:
             "expectations": [make_contract("task_a")],
         })
 
-        # Get and complete task_a
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
         result = finish_task.finish_task(temp_storage, {
             "task_id": "task_a",
             "success": True,
             "result": "Task completed successfully",
         })
-
         assert result["success"] is True
 
-        # Verify state
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.COMPLETED
-            # Dependent should be unblocked
-            assert cascade.nodes["task_b"].in_degree == 0
+            assert cascade.pending_dependency_count("task_b") == 0
             assert cascade.nodes["task_b"].state == NodeState.READY
 
     def test_fail_task(self, temp_storage):
@@ -167,7 +145,6 @@ class TestFinishTask:
             "success": False,
             "result": "Something went wrong",
         })
-
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -175,7 +152,6 @@ class TestFinishTask:
             assert cascade.nodes["task_a"].state == NodeState.FAILED
 
     def test_fail_task_cascade(self, temp_storage):
-        # Setup: task_a -> task_b, task_a -> task_c
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         add_node.add_node(temp_storage, {
             "node_id": "task_b",
@@ -194,7 +170,6 @@ class TestFinishTask:
             "success": False,
             "cascade": True,
         })
-
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -205,28 +180,23 @@ class TestFinishTask:
 
     def test_release_task(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-
-        # Get task first
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
-        # Release it
         result = finish_task.finish_task(temp_storage, {
             "task_id": "task_a",
             "release": True,
             "result": "Need more information",
         })
-
         assert result["success"] is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.READY
 
-        # Task should be available again
         result2 = get_task.get_task(temp_storage, {"task_id": "task_a", "agent_id": "agent_2"})
         assert result2["success"] is True
 
@@ -235,19 +205,15 @@ class TestAddNode:
     """Tests for add_node tool."""
 
     def test_add_basic_node(self, temp_storage):
-        result = add_node.add_node(temp_storage, {
-            "node_id": "new_task",
-        })
+        result = add_node.add_node(temp_storage, {"node_id": "new_task"})
         assert result["success"] is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert "new_task" in cascade.nodes
-            # No dependencies -> READY
             assert cascade.nodes["new_task"].state == NodeState.READY
 
     def test_add_node_with_dependencies(self, temp_storage):
-        # Create a proper chain: root -> task_a, root -> task_b, then new_task depends on both
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -269,14 +235,11 @@ class TestAddNode:
 
         with temp_storage.lock():
             cascade = temp_storage.load()
-            assert cascade.nodes["new_task"].in_degree == 2
-            # Has dependencies -> PENDING
+            assert cascade.pending_dependency_count("new_task") == 2
             assert cascade.nodes["new_task"].state == NodeState.PENDING
 
     def test_add_node_dependency_not_exists(self, temp_storage):
-        # First add a root node so the graph is non-empty
         add_node.add_node(temp_storage, {"node_id": "root"})
-
         result = add_node.add_node(temp_storage, {
             "node_id": "new_task",
             "dependencies": ["non_existent"],
@@ -286,20 +249,13 @@ class TestAddNode:
         assert "not found" in result["message"]
 
     def test_reject_isolated_node_in_non_empty_graph(self, temp_storage):
-        # First node can be added without dependencies (root node)
-        result = add_node.add_node(temp_storage, {
-            "node_id": "root",
-        })
+        result = add_node.add_node(temp_storage, {"node_id": "root"})
         assert result["success"] is True
 
-        # Second node without dependencies should be rejected
-        result = add_node.add_node(temp_storage, {
-            "node_id": "isolated",
-        })
+        result = add_node.add_node(temp_storage, {"node_id": "isolated"})
         assert result["success"] is False
         assert "Isolated nodes not allowed" in result["message"]
 
-        # Node with dependencies should be allowed
         result = add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
@@ -308,7 +264,6 @@ class TestAddNode:
         assert result["success"] is True
 
     def test_add_node_with_dependents(self, temp_storage):
-        # Add root and child
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "child",
@@ -316,7 +271,6 @@ class TestAddNode:
             "expectations": [make_contract("root")],
         })
 
-        # Add a new node that will be a dependency of existing node
         result = add_node.add_node(temp_storage, {
             "node_id": "new_parent",
             "dependents": ["child"],
@@ -326,12 +280,9 @@ class TestAddNode:
 
         with temp_storage.lock():
             cascade = temp_storage.load()
-            # child should now have 2 dependencies
-            assert cascade.nodes["child"].in_degree == 2
+            assert cascade.pending_dependency_count("child") == 2
 
     def test_reject_disconnected_subgraph(self, temp_storage):
-        """Test that adding a node that creates a disconnected subgraph is rejected."""
-        # Create a connected graph: root -> child
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "child",
@@ -339,30 +290,21 @@ class TestAddNode:
             "expectations": [make_contract("root")],
         })
 
-        # Try to add two nodes that form their own disconnected subgraph
-        # First add disconnected_root (should fail - it's isolated from existing graph)
-        result = add_node.add_node(temp_storage, {
-            "node_id": "disconnected_root",
-        })
+        result = add_node.add_node(temp_storage, {"node_id": "disconnected_root"})
         assert result["success"] is False
         assert "Isolated nodes not allowed" in result["message"]
 
     def test_missing_contract_for_dependency(self, temp_storage):
-        """Test that adding node without contract for dependency fails."""
         add_node.add_node(temp_storage, {"node_id": "root"})
-
         result = add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
-            # Missing expectations
         })
         assert result["success"] is False
         assert "Missing contract" in result["message"]
 
     def test_empty_expectation_rejected(self, temp_storage):
-        """Test that empty expectation is rejected."""
         add_node.add_node(temp_storage, {"node_id": "root"})
-
         result = add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
@@ -372,9 +314,7 @@ class TestAddNode:
         assert "expectation is required" in result["message"]
 
     def test_empty_promise_rejected(self, temp_storage):
-        """Test that empty promise is rejected."""
         add_node.add_node(temp_storage, {"node_id": "root"})
-
         result = add_node.add_node(temp_storage, {
             "node_id": "child",
             "dependencies": ["root"],
@@ -388,7 +328,6 @@ class TestRefineNode:
     """Tests for refine_node tool."""
 
     def test_refine_node(self, temp_storage):
-        # Create proper chain: root -> task_a, root -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -401,23 +340,19 @@ class TestRefineNode:
             "expectations": [make_contract("root")],
         })
 
-        # Now add dependency: task_b -> task_a
         result = refine_node.refine_node(temp_storage, {
             "node_id": "task_b",
             "dependency_id": "task_a",
             "expectation": "Expect output from task_a",
             "promise": "Promise to provide results",
         })
-
         assert result["success"] is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
-            # task_b now has two dependencies: root and task_a
-            assert cascade.nodes["task_b"].in_degree == 2
+            assert cascade.pending_dependency_count("task_b") == 2
 
     def test_refine_node_requires_contract(self, temp_storage):
-        """Test that refine_node requires expectation and promise."""
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -425,7 +360,6 @@ class TestRefineNode:
             "expectations": [make_contract("root")],
         })
 
-        # Missing expectation
         result = refine_node.refine_node(temp_storage, {
             "node_id": "task_a",
             "dependency_id": "root",
@@ -434,7 +368,6 @@ class TestRefineNode:
         assert result["success"] is False
         assert "expectation" in result["message"].lower()
 
-        # Missing promise
         result = refine_node.refine_node(temp_storage, {
             "node_id": "task_a",
             "dependency_id": "root",
@@ -448,7 +381,6 @@ class TestRemoveNode:
     """Tests for remove_node tool."""
 
     def test_remove_node(self, temp_storage):
-        # Create proper chain: root -> task_a -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -499,7 +431,6 @@ class TestListNodes:
     """Tests for list_nodes tool."""
 
     def test_list_all_nodes(self, temp_storage):
-        # Create proper chain: root -> task_a, root -> task_b, root -> task_c
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "task_a",
@@ -519,7 +450,7 @@ class TestListNodes:
 
         result = list_nodes.list_nodes(temp_storage, {})
         assert result["success"] is True
-        assert result["data"]["count"] == 4  # root + 3 children
+        assert result["data"]["count"] == 4
 
     def test_list_nodes_with_filter(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
@@ -538,9 +469,7 @@ class TestExecuteTool:
     """Tests for the execute_tool wrapper function."""
 
     def test_execute_valid_tool(self, temp_storage):
-        result = execute_tool(temp_storage, "add_node", {
-            "node_id": "test",
-        })
+        result = execute_tool(temp_storage, "add_node", {"node_id": "test"})
         assert result["success"] is True
 
     def test_execute_invalid_tool(self, temp_storage):

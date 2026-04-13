@@ -12,19 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Edit Node Tool.
-
-Edit an existing node's properties including promise, state, and context.
-This is a unified tool that combines multiple update operations.
-"""
+"""Edit Node Tool."""
 
 from typing import Any
 
+from cascade.context.context import Context
+from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage
 
 
-def _update_context(node: Any, params: dict[str, Any]) -> bool:
+def _update_context(node: Node, params: dict[str, Any]) -> bool:
     """Update node context based on params. Returns True if context was updated."""
     critical = params.get("critical")
     summary = params.get("summary")
@@ -34,51 +32,36 @@ def _update_context(node: Any, params: dict[str, Any]) -> bool:
     if critical is None and summary is None and artifacts is None:
         return False
 
-    if not hasattr(node, "_context_data"):
-        node._context_data = {"critical": {}, "summary": "", "artifacts": {}}
+    # Ensure node has a context object
+    if node.context is None:
+        node.context = Context()
 
-    ctx = node._context_data
-
-    if node.context is not None:
-        if hasattr(node.context, "critical"):
-            ctx["critical"] = dict(node.context.critical or {})
-        if hasattr(node.context, "summary"):
-            ctx["summary"] = node.context.summary or ""
-        if hasattr(node.context, "artifacts"):
-            ctx["artifacts"] = dict(node.context.artifacts or {})
+    ctx = node.context
 
     if merge_mode == "replace":
         if critical is not None:
-            ctx["critical"] = dict(critical)
+            ctx.critical = dict(critical)
         if summary is not None:
-            ctx["summary"] = summary
+            ctx.summary = summary
         if artifacts is not None:
-            ctx["artifacts"] = dict(artifacts)
+            ctx.artifacts = str(artifacts)
     elif merge_mode == "append":
         if critical is not None and isinstance(critical, dict):
-            ctx["critical"].update(critical)
+            ctx.critical.update(critical)
         if summary is not None:
-            ctx["summary"] = (ctx["summary"] + "\n" + summary).strip()
-        if artifacts is not None and isinstance(artifacts, dict):
-            ctx["artifacts"].update(artifacts)
-    else:
+            ctx.summary = (ctx.summary + "\n" + summary).strip()
+        if artifacts is not None:
+            ctx.artifacts = str(artifacts)
+    else:  # merge (default)
         if critical is not None and isinstance(critical, dict):
-            ctx["critical"].update(critical)
+            ctx.critical.update(critical)
         if summary is not None:
-            if ctx["summary"]:
-                ctx["summary"] = ctx["summary"] + "\n" + summary
+            if ctx.summary:
+                ctx.summary = ctx.summary + "\n" + summary
             else:
-                ctx["summary"] = summary
-        if artifacts is not None and isinstance(artifacts, dict):
-            ctx["artifacts"].update(artifacts)
-
-    if node.context is not None:
-        if hasattr(node.context, "critical"):
-            node.context.critical = ctx["critical"]
-        if hasattr(node.context, "summary"):
-            node.context.summary = ctx["summary"]
-        if hasattr(node.context, "artifacts"):
-            node.context.artifacts = ctx["artifacts"]
+                ctx.summary = summary
+        if artifacts is not None:
+            ctx.artifacts = str(artifacts)
 
     return True
 
@@ -86,36 +69,18 @@ def _update_context(node: Any, params: dict[str, Any]) -> bool:
 def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     """Edit an existing node's properties.
 
-    Automatically handles locking, loading, saving.
-
-    This is a unified tool for updating node properties. You can update:
-    - promise: What this node promises to output
-    - state: Node state (with automatic dependency handling)
-    - context: Critical/summary/artifacts data
-
     Args:
         storage: GraphStorage instance
         params: Dictionary containing:
-            - node_id (str, required): ID of the node to edit
-            - promise (str, optional): New promise value
-            - state (str, optional): New state (READY/ACTIVE/COMPLETED/FAILED/CANCELLED)
-            - critical (dict, optional): Critical context to merge/set
-            - summary (str, optional): Summary text to append/set
-            - artifacts (dict, optional): Artifacts to merge/set
-            - context_merge (str, optional): How to merge context ("replace"/"merge"/"append", default: "merge")
-
-    Returns:
-        Dict with:
-            - success (bool): Whether the operation succeeded
-            - message (str): Human-readable result message
-            - data (dict): Updated node information
+            - node_id (str, required)
+            - state (str, optional): New state
+            - critical (dict, optional): Critical context
+            - summary (str, optional): Summary text
+            - artifacts (dict, optional): Artifacts
+            - context_merge (str, optional): "replace"/"merge"/"append"
     """
     if "node_id" not in params:
-        return {
-            "success": False,
-            "message": "Missing required parameter: node_id",
-            "data": {},
-        }
+        return {"success": False, "message": "Missing required parameter: node_id", "data": {}}
 
     node_id = params["node_id"]
 
@@ -125,14 +90,10 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             cascade = storage.load() or Cascade()
 
             if node_id not in cascade.nodes:
-                return {
-                    "success": False,
-                    "message": f"Node {node_id} not found",
-                    "data": {},
-                }
+                return {"success": False, "message": f"Node {node_id} not found", "data": {}}
 
             node = cascade.nodes[node_id]
-            changes = []
+            changes: list[str] = []
 
             if "state" in params:
                 new_state_str = params["state"]
@@ -147,7 +108,6 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                     }
 
                 old_state = node.state
-
                 if not old_state.can_transition_to(new_state):
                     return {
                         "success": False,
@@ -159,9 +119,7 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 changes.append(f"state: {old_state.name} -> {new_state.name}")
 
                 if new_state == NodeState.COMPLETED:
-                    for dependent in cascade.get_dependents(node_id):
-                        if hasattr(dependent, "decrement_in_degree"):
-                            dependent.decrement_in_degree()
+                    cascade.notify_completion(node_id)
 
             context_updated = _update_context(node, params)
             if context_updated:
@@ -175,19 +133,11 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 }
 
             storage.save(cascade)
-
             return {
                 "success": True,
                 "message": f"Node {node_id} updated: {', '.join(changes)}",
-                "data": {
-                    "node_id": node_id,
-                    "state": node.state.name,
-                },
+                "data": {"node_id": node_id, "state": node.state.name},
             }
 
     except Exception as e:
-        return {
-            "success": False,
-            "message": f"Operation failed: {e}",
-            "data": {},
-        }
+        return {"success": False, "message": f"Operation failed: {e}", "data": {}}
