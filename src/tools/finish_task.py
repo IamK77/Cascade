@@ -18,6 +18,7 @@ from typing import Any
 
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage
+from cascade.types import Context
 
 
 def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
@@ -27,6 +28,20 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     1. Complete successfully: ACTIVE -> COMPLETED, unblock dependents
     2. Fail: ACTIVE -> FAILED, optionally cascade
     3. Release: ACTIVE -> READY, return to pool
+
+    Context output (for success):
+        The agent's work product flows downstream through context propagation.
+        - summary (str): Brief description of what was accomplished.
+          Propagates to children and grandchildren (distance <= 2).
+        - critical (dict): Key-value data that propagates indefinitely
+          to ALL descendants. Use for structured output that downstream
+          tasks need (e.g., {"api_endpoints": [...], "schema_version": 2}).
+        - artifacts (str): Detailed output content. Persisted to file,
+          path reference propagates indefinitely.
+
+        If the node has no context yet, one is created automatically.
+        Your output IS your fulfilled promise — downstream agents receive
+        it through the contracts you committed to on the edges.
     """
     if "task_id" not in params:
         return {"success": False, "message": "Missing required parameter: task_id", "data": {}}
@@ -34,9 +49,10 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     task_id = params["task_id"]
     is_release = params.get("release", False)
     is_success = params.get("success", True) if not is_release else params.get("success", False)
-    result_text = params.get("result")
-    should_cascade = params.get("cascade", False)
+    summary = params.get("summary") or params.get("result")  # 'result' for backward compat
+    critical = params.get("critical")
     artifacts = params.get("artifacts")
+    should_cascade = params.get("cascade", False)
 
     try:
         with storage.lock():
@@ -62,12 +78,12 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 node.timeout = None
 
                 message = f"Task {task_id} released and is now available"
-                if result_text:
-                    message += f" (reason: {result_text})"
+                if summary:
+                    message += f" (reason: {summary})"
 
                 storage.save(cascade)
                 from cascade.events import EventType
-                storage.events.emit(EventType.TASK_RELEASED, node_id=task_id, reason=result_text)
+                storage.events.emit(EventType.TASK_RELEASED, node_id=task_id, reason=summary)
                 return {
                     "success": True,
                     "message": message,
@@ -80,12 +96,17 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 node.claimed_at = None
                 node.timeout = None
 
-                if result_text and node.context is not None:
-                    node.context.summary = result_text
-                if artifacts and node.context is not None:
-                    node.context.artifacts = str(artifacts)
+                # Ensure context exists — agent output must never be silently dropped
+                if summary or critical or artifacts:
+                    if node.context is None:
+                        node.context = Context()
+                    if summary:
+                        node.context.summary = summary
+                    if critical and isinstance(critical, dict):
+                        node.context.critical.update(critical)
+                    if artifacts:
+                        node.context.artifacts = str(artifacts)
 
-                # Use centralized readiness management
                 unblocked = cascade.notify_completion(task_id)
 
                 message = f"Task {task_id} completed"
@@ -129,13 +150,13 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 message = f"Task {task_id} failed"
                 if should_cascade and len(affected) > 1:
                     message += f" (cascaded to {len(affected) - 1} dependent tasks)"
-                if result_text:
-                    message += f": {result_text}"
+                if summary:
+                    message += f": {summary}"
 
                 storage.save(cascade)
                 from cascade.events import EventType
                 storage.events.emit(EventType.TASK_FAILED, node_id=task_id,
-                                    reason=result_text, affected=affected, cascade=should_cascade)
+                                    reason=summary, affected=affected, cascade=should_cascade)
                 return {
                     "success": True,
                     "message": message,
