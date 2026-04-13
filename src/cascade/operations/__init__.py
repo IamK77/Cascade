@@ -21,6 +21,7 @@ Simple mutations (add node, add edge) go through Cascade directly.
 
 from cascade.operations.base import NodeOperation, OperationResult
 from cascade.operations.remove import RemoveOperation, RemoveResult
+from cascade.operations.rework import ReworkOperation, ReworkResult
 from cascade.operations.split import SplitOperation, SplitResult
 
 __all__ = [
@@ -28,6 +29,8 @@ __all__ = [
     "OperationResult",
     "RemoveOperation",
     "RemoveResult",
+    "ReworkOperation",
+    "ReworkResult",
     "SplitOperation",
     "SplitResult",
 ]

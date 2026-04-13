@@ -33,6 +33,7 @@ from tools.get_task import get_task
 from tools.list_nodes import list_nodes
 from tools.refine_node import refine_node
 from tools.remove_node import remove_node
+from tools.rework import rework
 from tools.split_node import split_node
 
 __all__ = [
@@ -64,6 +65,8 @@ __all__ = [
     # Tools (execution)
     "get_task",
     "finish_task",
+    # Tools (feedback)
+    "rework",
     # Tools (query)
     "list_nodes",
 ]

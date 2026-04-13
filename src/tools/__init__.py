@@ -23,7 +23,8 @@ Framework-agnostic tool functions for LLM agents. Each tool:
 Tool Categories:
     1. Structure: add_node, remove_node, split_node, refine_node, edit_node
     2. Execution: get_task, finish_task
-    3. Query: list_nodes
+    3. Feedback: rework
+    4. Query: list_nodes
 """
 
 from collections.abc import Callable
@@ -41,6 +42,8 @@ __all__ = [
     # Execution operations
     "get_task",
     "finish_task",
+    # Feedback operations
+    "rework",
     # Query operations
     "list_nodes",
     # Utilities
@@ -62,6 +65,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         list_nodes,
         refine_node,
         remove_node,
+        rework,
         split_node,
     )
 
@@ -73,6 +77,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         "edit_node": edit_node.edit_node,
         "get_task": get_task.get_task,
         "finish_task": finish_task.finish_task,
+        "rework": rework.rework,
         "list_nodes": list_nodes.list_nodes,
     }
 
