@@ -16,10 +16,6 @@
 
 A Node is a pure data object — it knows its own identity, state, context,
 and agent assignment, but nothing about the graph structure it lives in.
-
-Notably, there is no `in_degree` field. Dependency count is a property of
-the graph, not the node. It is computed by Cascade from the adjacency
-structure and the states of upstream nodes.
 """
 
 from dataclasses import dataclass
@@ -37,12 +33,18 @@ class Node:
         state: Current lifecycle state.
         context: Optional context for information propagation.
         agent_id: ID of the agent currently working on this task, if any.
+        claimed_at: Timestamp (time.time()) when the task was claimed (ACTIVE).
+                    Set when entering ACTIVE, cleared when leaving ACTIVE.
+        timeout: Optional timeout in seconds. If set, the task is considered
+                 stalled after claimed_at + timeout and can be auto-released.
     """
 
     id: str
     state: NodeState = NodeState.PENDING
     context: Context | None = None
     agent_id: str | None = None
+    claimed_at: float | None = None
+    timeout: float | None = None
 
     def update_state(self, new_state: NodeState) -> "Node":
         """Transition to a new state.
@@ -57,6 +59,17 @@ class Node:
             raise ValueError(f"Invalid state transition: {self.state} -> {new_state}")
         self.state = new_state
         return self
+
+    def is_timed_out(self, now: float) -> bool:
+        """Check if this node has exceeded its timeout.
+
+        Only meaningful for ACTIVE nodes with both claimed_at and timeout set.
+        """
+        if self.state != NodeState.ACTIVE:
+            return False
+        if self.claimed_at is None or self.timeout is None:
+            return False
+        return now - self.claimed_at >= self.timeout
 
     def __repr__(self) -> str:
         parts = [f"id={self.id!r}", f"state={self.state}"]

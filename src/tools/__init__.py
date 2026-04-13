@@ -24,7 +24,8 @@ Tool Categories:
     1. Structure: add_node, remove_node, split_node, refine_node, edit_node
     2. Execution: get_task, finish_task
     3. Feedback: rework
-    4. Query: list_nodes
+    4. Monitoring: check_timeouts
+    5. Query: list_nodes
 """
 
 from collections.abc import Callable
@@ -44,6 +45,8 @@ __all__ = [
     "finish_task",
     # Feedback operations
     "rework",
+    # Monitoring operations
+    "check_timeouts",
     # Query operations
     "list_nodes",
     # Utilities
@@ -59,6 +62,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
     """Get all available tools as a dictionary."""
     from tools import (
         add_node,
+        check_timeouts,
         edit_node,
         finish_task,
         get_task,
@@ -78,6 +82,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         "get_task": get_task.get_task,
         "finish_task": finish_task.finish_task,
         "rework": rework.rework,
+        "check_timeouts": check_timeouts.check_timeouts,
         "list_nodes": list_nodes.list_nodes,
     }
 

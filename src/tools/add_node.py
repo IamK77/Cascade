@@ -95,18 +95,6 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             if node_id in cascade.nodes:
                 return {"success": False, "message": f"Node {node_id} already exists", "data": {}}
 
-            # No isolated nodes in non-empty graph
-            if cascade.nodes and not dependencies and not dependents:
-                return {
-                    "success": False,
-                    "message": (
-                        f"Isolated nodes not allowed. "
-                        f"Node '{node_id}' must specify 'dependencies' or 'dependents'. "
-                        f"Existing nodes: {list(cascade.nodes.keys())}"
-                    ),
-                    "data": {"existing_nodes": list(cascade.nodes.keys())},
-                }
-
             for dep_id in dependencies:
                 if dep_id not in cascade.nodes:
                     return {"success": False, "message": f"Dependency {dep_id} not found. Create it first.", "data": {}}
@@ -134,17 +122,6 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 exp_info = expectations_map[dep_id]
                 cascade.add_edge(node_id, dep_id, expectation=exp_info["expectation"], promise=exp_info["promise"])
                 affected_nodes.append(dep_id)
-
-            if not cascade.is_connected():
-                cascade.remove_node(node_id)
-                return {
-                    "success": False,
-                    "message": (
-                        f"Adding node '{node_id}' would create disconnected subgraphs. "
-                        f"Connect to existing nodes: {list(cascade.nodes.keys())}"
-                    ),
-                    "data": {"existing_nodes": list(cascade.nodes.keys())},
-                }
 
             storage.save(cascade)
             return {

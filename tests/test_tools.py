@@ -248,20 +248,21 @@ class TestAddNode:
         assert result["success"] is False
         assert "not found" in result["message"]
 
-    def test_reject_isolated_node_in_non_empty_graph(self, temp_storage):
-        result = add_node.add_node(temp_storage, {"node_id": "root"})
+    def test_independent_subgraphs_allowed(self, temp_storage):
+        """Multiple independent task groups are allowed."""
+        result = add_node.add_node(temp_storage, {"node_id": "group_a_root"})
         assert result["success"] is True
 
-        result = add_node.add_node(temp_storage, {"node_id": "isolated"})
-        assert result["success"] is False
-        assert "Isolated nodes not allowed" in result["message"]
-
-        result = add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        # Independent node — no longer rejected
+        result = add_node.add_node(temp_storage, {"node_id": "group_b_root"})
         assert result["success"] is True
+
+        with temp_storage.lock():
+            cascade = temp_storage.load()
+            assert "group_a_root" in cascade.nodes
+            assert "group_b_root" in cascade.nodes
+            assert cascade.nodes["group_a_root"].state == NodeState.READY
+            assert cascade.nodes["group_b_root"].state == NodeState.READY
 
     def test_add_node_with_dependents(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
@@ -282,7 +283,8 @@ class TestAddNode:
             cascade = temp_storage.load()
             assert cascade.pending_dependency_count("child") == 2
 
-    def test_reject_disconnected_subgraph(self, temp_storage):
+    def test_independent_subgraph_with_deps(self, temp_storage):
+        """Independent subgraphs can each have their own dependency chains."""
         add_node.add_node(temp_storage, {"node_id": "root"})
         add_node.add_node(temp_storage, {
             "node_id": "child",
@@ -290,9 +292,9 @@ class TestAddNode:
             "expectations": [make_contract("root")],
         })
 
-        result = add_node.add_node(temp_storage, {"node_id": "disconnected_root"})
-        assert result["success"] is False
-        assert "Isolated nodes not allowed" in result["message"]
+        # Independent root — allowed now
+        result = add_node.add_node(temp_storage, {"node_id": "other_root"})
+        assert result["success"] is True
 
     def test_missing_contract_for_dependency(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
@@ -463,6 +465,68 @@ class TestListNodes:
         result = list_nodes.list_nodes(temp_storage, {"state_filter": "READY"})
         assert result["success"] is True
         assert result["data"]["count"] == 1
+
+
+class TestCheckTimeouts:
+    """Tests for check_timeouts tool."""
+
+    def test_release_timed_out_task(self, temp_storage):
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
+        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 0.01})
+
+        # Wait for timeout
+        import time
+        time.sleep(0.02)
+
+        from tools.check_timeouts import check_timeouts
+        result = check_timeouts(temp_storage, {})
+
+        assert result["success"] is True
+        assert result["data"]["count"] == 1
+        assert result["data"]["released"][0]["task_id"] == "task_a"
+        assert result["data"]["released"][0]["agent_id"] == "agent_1"
+
+        with temp_storage.lock():
+            cascade = temp_storage.load()
+            assert cascade.nodes["task_a"].state == NodeState.READY
+            assert cascade.nodes["task_a"].agent_id is None
+
+    def test_no_timeout_no_release(self, temp_storage):
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
+        # No timeout specified
+        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+
+        from tools.check_timeouts import check_timeouts
+        result = check_timeouts(temp_storage, {})
+
+        assert result["success"] is True
+        assert result["data"]["count"] == 0
+
+    def test_default_timeout(self, temp_storage):
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
+        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+
+        # Force claimed_at to the past
+        with temp_storage.lock():
+            cascade = temp_storage.load()
+            cascade.nodes["task_a"].claimed_at = 0.0  # epoch = definitely expired
+            temp_storage.save(cascade)
+
+        from tools.check_timeouts import check_timeouts
+        result = check_timeouts(temp_storage, {"default_timeout": 60})
+
+        assert result["success"] is True
+        assert result["data"]["count"] == 1
+
+    def test_not_yet_timed_out(self, temp_storage):
+        add_node.add_node(temp_storage, {"node_id": "task_a"})
+        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 3600})
+
+        from tools.check_timeouts import check_timeouts
+        result = check_timeouts(temp_storage, {})
+
+        assert result["success"] is True
+        assert result["data"]["count"] == 0
 
 
 class TestExecuteTool:

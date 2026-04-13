@@ -58,6 +58,8 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             if is_release:
                 node.update_state(NodeState.READY)
                 node.agent_id = None
+                node.claimed_at = None
+                node.timeout = None
 
                 message = f"Task {task_id} released and is now available"
                 if result_text:
@@ -73,6 +75,8 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             elif is_success:
                 node.update_state(NodeState.COMPLETED)
                 node.agent_id = None
+                node.claimed_at = None
+                node.timeout = None
 
                 if result_text and node.context is not None:
                     node.context.summary = result_text
@@ -108,6 +112,8 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                             return
                         current.update_state(NodeState.FAILED)
                         current.agent_id = None
+                        current.claimed_at = None
+                        current.timeout = None
                         affected.append(nid)
                         for dep in cascade.get_dependents(nid):
                             fail_recursive(dep.id)

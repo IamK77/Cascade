@@ -137,6 +137,11 @@ class GraphStorage:
                 if node.state == NodeState.ACTIVE:
                     graph_data["agent_tasks"][node.agent_id] = node_id
 
+            if node.claimed_at is not None:
+                node_data["claimed_at"] = node.claimed_at
+            if node.timeout is not None:
+                node_data["timeout"] = node.timeout
+
             if node.context:
                 ctx_data: dict[str, Any] = {}
                 if node.context.critical:
@@ -254,6 +259,8 @@ class GraphStorage:
                 state=state,
                 context=context,
                 agent_id=agent_id,
+                claimed_at=node_data.get("claimed_at"),
+                timeout=node_data.get("timeout"),
             )
             cascade.add_node(node)
 

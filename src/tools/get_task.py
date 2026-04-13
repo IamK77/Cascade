@@ -14,6 +14,7 @@
 
 """Get Task Tool."""
 
+import time
 from typing import Any
 
 from cascade.core.state import NodeState
@@ -29,9 +30,13 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         params: Dictionary containing:
             - agent_id (str, required): ID of the agent requesting work
             - task_id (str, optional): Specific task to get
+            - timeout (float, optional): Timeout in seconds for this claim.
+              If the agent doesn't finish within this time, the task can
+              be auto-released by check_timeouts.
     """
     agent_id = params.get("agent_id")
     task_id = params.get("task_id")
+    timeout = params.get("timeout")
 
     if not agent_id:
         return {
@@ -45,10 +50,9 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             from cascade.core.cascade import Cascade
             cascade = storage.load() or Cascade()
 
-            # One task per agent
             existing_node = cascade.find_agent_active_task(agent_id)
             if existing_node:
-                task_info = get_node_view(cascade,existing_node.id)
+                task_info = get_node_view(cascade, existing_node.id)
                 return {
                     "success": True,
                     "message": (
@@ -79,7 +83,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
                 if node.state == NodeState.ACTIVE:
                     node.agent_id = agent_id
-                    task_info = get_node_view(cascade,task_id)
+                    task_info = get_node_view(cascade, task_id)
                     storage.save(cascade)
                     return {
                         "success": True,
@@ -104,6 +108,9 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
                 node.update_state(NodeState.ACTIVE)
                 node.agent_id = agent_id
+                node.claimed_at = time.time()
+                if timeout is not None:
+                    node.timeout = float(timeout)
 
             else:
                 ready_nodes = cascade.get_ready_nodes()
@@ -129,8 +136,11 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 task_id = node.id
                 node.update_state(NodeState.ACTIVE)
                 node.agent_id = agent_id
+                node.claimed_at = time.time()
+                if timeout is not None:
+                    node.timeout = float(timeout)
 
-            task_info = get_node_view(cascade,task_id)
+            task_info = get_node_view(cascade, task_id)
             storage.save(cascade)
 
             return {
