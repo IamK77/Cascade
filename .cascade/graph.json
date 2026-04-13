@@ -1,0 +1,47 @@
+{
+  "nodes": {
+    "audit_arch": {
+      "id": "audit_arch",
+      "state": "COMPLETED"
+    },
+    "write_claude_md": {
+      "id": "write_claude_md",
+      "state": "COMPLETED"
+    },
+    "update_readme": {
+      "id": "update_readme",
+      "state": "COMPLETED"
+    },
+    "verify_docs": {
+      "id": "verify_docs",
+      "state": "COMPLETED"
+    }
+  },
+  "edges": [
+    {
+      "from": "audit_arch",
+      "to": "write_claude_md",
+      "expectation": "Complete architecture summary: module structure, types, APIs, design patterns",
+      "promise": "Deliver thorough architecture audit as context"
+    },
+    {
+      "from": "audit_arch",
+      "to": "update_readme",
+      "expectation": "Complete architecture summary with module boundaries and tool inventory",
+      "promise": "Deliver architecture audit as context"
+    },
+    {
+      "from": "write_claude_md",
+      "to": "verify_docs",
+      "expectation": "CLAUDE.md written with tool guidance and architecture overview",
+      "promise": "Deliver completed CLAUDE.md"
+    },
+    {
+      "from": "update_readme",
+      "to": "verify_docs",
+      "expectation": "README.md updated to reflect current architecture",
+      "promise": "Deliver updated README.md"
+    }
+  ],
+  "agent_tasks": {}
+}

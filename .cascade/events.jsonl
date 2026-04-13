@@ -1,0 +1,12 @@
+{"type": "node_added", "timestamp": 1776077558.7999969, "data": {"node_id": "audit_arch", "dependencies": [], "dependents": []}}
+{"type": "node_added", "timestamp": 1776077558.800222, "data": {"node_id": "write_claude_md", "dependencies": ["audit_arch"], "dependents": []}}
+{"type": "node_added", "timestamp": 1776077558.8003788, "data": {"node_id": "update_readme", "dependencies": ["audit_arch"], "dependents": []}}
+{"type": "node_added", "timestamp": 1776077558.800527, "data": {"node_id": "verify_docs", "dependencies": ["write_claude_md", "update_readme"], "dependents": []}}
+{"type": "task_claimed", "timestamp": 1776077608.1166348, "data": {"node_id": "audit_arch", "agent_id": "claude-1"}}
+{"type": "task_completed", "timestamp": 1776077623.113868, "data": {"node_id": "audit_arch", "unblocked": ["write_claude_md", "update_readme"]}}
+{"type": "task_claimed", "timestamp": 1776077659.718372, "data": {"node_id": "write_claude_md", "agent_id": "claude-2"}}
+{"type": "task_completed", "timestamp": 1776077712.126699, "data": {"node_id": "write_claude_md", "unblocked": []}}
+{"type": "task_claimed", "timestamp": 1776077757.870183, "data": {"node_id": "update_readme", "agent_id": "claude-3"}}
+{"type": "task_completed", "timestamp": 1776077760.655707, "data": {"node_id": "update_readme", "unblocked": ["verify_docs"]}}
+{"type": "task_claimed", "timestamp": 1776077813.6577659, "data": {"node_id": "verify_docs", "agent_id": "claude-4"}}
+{"type": "task_completed", "timestamp": 1776077850.75716, "data": {"node_id": "verify_docs", "unblocked": []}}
