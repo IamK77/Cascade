@@ -1,45 +1,107 @@
 {
   "nodes": {
-    "audit_arch": {
-      "id": "audit_arch",
-      "state": "COMPLETED"
+    "audit": {
+      "id": "audit",
+      "state": "COMPLETED",
+      "context": {
+        "critical": {
+          "module_dag": "types -> core -> context -> view -> operations -> tools",
+          "tools": [
+            "add_node",
+            "remove_node",
+            "split_node",
+            "refine_node",
+            "edit_node",
+            "get_task",
+            "finish_task",
+            "rework",
+            "check_timeouts",
+            "list_nodes",
+            "history"
+          ],
+          "design_patterns": [
+            "mandatory contracts on edges",
+            "computed readiness",
+            "forward-only rework",
+            "event sourcing",
+            "critical path scheduling",
+            "Go-style cancellation tokens",
+            "3-tier context propagation"
+          ],
+          "key_types": [
+            "Contract",
+            "Context",
+            "ContextLevel",
+            "Node",
+            "NodeState",
+            "EdgeId",
+            "CancellationToken",
+            "OperationResult"
+          ],
+          "packages": {
+            "types": "Value types (Contract, Context, EdgeId) - no internal deps",
+            "core": "Cascade graph, Node, NodeState with transition rules",
+            "context": "Context propagation + cancellation (Go-style tokens)",
+            "view": "Presentation layer for agent task views",
+            "operations": "Split, Remove, Rework operations with base class",
+            "storage": "JSON persistence with fcntl file locking + EventStore"
+          },
+          "state_machine": "PENDING->READY->ACTIVE->COMPLETED; ACTIVE->READY (release); any->CANCELLED/FAILED"
+        },
+        "summary": "Cascade is a DAG-based multi-agent task scheduler. 6 packages: types (value types), core (Cascade graph, Node, NodeState), context (propagation, cancellation), view (agent-facing presentation), operations (split/remove/rework), storage (JSON persistence with file locking). Event sourcing via append-only JSONL log. 11 tools expose the API. Key patterns: mandatory contracts on every edge, computed readiness (never cached), forward-only rework (new corrective nodes, never mutate parent), critical-path scheduling via downstream depth, Go-style cancellation tokens, 3-tier context propagation (critical/summary/artifacts)."
+      }
     },
     "write_claude_md": {
       "id": "write_claude_md",
-      "state": "COMPLETED"
+      "state": "COMPLETED",
+      "context": {
+        "critical": {
+          "claude_md_written": true
+        },
+        "summary": "CLAUDE.md created using upstream audit context"
+      }
     },
     "update_readme": {
       "id": "update_readme",
-      "state": "COMPLETED"
+      "state": "COMPLETED",
+      "context": {
+        "critical": {
+          "readme_updated": true
+        },
+        "summary": "README.md updated using upstream audit context"
+      }
     },
-    "verify_docs": {
-      "id": "verify_docs",
-      "state": "COMPLETED"
+    "verify": {
+      "id": "verify",
+      "state": "COMPLETED",
+      "context": {
+        "summary": "Verified CLAUDE.md and README.md are consistent and accurate. Both correctly document: module DAG (types->core->context->view->operations->tools), all 11 tools, state machine (PENDING->READY->ACTIVE->COMPLETED plus release and cancel/fail transitions), 7 design patterns, 8 key types, and 6 packages. README Quick Start imports match actual __init__.py exports. docs/usage.md link is valid. No issues found."
+      }
     }
   },
   "edges": [
     {
-      "from": "audit_arch",
+      "from": "audit",
       "to": "write_claude_md",
-      "expectation": "Complete architecture summary: module structure, types, APIs, design patterns",
-      "promise": "Deliver thorough architecture audit as context"
+      "expectation": "Architecture summary with module structure and tool inventory",
+      "promise": "Deliver thorough architecture audit"
     },
     {
-      "from": "audit_arch",
+      "from": "audit",
       "to": "update_readme",
-      "expectation": "Complete architecture summary with module boundaries and tool inventory",
-      "promise": "Deliver architecture audit as context"
+      "expectation": "Architecture summary with design principles",
+      "promise": "Deliver thorough architecture audit"
     },
     {
       "from": "write_claude_md",
-      "to": "verify_docs",
-      "expectation": "CLAUDE.md written with tool guidance and architecture overview",
+      "to": "verify",
+      "expectation": "CLAUDE.md with tool guidance",
       "promise": "Deliver completed CLAUDE.md"
     },
     {
       "from": "update_readme",
-      "to": "verify_docs",
-      "expectation": "README.md updated to reflect current architecture",
+      "to": "verify",
+      "expectation": "README.md reflecting current arch",
       "promise": "Deliver updated README.md"
     }
   ],

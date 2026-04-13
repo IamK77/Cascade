@@ -2,16 +2,15 @@
 
 A cascade-based collaboration framework for multi-agent systems.
 
-## Features
+## Design Principles
 
-- **DAG Task Scheduling**: Tasks with dependencies, computed readiness (no stored in_degree), critical path scheduling
-- **Context Propagation**: Three-level context system (Critical, Summary, Artifacts) flows downstream
-- **Contract System**: Mandatory expectation/promise `Contract` on every edge
-- **Rework Mechanism**: Forward-only corrective nodes — never mutate completed work, derive new nodes instead
+- **Mandatory Contracts on Edges**: Every edge carries a `Contract(expectation, promise)` — both fields required and non-empty
+- **Computed Readiness**: Node readiness is always recalculated from upstream state, never cached
+- **Forward-Only Rework**: Corrective nodes are derived, never mutating completed work
 - **Event Sourcing**: Append-only event log (`events.jsonl`) for audit trail and time-travel debugging
-- **Multi-Agent Coordination**: Agent tracking, one task per agent, timeout detection
-- **Cascade Cancellation**: Go-style context cancellation propagation
-- **Persistence**: File-based storage with locking for concurrent access
+- **Critical Path Scheduling**: `get_task()` assigns the READY node on the longest downstream path first
+- **Go-Style Cancellation Tokens**: Cancellation propagates through the DAG via `CancellationToken`
+- **3-Tier Context Propagation**: Critical (propagates indefinitely), Summary (distance <= 2), Artifacts (always propagates)
 
 ## Installation
 
@@ -61,25 +60,31 @@ finish_task(storage, {
 
 ## Module Structure
 
+Dependency chain: `types -> core -> context -> view -> operations -> tools`
+
 ```
 cascade/
-  types.py          # Contract, Context, EdgeId — no internal deps
-  core/             # Cascade DAG, Node, NodeState
-  context/          # Cancellation tokens, context propagation
+  types.py          # Value types: Contract, Context, ContextLevel, EdgeId — no internal deps
+  core/             # Cascade graph, Node, NodeState with transition rules
+  context/          # Context propagation + Go-style CancellationToken
   view.py           # Presentation layer for agent task views
-  operations/       # Compound ops: split, remove, rework
-  events.py         # Event sourcing (append-only JSONL log)
-  storage/          # File-based persistence with locking
-  viz.py            # DAG visualization
+  operations/       # Split, Remove, Rework operations with base class
+  storage/          # JSON persistence with fcntl file locking + EventStore
 tools/              # LLM-facing tool functions (serialization boundary)
 ```
+
+### Key Types
+
+`Contract`, `Context`, `ContextLevel`, `Node`, `NodeState`, `EdgeId`, `CancellationToken`, `OperationResult`
 
 ## Core Concepts
 
 ### Node States
 
 ```
-PENDING → READY → ACTIVE → COMPLETED/FAILED/CANCELLED
+PENDING -> READY -> ACTIVE -> COMPLETED
+                 ACTIVE -> READY (release)
+                 any -> CANCELLED / FAILED
 ```
 
 Readiness is **computed**, not stored. When dependencies change, `_update_readiness()` recalculates whether a node should be READY or PENDING based on whether all upstream nodes are COMPLETED.
