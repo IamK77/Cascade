@@ -66,6 +66,8 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f" (reason: {result_text})"
 
                 storage.save(cascade)
+                from cascade.events import EventType
+                storage.events.emit(EventType.TASK_RELEASED, node_id=task_id, reason=result_text)
                 return {
                     "success": True,
                     "message": message,
@@ -91,6 +93,8 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f", unblocked: {unblocked}"
 
                 storage.save(cascade)
+                from cascade.events import EventType
+                storage.events.emit(EventType.TASK_COMPLETED, node_id=task_id, unblocked=unblocked)
                 return {
                     "success": True,
                     "message": message,
@@ -129,6 +133,9 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f": {result_text}"
 
                 storage.save(cascade)
+                from cascade.events import EventType
+                storage.events.emit(EventType.TASK_FAILED, node_id=task_id,
+                                    reason=result_text, affected=affected, cascade=should_cascade)
                 return {
                     "success": True,
                     "message": message,

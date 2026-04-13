@@ -24,6 +24,7 @@ from typing import IO, Any, Generator
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.events import EventStore, EventType
 from cascade.types import Context, Contract
 
 
@@ -64,6 +65,7 @@ class GraphStorage:
         self.artifacts_dir = self.base_dir / "artifacts"
         self._lock_file: IO[str] | None = None
         self._lock_path = self.base_dir / ".lock"
+        self.events = EventStore(self.base_dir)
 
     @classmethod
     def project(cls, base_dir: Path | str | None = None) -> "GraphStorage":

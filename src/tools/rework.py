@@ -103,9 +103,17 @@ def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             )
 
             if result.success:
-                # Clear agent assignment since task is released
                 active_node.agent_id = None
                 storage.save(cascade)
+                from cascade.events import EventType
+                storage.events.emit(
+                    EventType.REWORK_REQUESTED,
+                    source_node_id=source_node_id,
+                    corrective_node_id=corrective_node_id,
+                    requesting_node_id=active_node.id,
+                    agent_id=agent_id,
+                    reason=reason,
+                )
 
             return {
                 "success": result.success,

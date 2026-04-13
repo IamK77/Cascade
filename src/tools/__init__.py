@@ -25,7 +25,7 @@ Tool Categories:
     2. Execution: get_task, finish_task
     3. Feedback: rework
     4. Monitoring: check_timeouts
-    5. Query: list_nodes
+    5. Query: list_nodes, history
 """
 
 from collections.abc import Callable
@@ -49,6 +49,7 @@ __all__ = [
     "check_timeouts",
     # Query operations
     "list_nodes",
+    "history",
     # Utilities
     "get_all_tools",
     "execute_tool",
@@ -66,6 +67,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         edit_node,
         finish_task,
         get_task,
+        history,
         list_nodes,
         refine_node,
         remove_node,
@@ -84,6 +86,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         "rework": rework.rework,
         "check_timeouts": check_timeouts.check_timeouts,
         "list_nodes": list_nodes.list_nodes,
+        "history": history.history,
     }
 
 

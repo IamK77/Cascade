@@ -124,6 +124,9 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 affected_nodes.append(dep_id)
 
             storage.save(cascade)
+            from cascade.events import EventType
+            storage.events.emit(EventType.NODE_ADDED, node_id=node_id,
+                                dependencies=dependencies, dependents=dependents)
             return {
                 "success": True,
                 "message": f"Node {node_id} added successfully",
