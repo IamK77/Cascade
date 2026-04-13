@@ -238,9 +238,82 @@ class Cascade:
     # Query methods
     # ------------------------------------------------------------------
 
-    def get_ready_nodes(self) -> list[Node]:
-        """Get all nodes ready to execute."""
-        return [n for n in self.nodes.values() if n.state == NodeState.READY]
+    def get_ready_nodes(self, prioritize: bool = True) -> list[Node]:
+        """Get all nodes ready to execute.
+
+        If prioritize=True (default), nodes are sorted by downstream depth
+        descending — nodes that unblock the most downstream work come first.
+        This is critical-path scheduling.
+        """
+        ready = [n for n in self.nodes.values() if n.state == NodeState.READY]
+        if prioritize and len(ready) > 1:
+            depths = self._compute_downstream_depths()
+            ready.sort(key=lambda n: depths.get(n.id, 0), reverse=True)
+        return ready
+
+    def _compute_downstream_depths(self) -> dict[str, int]:
+        """Compute downstream depth for each node via topological-order DP.
+
+        downstream_depth(n) = 0 if n is a leaf,
+                            = 1 + max(downstream_depth(child) for child in dependents(n))
+                              counting only non-terminal children.
+
+        Nodes with higher depth are on longer (more critical) paths.
+        """
+        depths: dict[str, int] = {}
+
+        # Process in reverse topological order (leaves first)
+        try:
+            topo = self.topological_sort()
+        except ValueError:
+            # Graph has cycle — fall back to zero depths
+            return {nid: 0 for nid in self.nodes}
+
+        for node_id in reversed(topo):
+            max_child_depth = -1
+            for dep_id in self._adjacency.get(node_id, set()):
+                dep_node = self.nodes.get(dep_id)
+                if dep_node and not dep_node.state.is_terminal():
+                    child_depth = depths.get(dep_id, 0)
+                    if child_depth > max_child_depth:
+                        max_child_depth = child_depth
+            depths[node_id] = 0 if max_child_depth == -1 else max_child_depth + 1
+
+        return depths
+
+    def get_critical_path(self) -> list[str]:
+        """Get the critical path — the longest chain of uncompleted nodes.
+
+        Returns node IDs from root to leaf along the longest path.
+        Useful for visualization and scheduling insight.
+        """
+        depths = self._compute_downstream_depths()
+        if not depths:
+            return []
+
+        # Start from the non-terminal node with highest depth
+        candidates = [nid for nid in depths if not self.nodes[nid].state.is_terminal()]
+        if not candidates:
+            return []
+
+        path: list[str] = []
+        current: str | None = max(candidates, key=lambda nid: depths[nid])
+
+        while current:
+            path.append(current)
+            # Follow the child with highest depth
+            best_child: str | None = None
+            best_depth = -1
+            for dep_id in self._adjacency.get(current, set()):
+                dep_node = self.nodes.get(dep_id)
+                if dep_node and not dep_node.state.is_terminal():
+                    d = depths.get(dep_id, 0)
+                    if d > best_depth:
+                        best_depth = d
+                        best_child = dep_id
+            current = best_child
+
+        return path
 
     def get_node_dependencies_info(self, node_id: str) -> list[dict[str, Any]]:
         """Get dependency information for a node, including contracts."""
