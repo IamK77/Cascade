@@ -16,9 +16,9 @@
 
 from typing import Any
 
-from cascade.context.context import Context
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.types import Context
 from cascade.storage.graph_storage import GraphStorage
 
 

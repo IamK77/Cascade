@@ -20,8 +20,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from cascade.context.context import Context
-from cascade.types import ContextLevel
+from cascade.types import Context, ContextLevel
 
 if TYPE_CHECKING:
     from cascade.core.cascade import Cascade

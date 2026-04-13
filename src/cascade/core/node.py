@@ -24,8 +24,8 @@ structure and the states of upstream nodes.
 
 from dataclasses import dataclass
 
-from cascade.context.context import Context
 from cascade.core.state import NodeState
+from cascade.types import Context
 
 
 @dataclass

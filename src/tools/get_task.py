@@ -18,6 +18,7 @@ from typing import Any
 
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage
+from cascade.view import get_node_view
 
 
 def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
@@ -47,7 +48,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             # One task per agent
             existing_node = cascade.find_agent_active_task(agent_id)
             if existing_node:
-                task_info = cascade.get_node_view(existing_node.id)
+                task_info = get_node_view(cascade,existing_node.id)
                 return {
                     "success": True,
                     "message": (
@@ -78,7 +79,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
                 if node.state == NodeState.ACTIVE:
                     node.agent_id = agent_id
-                    task_info = cascade.get_node_view(task_id)
+                    task_info = get_node_view(cascade,task_id)
                     storage.save(cascade)
                     return {
                         "success": True,
@@ -129,7 +130,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 node.update_state(NodeState.ACTIVE)
                 node.agent_id = agent_id
 
-            task_info = cascade.get_node_view(task_id)
+            task_info = get_node_view(cascade,task_id)
             storage.save(cascade)
 
             return {

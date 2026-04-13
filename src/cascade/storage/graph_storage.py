@@ -21,11 +21,10 @@ from enum import Enum
 from pathlib import Path
 from typing import IO, Any, Generator
 
-from cascade.context.context import Context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.types import Contract
+from cascade.types import Context, Contract
 
 
 class StorageScope(Enum):

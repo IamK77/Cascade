@@ -12,10 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Context propagation components."""
+"""Context propagation and cancellation."""
 
 from cascade.context.cancellation import CancellationToken, CancelledError
-from cascade.context.context import Context
 from cascade.context.propagator import ContextPropagator
 
-__all__ = ["Context", "ContextPropagator", "CancellationToken", "CancelledError"]
+__all__ = ["ContextPropagator", "CancellationToken", "CancelledError"]
