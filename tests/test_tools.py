@@ -16,19 +16,16 @@
 
 import pytest
 
-from cascade.core.cascade import Cascade
 from cascade.core.state import NodeState
-from cascade.storage.graph_storage import GraphStorage
-
 from tools import (
     add_node,
+    execute_tool,
     finish_task,
     get_task,
     list_nodes,
     refine_node,
     remove_node,
     split_node,
-    execute_tool,
 )
 
 
@@ -37,7 +34,7 @@ def make_contract(node_id: str, expectation: str = "", promise: str = "") -> dic
     return {
         "node_id": node_id,
         "expectation": expectation or f"Expect output from {node_id}",
-        "promise": promise or f"Promise output to dependent",
+        "promise": promise or "Promise output to dependent",
     }
 
 

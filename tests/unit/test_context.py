@@ -17,13 +17,13 @@
 import pytest
 
 from cascade import Cascade, Node, NodeState
-from cascade.context.context import Context
-from cascade.context.propagator import ContextPropagator, PropagationResult
 from cascade.context.cancellation import (
+    CancellationPropagator,
     CancellationToken,
     CancelledError,
-    CancellationPropagator,
 )
+from cascade.context.context import Context
+from cascade.context.propagator import ContextPropagator
 from cascade.types import ContextLevel
 
 

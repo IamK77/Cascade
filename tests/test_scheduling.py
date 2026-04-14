@@ -17,7 +17,7 @@
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.viz import to_mermaid, to_ascii
+from cascade.viz import to_ascii, to_mermaid
 
 
 class TestCriticalPath:

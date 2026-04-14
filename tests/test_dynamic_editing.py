@@ -21,14 +21,14 @@ nodes are split, refined, added, or removed mid-execution.
 
 from cascade.core.state import NodeState
 from cascade.view import get_node_view
-from tools import add_node, get_task, finish_task, split_node, refine_node, remove_node
+from tools import add_node, finish_task, get_task, refine_node, remove_node, split_node
 
 
 def make_contract(node_id: str, expectation: str = "", promise: str = "") -> dict:
     return {
         "node_id": node_id,
         "expectation": expectation or f"Expect output from {node_id}",
-        "promise": promise or f"Promise output to dependent",
+        "promise": promise or "Promise output to dependent",
     }
 
 
@@ -95,7 +95,7 @@ class TestSplitDuringExecution:
 
         # Now complete a
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
-        result = finish_task.finish_task(temp_storage, {
+        finish_task.finish_task(temp_storage, {
             "task_id": "a",
             "success": True,
             "summary": "Analysis complete",

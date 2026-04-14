@@ -25,7 +25,7 @@ object per line). It provides:
 
 import json
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -102,7 +102,7 @@ class EventStore:
         if not self._path.exists():
             return []
         events = []
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -137,7 +137,7 @@ class EventStore:
         """Number of events in the log."""
         if not self._path.exists():
             return 0
-        with open(self._path, "r", encoding="utf-8") as f:
+        with open(self._path, encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
 
     def summary(self) -> dict[str, int]:

@@ -18,16 +18,14 @@ The most critical integration test: does an agent's output actually
 reach downstream agents through context propagation?
 """
 
-from cascade.core.state import NodeState
-from cascade.view import get_node_view
-from tools import add_node, get_task, finish_task
+from tools import add_node, finish_task, get_task
 
 
 def make_contract(node_id: str) -> dict:
     return {
         "node_id": node_id,
         "expectation": f"Expect output from {node_id}",
-        "promise": f"Promise output to dependent",
+        "promise": "Promise output to dependent",
     }
 
 

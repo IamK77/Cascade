@@ -21,6 +21,7 @@ exit code 0 on success, 1 on failure.
 import argparse
 import json
 import sys
+from typing import Any
 
 from cascade.storage.graph_storage import GraphStorage
 from tools import execute_tool
@@ -30,7 +31,7 @@ def get_storage(path: str = ".cascade") -> GraphStorage:
     return GraphStorage(path)
 
 
-def output(result: dict) -> None:
+def output(result: dict[str, Any]) -> None:
     print(json.dumps(result, indent=2, ensure_ascii=False))
     sys.exit(0 if result.get("success", False) else 1)
 
@@ -39,10 +40,10 @@ def output(result: dict) -> None:
 # Command handlers
 # ---------------------------------------------------------------------------
 
-def cmd_add_node(args):
+def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
     deps = [d.strip() for d in (args.deps or "").split(",") if d.strip()]
     dependents = [d.strip() for d in (args.dependents or "").split(",") if d.strip()]
-    params: dict = {"node_id": args.id, "dependencies": deps, "dependents": dependents}
+    params: dict[str, Any] = {"node_id": args.id, "dependencies": deps, "dependents": dependents}
     if args.expectations:
         try:
             params["expectations"] = json.loads(args.expectations)
@@ -51,8 +52,8 @@ def cmd_add_node(args):
     return execute_tool(get_storage(args.storage), "add_node", params)
 
 
-def cmd_get_task(args):
-    params: dict = {"agent_id": args.agent}
+def cmd_get_task(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {"agent_id": args.agent}
     if args.task:
         params["task_id"] = args.task
     if args.timeout:
@@ -60,8 +61,8 @@ def cmd_get_task(args):
     return execute_tool(get_storage(args.storage), "get_task", params)
 
 
-def cmd_finish_task(args):
-    params: dict = {"task_id": args.task}
+def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {"task_id": args.task}
     if args.success:
         params["success"] = True
         if args.summary:
@@ -86,8 +87,8 @@ def cmd_finish_task(args):
     return execute_tool(get_storage(args.storage), "finish_task", params)
 
 
-def cmd_list_nodes(args):
-    params: dict = {}
+def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {}
     if args.state:
         params["state_filter"] = args.state
     if args.pending_only:
@@ -95,7 +96,7 @@ def cmd_list_nodes(args):
     return execute_tool(get_storage(args.storage), "list_nodes", params)
 
 
-def cmd_split_node(args):
+def cmd_split_node(args: argparse.Namespace) -> dict[str, Any]:
     children = [c.strip() for c in args.children.split(",") if c.strip()]
     return execute_tool(get_storage(args.storage), "split_node", {
         "parent_id": args.parent,
@@ -103,8 +104,8 @@ def cmd_split_node(args):
     })
 
 
-def cmd_refine_node(args):
-    params: dict = {"node_id": args.node, "dependency_id": args.dep}
+def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {"node_id": args.node, "dependency_id": args.dep}
     if args.expectation:
         params["expectation"] = args.expectation
     if args.promise:
@@ -112,15 +113,15 @@ def cmd_refine_node(args):
     return execute_tool(get_storage(args.storage), "refine_node", params)
 
 
-def cmd_remove_node(args):
+def cmd_remove_node(args: argparse.Namespace) -> dict[str, Any]:
     return execute_tool(get_storage(args.storage), "remove_node", {
         "node_id": args.node,
         "cascade": args.cascade,
     })
 
 
-def cmd_edit_node(args):
-    params: dict = {"node_id": args.node}
+def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {"node_id": args.node}
     if args.state:
         params["state"] = args.state
     if args.summary:
@@ -135,8 +136,8 @@ def cmd_edit_node(args):
     return execute_tool(get_storage(args.storage), "edit_node", params)
 
 
-def cmd_rework(args):
-    params: dict = {
+def cmd_rework(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {
         "source_node_id": args.source,
         "corrective_node_id": args.corrective,
         "reason": args.reason,
@@ -149,15 +150,15 @@ def cmd_rework(args):
     return execute_tool(get_storage(args.storage), "rework", params)
 
 
-def cmd_check_timeouts(args):
-    params: dict = {}
+def cmd_check_timeouts(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {}
     if args.default_timeout:
         params["default_timeout"] = args.default_timeout
     return execute_tool(get_storage(args.storage), "check_timeouts", params)
 
 
-def cmd_history(args):
-    params: dict = {}
+def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
+    params: dict[str, Any] = {}
     if args.node:
         params["node_id"] = args.node
     if args.type:
@@ -173,7 +174,7 @@ def cmd_history(args):
 # Parser
 # ---------------------------------------------------------------------------
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         prog="cascade",
         description="Cascade — multi-agent task coordination via DAG",
@@ -278,7 +279,7 @@ def main():
     output(result)
 
 
-def run():
+def run() -> None:
     """Entry point for pyproject.toml scripts."""
     main()
 

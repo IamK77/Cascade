@@ -14,15 +14,13 @@
 
 """Tests for the rework mechanism — upstream feedback via forward derivation."""
 
-import pytest
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.operations.rework import ReworkOperation
 from cascade.types import Context, Contract
-
-from tools import add_node, get_task, finish_task, execute_tool
+from tools import add_node, execute_tool, finish_task, get_task
 from tools.rework import rework
 
 
@@ -30,7 +28,7 @@ def make_contract(node_id: str) -> dict:
     return {
         "node_id": node_id,
         "expectation": f"Expect output from {node_id}",
-        "promise": f"Promise output to dependent",
+        "promise": "Promise output to dependent",
     }
 
 

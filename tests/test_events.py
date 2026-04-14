@@ -14,10 +14,9 @@
 
 """Tests for event sourcing — event store and tool integration."""
 
-import pytest
 
-from cascade.events import Event, EventStore, EventType
-from tools import add_node, get_task, finish_task, execute_tool
+from cascade.events import EventType
+from tools import add_node, finish_task, get_task
 from tools.history import history
 
 

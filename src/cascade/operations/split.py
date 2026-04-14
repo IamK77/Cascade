@@ -15,7 +15,6 @@
 """Split node operation."""
 
 from collections.abc import Sequence
-
 from dataclasses import dataclass
 
 from cascade.core.node import Node

@@ -16,15 +16,16 @@
 
 import fcntl
 import json
+from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any, Generator
+from typing import IO, Any
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.events import EventStore, EventType
+from cascade.events import EventStore
 from cascade.types import Context, Contract
 
 
@@ -94,7 +95,7 @@ class GraphStorage:
                     flag |= fcntl.LOCK_NB
                 fcntl.flock(self._lock_file.fileno(), flag)
                 break
-            except (IOError, OSError):
+            except OSError:
                 if not blocking:
                     self._lock_file.close()
                     self._lock_file = None

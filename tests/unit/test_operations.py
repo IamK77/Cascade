@@ -14,11 +14,6 @@
 
 """Tests for compound node operations (Split, Remove)."""
 
-from cascade.core.cascade import Cascade
-from cascade.core.node import Node
-from cascade.core.state import NodeState
-from cascade.operations.split import SplitOperation
-from cascade.operations.remove import RemoveOperation
 from cascade.types import Contract
 
 

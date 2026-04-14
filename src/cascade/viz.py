@@ -21,7 +21,6 @@ node states, critical path highlighting, and contract labels.
 from cascade.core.cascade import Cascade
 from cascade.core.state import NodeState
 
-
 # Mermaid state → style mapping
 _STATE_STYLES: dict[NodeState, str] = {
     NodeState.READY: "fill:#4CAF50,color:#fff",     # green

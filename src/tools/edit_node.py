@@ -18,8 +18,8 @@ from typing import Any
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.types import Context
 from cascade.storage.graph_storage import GraphStorage
+from cascade.types import Context
 
 
 def _update_context(node: Node, params: dict[str, Any]) -> bool:

@@ -18,7 +18,7 @@ Provides read access to the append-only event log for audit trails,
 debugging, and time-travel inspection.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cascade.events import EventType
@@ -78,7 +78,7 @@ def history(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         # Format for output
         formatted = []
         for event in events:
-            ts = datetime.fromtimestamp(event.timestamp, tz=timezone.utc).isoformat()
+            ts = datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat()
             formatted.append({
                 "type": event.type.value,
                 "timestamp": ts,
