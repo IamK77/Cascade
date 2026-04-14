@@ -160,22 +160,26 @@ uv run pytest tests/unit/test_node.py
 
 ## Project Structure
 
+Module dependency chain (verified acyclic): `types → core → context → view → operations → tools`
+
 ```
 cascade/
 ├── src/
 │   ├── cascade/           # Core library
-│   │   ├── core/          # Core classes (Cascade, Node, State)
+│   │   ├── types.py       # Value types (Contract, Context, EdgeId) — zero deps
+│   │   ├── core/          # Cascade graph, Node, NodeState
 │   │   ├── context/       # Context propagation and cancellation
-│   │   ├── operations/    # Graph operations
-│   │   ├── protocols/     # Protocol definitions
-│   │   └── storage/       # Persistence layer
-│   └── tools/             # LLM agent tool functions
-├── tests/
-│   ├── unit/              # Unit tests
-│   ├── integration/       # Integration tests
-│   └── conftest.py        # Shared fixtures
+│   │   ├── view.py        # Agent-facing task view builder
+│   │   ├── events.py      # Append-only event store
+│   │   ├── operations/    # Compound operations (Split, Remove, Rework)
+│   │   ├── storage/       # JSON persistence with file locking
+│   │   ├── viz.py         # DAG visualization (mermaid, ASCII)
+│   │   └── cli.py         # Command-line interface
+│   └── tools/             # LLM agent tool functions (11 tools)
+├── tests/                 # Unit, integration, and scenario tests
 ├── docs/
-│   └── usage.md           # Usage documentation
+│   ├── guide.md           # Comprehensive usage guide
+│   └── i18n/              # Translated READMEs (zh-CN, ja, es)
 └── pyproject.toml         # Project configuration
 ```
 
