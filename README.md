@@ -102,6 +102,10 @@ Framework-agnostic functions: `(GraphStorage, dict) → dict`.
 uv run pytest tests/
 ```
 
+## Documentation
+
+See the [Guide](docs/guide.md) for a comprehensive walkthrough.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
