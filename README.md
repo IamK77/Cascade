@@ -1,4 +1,4 @@
-[**English**](README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | [Español](README.es.md)
+[**English**](README.md) | [中文](docs/i18n/README.zh-CN.md) | [日本語](docs/i18n/README.ja.md) | [Español](docs/i18n/README.es.md)
 
 # Cascade
 
