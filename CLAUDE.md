@@ -1,62 +1,47 @@
 # Cascade
 
-DAG-based multi-agent task scheduling framework. Agents claim tasks from a
-dependency graph, pass context through edges, and coordinate via contracts.
-Event sourcing provides a complete audit trail.
+DAG-based multi-agent task scheduling framework.
 
-## Test Command
+## Commands
 
-```
-uv run pytest tests/
-```
-
-## Module Structure
-
-```
-types -> core -> context -> view -> operations -> tools
+```bash
+uv run pytest tests/        # Run all tests
+uv sync                     # Install dependencies
 ```
 
-| Package      | Description                                              |
-|------------- |----------------------------------------------------------|
-| `types`      | Value types (Contract, Context, EdgeId) - no internal deps |
-| `core`       | Cascade graph, Node, NodeState with transition rules     |
-| `context`    | Context propagation + cancellation (Go-style tokens)     |
-| `view`       | Presentation layer for agent task views                  |
-| `operations` | Split, Remove, Rework operations with base class         |
-| `storage`    | JSON persistence with fcntl file locking + EventStore    |
+## Architecture
 
-## State Machine
+```
+types → core → context → view → operations → tools
+```
 
-`PENDING -> READY -> ACTIVE -> COMPLETED`
-Also: `ACTIVE -> READY` (release), any state `-> CANCELLED / FAILED`
+Module dependencies form a verified DAG — no circular imports.
 
-## Architecture Principles
+## Key Principles
 
-- **Mandatory contracts** on every edge between nodes
-- **Computed readiness** — never cached, always derived from dependencies
-- **Forward-only rework** — new corrective nodes, never mutate parent
-- **Event sourcing** — append-only JSONL log for all state changes
-- **Critical-path scheduling** via downstream depth
-- **Go-style cancellation tokens** for cooperative cancellation
-- **3-tier context propagation** (critical / summary / artifacts)
+- Contracts on edges, not nodes — `Contract(expectation, promise)`
+- Readiness computed from graph, never cached — no `in_degree` field
+- Forward-only feedback — rework derives new nodes, never reverse edges
+- Independent task groups allowed — no connected graph constraint
+- Append-only event log at `.cascade/events.jsonl`
 
-## Tool Inventory
+## Tools (11 total)
 
-| Tool              | Purpose                          |
-|-------------------|----------------------------------|
-| `add_node`        | Add a task node to the graph     |
-| `remove_node`     | Remove a node from the graph     |
-| `split_node`      | Split a node into sub-tasks      |
-| `refine_node`     | Refine a node's specification    |
-| `edit_node`       | Edit node properties             |
-| `get_task`        | Claim/retrieve a task for agent  |
-| `finish_task`     | Mark a task as completed         |
-| `rework`          | Create corrective rework nodes   |
-| `check_timeouts`  | Check for timed-out tasks        |
-| `list_nodes`      | List all nodes in the graph      |
-| `history`         | View event sourcing history      |
+`add_node`, `remove_node`, `split_node`, `refine_node`, `edit_node`,
+`get_task`, `finish_task`, `rework`, `check_timeouts`, `list_nodes`, `history`
 
-## Key Types
+## Context Flow
 
-`Contract`, `Context`, `ContextLevel`, `Node`, `NodeState`, `EdgeId`,
-`CancellationToken`, `OperationResult`
+When completing a task, use `summary` (text, 2 hops), `critical` (KV, infinite),
+and `artifacts` (file, infinite) to pass output to downstream agents.
+
+## File Layout
+
+- `src/cascade/types.py` — shared value types (Contract, Context, EdgeId)
+- `src/cascade/core/` — Cascade graph, Node, NodeState
+- `src/cascade/context/` — propagation + cancellation
+- `src/cascade/view.py` — agent task view builder
+- `src/cascade/events.py` — event store
+- `src/cascade/operations/` — Split, Remove, Rework
+- `src/cascade/storage/` — JSON persistence + file locking
+- `src/tools/` — LLM-facing tool functions

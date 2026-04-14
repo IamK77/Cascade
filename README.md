@@ -1,16 +1,8 @@
+[**English**](README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | [Español](README.es.md)
+
 # Cascade
 
-A cascade-based collaboration framework for multi-agent systems.
-
-## Design Principles
-
-- **Mandatory Contracts on Edges**: Every edge carries a `Contract(expectation, promise)` — both fields required and non-empty
-- **Computed Readiness**: Node readiness is always recalculated from upstream state, never cached
-- **Forward-Only Rework**: Corrective nodes are derived, never mutating completed work
-- **Event Sourcing**: Append-only event log (`events.jsonl`) for audit trail and time-travel debugging
-- **Critical Path Scheduling**: `get_task()` assigns the READY node on the longest downstream path first
-- **Go-Style Cancellation Tokens**: Cancellation propagates through the DAG via `CancellationToken`
-- **3-Tier Context Propagation**: Critical (propagates indefinitely), Summary (distance <= 2), Artifacts (always propagates)
+A DAG-based multi-agent task scheduling framework. Agents claim tasks from a dependency graph, pass context through edge contracts, and coordinate via shared file state. The graph can be dynamically edited mid-execution — split, refine, rework — while maintaining consistency.
 
 ## Installation
 
@@ -21,113 +13,99 @@ uv sync
 ## Quick Start
 
 ```python
-from cascade import Cascade, Node, NodeState, GraphStorage
-
-# Create storage
-storage = GraphStorage(".cascade")
-
-# Add tasks with dependencies and contracts
+from cascade import GraphStorage
 from tools import add_node, get_task, finish_task
 
-add_node(storage, {
-    "node_id": "analyze",
-    "description": "Analyze requirements",
-})
+storage = GraphStorage(".cascade")
+
+# Build a task graph with contracts on edges
+add_node(storage, {"node_id": "analyze"})
 add_node(storage, {
     "node_id": "design",
     "dependencies": ["analyze"],
-    "expectations": [{"node_id": "analyze",
-        "expectation": "Feature list and constraints",
-        "promise": "Will provide prioritized feature list"}],
-})
-add_node(storage, {
-    "node_id": "implement",
-    "dependencies": ["design"],
-    "expectations": [{"node_id": "design",
-        "expectation": "API specification",
-        "promise": "Will provide endpoint designs"}],
+    "expectations": [{
+        "node_id": "analyze",
+        "expectation": "Feature requirements and constraints",
+        "promise": "Deliver prioritized feature list",
+    }],
 })
 
-# Get and complete a task
+# Agent claims a task — prioritized by critical path
 task = get_task(storage, {"agent_id": "agent-001"})
+
+# Complete with context that flows to downstream agents
 finish_task(storage, {
     "task_id": "analyze",
     "success": True,
-    "summary": "Requirements analyzed",
-    "critical": {"features": ["auth", "api"]},
+    "summary": "Requirements analyzed: auth + REST API",
+    "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
 })
 ```
 
+## Design Principles
+
+- **Contracts on edges** — every edge carries `Contract(expectation, promise)`, both required. Different downstream nodes can receive different promises from the same upstream node.
+- **Computed readiness** — no cached `in_degree`. A node is READY when all its dependencies are COMPLETED, derived from the graph in real time.
+- **Forward-only feedback** — rework creates corrective nodes that grow the graph forward. Never mutate completed work, never create reverse edges.
+- **Critical path scheduling** — `get_task` assigns the READY node with the deepest downstream chain first, minimizing total completion time.
+- **Event sourcing** — every mutation recorded in append-only `events.jsonl`. Audit trail, time-travel, replay.
+- **3-tier context propagation** — `critical` (KV, infinite), `summary` (text, 2 hops), `artifacts` (file ref, infinite).
+
 ## Module Structure
 
-Dependency chain: `types -> core -> context -> view -> operations -> tools`
+Dependency chain (verified acyclic by topological sort):
 
 ```
-cascade/
-  types.py          # Value types: Contract, Context, ContextLevel, EdgeId — no internal deps
-  core/             # Cascade graph, Node, NodeState with transition rules
-  context/          # Context propagation + Go-style CancellationToken
-  view.py           # Presentation layer for agent task views
-  operations/       # Split, Remove, Rework operations with base class
-  storage/          # JSON persistence with fcntl file locking + EventStore
-tools/              # LLM-facing tool functions (serialization boundary)
+types → core → context → view → operations → tools
 ```
 
-### Key Types
+| Package | Purpose |
+|---------|---------|
+| `types` | Value types: `Contract`, `Context`, `EdgeId`, `ContextLevel` — zero internal deps |
+| `core` | `Cascade` graph, `Node`, `NodeState` with transition rules |
+| `context` | Context propagation + Go-style `CancellationToken` |
+| `view` | Agent-facing presentation layer (`get_node_view`) |
+| `events` | Append-only event log (`EventStore`) |
+| `operations` | Compound mutations: `SplitOperation`, `RemoveOperation`, `ReworkOperation` |
+| `storage` | JSON persistence with `fcntl` file locking |
+| `tools` | LLM-facing interface — the serialization boundary |
 
-`Contract`, `Context`, `ContextLevel`, `Node`, `NodeState`, `EdgeId`, `CancellationToken`, `OperationResult`
-
-## Core Concepts
-
-### Node States
+## Node States
 
 ```
-PENDING -> READY -> ACTIVE -> COMPLETED
-                 ACTIVE -> READY (release)
-                 any -> CANCELLED / FAILED
+PENDING → READY → ACTIVE → COMPLETED
+                    ↕ release      ↘ FAILED
+                                   ↘ CANCELLED
 ```
-
-Readiness is **computed**, not stored. When dependencies change, `_update_readiness()` recalculates whether a node should be READY or PENDING based on whether all upstream nodes are COMPLETED.
-
-### Contract Type
-
-Every edge carries a mandatory `Contract(expectation, promise)`. Both fields are required and non-empty. Different downstream nodes can receive different promises from the same upstream node.
-
-### Context Propagation
-
-Context from completed tasks is **merged** and propagated to downstream tasks:
-- `critical`: Key-value pairs, propagates indefinitely (latest wins on conflict)
-- `summary`: Text summaries, propagates to grandchildren (distance <= 2)
-- `artifacts`: Content strings, always propagates
-
-### Rework Mechanism
-
-When a downstream agent finds upstream output inadequate, it requests **rework** -- a forward-only corrective node is created (never mutate completed work). The corrective node depends on the original and feeds back into the requester, keeping the DAG acyclic.
-
-### Event Sourcing
-
-All graph mutations are recorded in an append-only event log (`events.jsonl`). This provides an audit trail, time-travel debugging, and replay capability.
-
-### Critical Path Scheduling
-
-`get_task()` uses critical-path scheduling: among READY nodes, the one on the longest path through the DAG is assigned first to minimize overall completion time.
 
 ## Tools
 
-Tools are framework-agnostic functions that take `(GraphStorage, dict)` and return `dict`.
+Framework-agnostic functions: `(GraphStorage, dict) → dict`.
 
-| Category | Tools |
-|-----------|-------|
-| Structure | `add_node`, `remove_node`, `split_node`, `refine_node`, `edit_node` |
-| Execution | `get_task`, `finish_task` |
-| Feedback | `rework` |
-| Monitoring | `check_timeouts` |
-| Query | `list_nodes`, `history` |
+| Category | Tools | Description |
+|----------|-------|-------------|
+| Structure | `add_node` | Create a task node |
+| | `remove_node` | Delete a node (optional cascade) |
+| | `split_node` | Break a task into subtasks |
+| | `refine_node` | Add a dependency to an existing node |
+| | `edit_node` | Update state or context |
+| Execution | `get_task` | Claim a task (critical path priority) |
+| | `finish_task` | Complete / fail / release a task |
+| Feedback | `rework` | Request upstream correction (forward-only) |
+| Monitoring | `check_timeouts` | Release stalled tasks |
+| Query | `list_nodes` | View all tasks and states |
+| | `history` | Query event log |
 
-## Documentation
+## Running Tests
 
-See [docs/usage.md](docs/usage.md) for detailed usage guide.
+```bash
+uv run pytest tests/
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-Apache-2.0
+Apache-2.0 — see [LICENSE](LICENSE) for details.
