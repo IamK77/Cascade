@@ -1,108 +1,147 @@
 {
   "nodes": {
-    "audit": {
-      "id": "audit",
+    "analyze": {
+      "id": "analyze",
       "state": "COMPLETED",
       "context": {
         "critical": {
-          "module_dag": "types -> core -> context -> view -> operations -> tools",
-          "tools": [
-            "add_node",
-            "remove_node",
-            "split_node",
-            "refine_node",
-            "edit_node",
-            "get_task",
-            "finish_task",
-            "rework",
-            "check_timeouts",
-            "list_nodes",
-            "history"
+          "auth_type": "JWT",
+          "api_endpoints": [
+            "GET /users",
+            "POST /users",
+            "GET /posts",
+            "POST /posts"
           ],
-          "design_patterns": [
-            "mandatory contracts on edges",
-            "computed readiness",
-            "forward-only rework",
-            "event sourcing",
-            "critical path scheduling",
-            "Go-style cancellation tokens",
-            "3-tier context propagation"
-          ],
-          "key_types": [
-            "Contract",
-            "Context",
-            "ContextLevel",
-            "Node",
-            "NodeState",
-            "EdgeId",
-            "CancellationToken",
-            "OperationResult"
-          ],
-          "packages": {
-            "types": "Value types (Contract, Context, EdgeId) - no internal deps",
-            "core": "Cascade graph, Node, NodeState with transition rules",
-            "context": "Context propagation + cancellation (Go-style tokens)",
-            "view": "Presentation layer for agent task views",
-            "operations": "Split, Remove, Rework operations with base class",
-            "storage": "JSON persistence with fcntl file locking + EventStore"
-          },
-          "state_machine": "PENDING->READY->ACTIVE->COMPLETED; ACTIVE->READY (release); any->CANCELLED/FAILED"
+          "database": "PostgreSQL"
         },
-        "summary": "Cascade is a DAG-based multi-agent task scheduler. 6 packages: types (value types), core (Cascade graph, Node, NodeState), context (propagation, cancellation), view (agent-facing presentation), operations (split/remove/rework), storage (JSON persistence with file locking). Event sourcing via append-only JSONL log. 11 tools expose the API. Key patterns: mandatory contracts on every edge, computed readiness (never cached), forward-only rework (new corrective nodes, never mutate parent), critical-path scheduling via downstream depth, Go-style cancellation tokens, 3-tier context propagation (critical/summary/artifacts)."
+        "summary": "Analyzed requirements: need user auth (JWT) and REST API (CRUD for users, posts)"
       }
     },
-    "write_claude_md": {
-      "id": "write_claude_md",
+    "design": {
+      "id": "design",
       "state": "COMPLETED",
       "context": {
         "critical": {
-          "claude_md_written": true
+          "auth_design": "JWT with refresh tokens, bcrypt password hashing",
+          "crud_design": "RESTful CRUD with pagination, filtering",
+          "recommendation": "split implement into auth and crud modules"
         },
-        "summary": "CLAUDE.md created using upstream audit context"
+        "summary": "Designed API: auth module (JWT login/register) and CRUD module (users + posts). Recommend splitting implementation."
       }
     },
-    "update_readme": {
-      "id": "update_readme",
+    "test": {
+      "id": "test",
+      "state": "COMPLETED",
+      "context": {
+        "summary": "All tests pass: auth (JWT + OAuth2), API (CRUD), schema migrations"
+      }
+    },
+    "impl_auth": {
+      "id": "impl_auth",
       "state": "COMPLETED",
       "context": {
         "critical": {
-          "readme_updated": true
+          "auth_implemented": true
         },
-        "summary": "README.md updated using upstream audit context"
+        "summary": "Auth module implemented: JWT + OAuth2 (Google, GitHub)"
       }
     },
-    "verify": {
-      "id": "verify",
+    "impl_api": {
+      "id": "impl_api",
       "state": "COMPLETED",
       "context": {
-        "summary": "Verified CLAUDE.md and README.md are consistent and accurate. Both correctly document: module DAG (types->core->context->view->operations->tools), all 11 tools, state machine (PENDING->READY->ACTIVE->COMPLETED plus release and cancel/fail transitions), 7 design patterns, 8 key types, and 6 packages. README Quick Start imports match actual __init__.py exports. docs/usage.md link is valid. No issues found."
+        "critical": {
+          "api_implemented": true
+        },
+        "summary": "API module implemented: CRUD for users and posts with alembic migrations"
+      }
+    },
+    "analyze_oauth": {
+      "id": "analyze_oauth",
+      "state": "COMPLETED",
+      "context": {
+        "critical": {
+          "rework_source": "design",
+          "rework_reason": "Original analysis missed OAuth2 requirements for third-party login (Google, GitHub)",
+          "oauth_providers": [
+            "google",
+            "github"
+          ],
+          "oauth_flow": "authorization_code"
+        },
+        "summary": "Added OAuth2 requirements: Google and GitHub login via authorization code flow"
+      }
+    },
+    "design_schema": {
+      "id": "design_schema",
+      "state": "COMPLETED",
+      "context": {
+        "critical": {
+          "tables": [
+            "users",
+            "posts",
+            "oauth_tokens"
+          ],
+          "migration_tool": "alembic"
+        },
+        "summary": "Designed PostgreSQL schema: users, posts, oauth_tokens tables with migrations"
       }
     }
   },
   "edges": [
     {
-      "from": "audit",
-      "to": "write_claude_md",
-      "expectation": "Architecture summary with module structure and tool inventory",
-      "promise": "Deliver thorough architecture audit"
+      "from": "analyze",
+      "to": "design",
+      "expectation": "Feature requirements",
+      "promise": "Requirements document"
     },
     {
-      "from": "audit",
-      "to": "update_readme",
-      "expectation": "Architecture summary with design principles",
-      "promise": "Deliver thorough architecture audit"
+      "from": "design",
+      "to": "impl_auth",
+      "expectation": "API design spec",
+      "promise": "Complete API design"
     },
     {
-      "from": "write_claude_md",
-      "to": "verify",
-      "expectation": "CLAUDE.md with tool guidance",
-      "promise": "Deliver completed CLAUDE.md"
+      "from": "design",
+      "to": "impl_api",
+      "expectation": "API design spec",
+      "promise": "Complete API design"
     },
     {
-      "from": "update_readme",
-      "to": "verify",
-      "expectation": "README.md reflecting current arch",
-      "promise": "Deliver updated README.md"
+      "from": "impl_auth",
+      "to": "test",
+      "expectation": "Working implementation",
+      "promise": "Tested code modules"
+    },
+    {
+      "from": "impl_api",
+      "to": "test",
+      "expectation": "Working implementation",
+      "promise": "Tested code modules"
+    },
+    {
+      "from": "design",
+      "to": "analyze_oauth",
+      "expectation": "Original requirements to review",
+      "promise": "First analysis output"
+    },
+    {
+      "from": "analyze_oauth",
+      "to": "impl_auth",
+      "expectation": "Revised requirements including OAuth2 flows",
+      "promise": "Updated auth requirements with OAuth2"
+    },
+    {
+      "from": "design",
+      "to": "design_schema",
+      "expectation": "API design to derive database schema from",
+      "promise": "API design spec"
+    },
+    {
+      "from": "design_schema",
+      "to": "impl_api",
+      "expectation": "Database schema for CRUD operations",
+      "promise": "PostgreSQL schema with migrations"
     }
   ],
   "agent_tasks": {}
