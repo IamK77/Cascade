@@ -166,16 +166,16 @@ Module dependency chain (verified acyclic): `types → core → context → view
 cascade/
 ├── src/
 │   ├── cascade/           # Core library
-│   │   ├── types.py       # Value types (Contract, Context, EdgeId) — zero deps
+│   │   ├── types.py       # Value types (Contract, Context, ContextEntry, TokenStatus)
 │   │   ├── core/          # Cascade graph, Node, NodeState
-│   │   ├── context/       # Context propagation and cancellation
-│   │   ├── view.py        # Agent-facing task view builder
-│   │   ├── events.py      # Append-only event store
+│   │   ├── context/       # BFS ancestor propagation + cancellation
+│   │   ├── view.py        # Upstream view builder (get_node_view)
+│   │   ├── events.py      # Append-only event store (14 event types)
 │   │   ├── operations/    # Compound operations (Split, Remove, Rework)
-│   │   ├── storage/       # JSON persistence with file locking
+│   │   ├── storage/       # JSON persistence + file locking + token store
 │   │   ├── viz.py         # DAG visualization (mermaid, ASCII)
-│   │   └── cli.py         # Command-line interface
-│   └── tools/             # LLM agent tool functions (11 tools)
+│   │   └── cli.py         # Command-line interface (13 commands)
+│   └── tools/             # LLM agent tool functions (12 tools)
 ├── tests/                 # Unit, integration, and scenario tests
 ├── docs/
 │   ├── guide.md           # Comprehensive usage guide

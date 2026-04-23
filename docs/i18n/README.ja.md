@@ -1,5 +1,8 @@
 [English](../../README.md) | [中文](README.zh-CN.md) | **日本語** | [Español](README.es.md)
 
+> **注意**: このドキュメントは最新の変更を反映していない可能性があります。最新情報は [English README](../../README.md) を参照してください。
+
+
 # Cascade
 **DAGベースのマルチエージェントタスクスケジューリングフレームワーク**
 

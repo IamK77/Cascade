@@ -1,5 +1,8 @@
 [English](../../README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | **Español**
 
+> **Nota**: Este documento puede no reflejar los últimos cambios. Consulte el [README en inglés](../../README.md) para la versión más actualizada.
+
+
 # Cascade
 
 Un framework de planificación de tareas multi-agente basado en DAG. Los agentes reclaman tareas de un grafo de dependencias, pasan contexto a través de contratos en las aristas (edge contracts) y se coordinan mediante estado compartido en archivos. El grafo puede editarse dinámicamente durante la ejecución — dividir, refinar, rehacer — manteniendo la consistencia.

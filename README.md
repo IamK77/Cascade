@@ -2,7 +2,21 @@
 
 # Cascade
 
-A DAG-based multi-agent task scheduling framework. Agents claim tasks from a dependency graph, pass context through edge contracts, and coordinate via shared file state. The graph can be dynamically edited mid-execution — split, refine, rework — while maintaining consistency.
+[![CI](https://github.com/autoseek/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/autoseek/cascade/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
+An agent factory with dynamic DAG scheduling. Orchestrators build and adapt task graphs in real time while stateless workers claim, execute, and deliver — coordinating through contracts on edges and attributed context flow.
+
+## Key Features
+
+- **Dynamic DAG** — split, rework, refine, remove tasks mid-execution
+- **Attributed context** — each upstream contribution kept separate with provenance (path, distance, contract)
+- **Contract-driven edges** — every edge carries `expectation` (consumer needs) and `promise` (producer delivers)
+- **Critical path scheduling** — READY tasks prioritized by downstream depth
+- **Cancellation protocol** — pull (check token) or push (CancelNotifier) across processes
+- **ACTIVE protection** — cannot remove/split nodes with active agents
+- **Event sourcing** — every mutation recorded with optional `reason` for audit
 
 ## Installation
 
@@ -18,7 +32,7 @@ from tools import add_node, get_task, finish_task
 
 storage = GraphStorage(".cascade")
 
-# Build a task graph with contracts on edges
+# Build a task graph — split horizontally for parallelism
 add_node(storage, {"node_id": "analyze"})
 add_node(storage, {
     "node_id": "design",
@@ -30,30 +44,39 @@ add_node(storage, {
     }],
 })
 
-# Agent claims a task — prioritized by critical path
-task = get_task(storage, {"agent_id": "agent-001"})
+# Agent claims a task — critical path first
+result = get_task(storage, {"agent_id": "agent-001"})
 
 # Complete with context that flows to downstream agents
 finish_task(storage, {
     "task_id": "analyze",
     "success": True,
-    "summary": "Requirements analyzed: auth + REST API",
+    "summary": "Requirements: JWT auth + REST API",
     "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
 })
 ```
 
-## Design Principles
+When `agent-002` claims `design`, it sees:
 
-- **Contracts on edges** — every edge carries `Contract(expectation, promise)`, both required. Different downstream nodes can receive different promises from the same upstream node.
-- **Computed readiness** — no cached `in_degree`. A node is READY when all its dependencies are COMPLETED, derived from the graph in real time.
-- **Forward-only feedback** — rework creates corrective nodes that grow the graph forward. Never mutate completed work, never create reverse edges.
-- **Critical path scheduling** — `get_task` assigns the READY node with the deepest downstream chain first, minimizing total completion time.
-- **Event sourcing** — every mutation recorded in append-only `events.jsonl`. Audit trail, time-travel, replay.
-- **3-tier context propagation** — `critical` (KV, infinite), `summary` (text, 2 hops), `artifacts` (file ref, infinite).
+```json
+{
+  "upstream": [{
+    "node_id": "analyze",
+    "state": "COMPLETED",
+    "distance": 1,
+    "expectation": "Feature requirements and constraints",
+    "promise": "Deliver prioritized feature list",
+    "delivered": {
+      "summary": "Requirements: JWT auth + REST API",
+      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+    }
+  }]
+}
+```
 
-## Module Structure
+No merging, no overwriting — each upstream source is a separate entry.
 
-Dependency chain (verified acyclic by topological sort):
+## Architecture
 
 ```
 types → core → context → view → operations → tools
@@ -61,55 +84,63 @@ types → core → context → view → operations → tools
 
 | Package | Purpose |
 |---------|---------|
-| `types` | Value types: `Contract`, `Context`, `EdgeId`, `ContextLevel` — zero internal deps |
-| `core` | `Cascade` graph, `Node`, `NodeState` with transition rules |
-| `context` | Context propagation + Go-style `CancellationToken` |
-| `view` | Agent-facing presentation layer (`get_node_view`) |
-| `events` | Append-only event log (`EventStore`) |
-| `operations` | Compound mutations: `SplitOperation`, `RemoveOperation`, `ReworkOperation` |
-| `storage` | JSON persistence with `fcntl` file locking |
-| `tools` | LLM-facing interface — the serialization boundary |
-
-## Node States
-
-```
-PENDING → READY → ACTIVE → COMPLETED
-                    ↕ release      ↘ FAILED
-                                   ↘ CANCELLED
-```
+| `types` | Value types: `Contract`, `Context`, `ContextEntry`, `TokenStatus` |
+| `core` | `Cascade` graph, `Node`, `NodeState` (6-state FSM) |
+| `context` | BFS ancestor propagation + cancellation (in-process) |
+| `view` | Upstream view builder (`get_node_view`) |
+| `events` | Append-only event log (14 event types) |
+| `operations` | Compound mutations: Split, Remove, Rework |
+| `storage` | JSON persistence + file locking + token store |
+| `tools` | 12 LLM-facing functions — the serialization boundary |
 
 ## Tools
 
-Framework-agnostic functions: `(GraphStorage, dict) → dict`.
+`(GraphStorage, dict) → dict` — framework-agnostic.
 
-| Category | Tools | Description |
-|----------|-------|-------------|
-| Structure | `add_node` | Create a task node |
-| | `remove_node` | Delete a node (optional cascade) |
-| | `split_node` | Break a task into subtasks |
-| | `refine_node` | Add a dependency to an existing node |
-| | `edit_node` | Update state or context |
-| Execution | `get_task` | Claim a task (critical path priority) |
-| | `finish_task` | Complete / fail / release a task |
-| Feedback | `rework` | Request upstream correction (forward-only) |
-| Monitoring | `check_timeouts` | Release stalled tasks |
-| Query | `list_nodes` | View all tasks and states |
-| | `history` | Query event log |
+| Category | Tools |
+|----------|-------|
+| Structure | `add_node`, `remove_node`, `split_node`, `refine_node`, `edit_node` |
+| Execution | `get_task`, `finish_task` |
+| Feedback | `rework` |
+| Cancellation | `check_task` |
+| Monitoring | `check_timeouts` |
+| Query | `list_nodes`, `history` |
+
+All mutation tools support `reason` for event log audit.
+
+## Context Flow
+
+Three channels, each upstream entry attributed with provenance:
+
+| Channel | Propagation | Use for |
+|---------|-------------|---------|
+| `critical` | Indefinite | Structured KV data (decisions, configs) |
+| `summary` | 2 hops | Brief text description |
+| `artifacts` | Indefinite | Full documents, code, specs |
+
+## Cancellation
+
+One semantic, two implementations:
+
+| Scenario | Mechanism |
+|----------|-----------|
+| Cross-process (CLI, multi-machine) | `TokenStore` — file-backed `.cascade/tokens/` |
+| In-process (framework embedding) | `CancellationToken` — memory, instant callbacks |
+
+Both use the `CancelNotifier` protocol for push notifications.
 
 ## Running Tests
 
 ```bash
-uv run pytest tests/
+uv run pytest tests/        # 196 tests
+uv run ruff check src tests  # lint
 ```
 
 ## Documentation
 
-See the [Guide](docs/guide.md) for a comprehensive walkthrough.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+- [Guide](docs/guide.md) — comprehensive walkthrough
+- [CONTRIBUTING.md](CONTRIBUTING.md) — development guidelines
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE) for details.
+Apache-2.0 — see [LICENSE](LICENSE).
