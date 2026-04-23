@@ -5,12 +5,14 @@ on:
     tags:
       - "v[0-9]+.*"
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v4
 
