@@ -12,7 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cascade cancellation mechanism similar to Go context."""
+"""Cascade cancellation mechanism.
+
+Two implementations of the same semantic — task cancellation:
+    - CancellationToken: in-process, instant callbacks (for frameworks
+      that embed Cascade tools in the same Python process).
+    - TokenStore: cross-process, file-backed (for CLI, multi-machine).
+
+CancellationToken implements the CancelNotifier protocol, so it can
+be passed to get_task(cancel_notifier=token). When TokenStore
+invalidates the task, the in-process token is cancelled automatically.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +35,7 @@ from cascade.core.state import NodeState
 
 if TYPE_CHECKING:
     from cascade.core.cascade import Cascade
+    from cascade.types import TokenStatus
 
 
 class CancelledError(Exception):
@@ -93,6 +104,10 @@ class CancellationToken:
 
     async def wait_for_cancel(self) -> None:
         await self.get_event().wait()
+
+    def notify(self, token: TokenStatus) -> None:
+        """CancelNotifier protocol — bridges file-based to in-process cancellation."""
+        self.cancel(token.reason)
 
     def __bool__(self) -> bool:
         return not self._is_cancelled
