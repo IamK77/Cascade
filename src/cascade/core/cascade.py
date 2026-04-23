@@ -22,6 +22,7 @@ Design invariants:
     - Contract storage is encapsulated — use get_contract() for reads.
 """
 
+import warnings
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
@@ -157,6 +158,18 @@ class Cascade:
         self._reverse[to_id].add(from_id)
         self._contracts[edge_key] = edge_contract
         self._update_readiness(to_id)
+
+        existing_promises = [
+            self._contracts[(dep_id, to_id)].promise
+            for dep_id in self._reverse[to_id]
+            if dep_id != from_id and (dep_id, to_id) in self._contracts
+        ]
+        if edge_contract.promise in existing_promises:
+            warnings.warn(
+                f"Duplicate promise on edges to '{to_id}': \"{edge_contract.promise}\". "
+                f"Promise should describe what the upstream node delivers, not what the downstream produces.",
+                stacklevel=2,
+            )
 
     def remove_edge(self, from_id: str, to_id: str) -> None:
         """Remove a directed edge and recompute readiness."""
