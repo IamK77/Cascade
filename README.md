@@ -1,10 +1,10 @@
-[**English**](README.md) | [中文](docs/i18n/README.zh-CN.md) | [日本語](docs/i18n/README.ja.md) | [Español](docs/i18n/README.es.md)
-
 # Cascade
 
 [![CI](https://github.com/autoseek/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/autoseek/cascade/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
+**English** | [中文](docs/i18n/README.zh-CN.md) | [日本語](docs/i18n/README.ja.md) | [Español](docs/i18n/README.es.md)
 
 An agent factory with dynamic DAG scheduling. Orchestrators build and adapt task graphs in real time while stateless workers claim, execute, and deliver — coordinating through contracts on edges and attributed context flow.
 
@@ -138,8 +138,10 @@ uv run ruff check src tests  # lint
 
 ## Documentation
 
-- [Guide](docs/guide.md) — comprehensive walkthrough
+- [Guide](docs/guide.md) — comprehensive usage walkthrough
+- [Architecture](docs/architecture.md) — system design, state machine, Mermaid diagrams
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development guidelines
+- [SECURITY.md](SECURITY.md) — vulnerability reporting and security model
 
 ## License
 

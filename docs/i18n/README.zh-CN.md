@@ -1,12 +1,23 @@
+# Cascade
+
+[![CI](https://github.com/autoseek/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/autoseek/cascade/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../../LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 [English](../../README.md) | **中文** | [日本語](README.ja.md) | [Español](README.es.md)
 
-> **注意**: 本文档可能未反映最新更改，请以 [English README](../../README.md) 为准。
 
+一个具备动态 DAG 调度能力的智能体工厂。编排器实时构建和调整任务图，无状态的工作器认领、执行和交付任务——通过边上的 Contract 和归因式上下文流进行协调。
 
-# Cascade
-### 基于 DAG 的多智能体任务调度框架
+## 核心特性
 
-一个基于 DAG 的多智能体任务调度框架。智能体从依赖图中认领任务，通过边上的 Contract 传递上下文，并借助共享文件状态进行协调。执行过程中可以动态编辑图结构 -- 拆分、细化、返工 -- 同时保持一致性。
+- **动态 DAG** — 执行过程中可拆分、返工、细化、移除任务
+- **归因式上下文** — 每个上游贡献独立保存，并附带溯源信息（路径、距离、Contract）
+- **Contract 驱动的边** — 每条边携带 `expectation`（消费者需求）和 `promise`（生产者交付）
+- **关键路径调度** — READY 任务按下游深度优先分配
+- **取消协议** — 跨进程支持拉取（检查 token）和推送（CancelNotifier）两种方式
+- **ACTIVE 保护** — 无法移除或拆分有活跃智能体的节点
+- **事件溯源** — 每次变更均被记录，支持可选的 `reason` 字段用于审计
 
 ## 安装
 
@@ -22,7 +33,7 @@ from tools import add_node, get_task, finish_task
 
 storage = GraphStorage(".cascade")
 
-# Build a task graph with contracts on edges
+# 构建任务图 — 水平拆分以实现并行
 add_node(storage, {"node_id": "analyze"})
 add_node(storage, {
     "node_id": "design",
@@ -34,30 +45,39 @@ add_node(storage, {
     }],
 })
 
-# Agent claims a task — prioritized by critical path
-task = get_task(storage, {"agent_id": "agent-001"})
+# 智能体认领任务 — 关键路径优先
+result = get_task(storage, {"agent_id": "agent-001"})
 
-# Complete with context that flows to downstream agents
+# 完成任务并传递上下文给下游智能体
 finish_task(storage, {
     "task_id": "analyze",
     "success": True,
-    "summary": "Requirements analyzed: auth + REST API",
+    "summary": "Requirements: JWT auth + REST API",
     "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
 })
 ```
 
-## 设计原则
+当 `agent-002` 认领 `design` 时，它看到的是：
 
-- **边上的 Contract** -- 每条边都携带 `Contract(expectation, promise)`，两者均为必填。不同的下游 Node 可以从同一个上游 Node 获得不同的 promise。
-- **计算得出的就绪状态** -- 没有缓存的 `in_degree`。一个 Node 是否处于 READY 状态，取决于其所有依赖是否都已 COMPLETED，该状态从图中实时推导。
-- **只向前的反馈** -- 返工会创建纠正性 Node，使图向前生长。永远不修改已完成的工作，永远不创建反向边。
-- **关键路径调度** -- `get_task` 优先分配下游链最深的 READY Node，最小化总完成时间。
-- **事件溯源** -- 每次变更都记录在仅追加的 `events.jsonl` 中。支持审计追踪、时间旅行和重放。
-- **三级上下文传播** -- `critical`（键值对，无限传播）、`summary`（文本，传播 2 跳）、`artifacts`（文件引用，无限传播）。
+```json
+{
+  "upstream": [{
+    "node_id": "analyze",
+    "state": "COMPLETED",
+    "distance": 1,
+    "expectation": "Feature requirements and constraints",
+    "promise": "Deliver prioritized feature list",
+    "delivered": {
+      "summary": "Requirements: JWT auth + REST API",
+      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+    }
+  }]
+}
+```
 
-## 模块结构
+不合并、不覆盖——每个上游来源都是独立的条目。
 
-依赖链（通过拓扑排序验证无环）：
+## 架构
 
 ```
 types → core → context → view → operations → tools
@@ -65,47 +85,63 @@ types → core → context → view → operations → tools
 
 | 包 | 用途 |
 |---------|---------|
-| `types` | 值类型：`Contract`、`Context`、`EdgeId`、`ContextLevel` -- 零内部依赖 |
-| `core` | `Cascade` 图、`Node`、`NodeState` 及其状态转换规则 |
-| `context` | 上下文传播 + Go 风格的 `CancellationToken` |
-| `view` | 面向智能体的展示层（`get_node_view`） |
-| `events` | 仅追加的事件日志（`EventStore`） |
-| `operations` | 复合变更操作：`SplitOperation`、`RemoveOperation`、`ReworkOperation` |
-| `storage` | 基于 `fcntl` 文件锁的 JSON 持久化 |
-| `tools` | 面向 LLM 的接口 -- 序列化边界 |
-
-## Node 状态
-
-```
-PENDING → READY → ACTIVE → COMPLETED
-                    ↕ release      ↘ FAILED
-                                   ↘ CANCELLED
-```
+| `types` | 值类型：`Contract`、`Context`、`ContextEntry`、`TokenStatus` |
+| `core` | `Cascade` 图、`Node`、`NodeState`（6 状态 FSM） |
+| `context` | BFS 祖先传播 + 取消机制（进程内） |
+| `view` | 上游视图构建器（`get_node_view`） |
+| `events` | 仅追加的事件日志（14 种事件类型） |
+| `operations` | 复合变更操作：Split、Remove、Rework |
+| `storage` | JSON 持久化 + 文件锁 + token 存储 |
+| `tools` | 12 个面向 LLM 的函数——序列化边界 |
 
 ## 工具
 
-与框架无关的函数：`(GraphStorage, dict) → dict`。
+`(GraphStorage, dict) → dict` — 与框架无关。
 
-| 类别 | 工具 | 描述 |
-|----------|-------|-------------|
-| 结构 | `add_node` | 创建一个任务 Node |
-| | `remove_node` | 删除一个 Node（可选级联删除） |
-| | `split_node` | 将一个任务拆分为子任务 |
-| | `refine_node` | 为现有 Node 添加依赖 |
-| | `edit_node` | 更新状态或上下文 |
-| 执行 | `get_task` | 认领任务（关键路径优先） |
-| | `finish_task` | 完成 / 失败 / 释放任务 |
-| 反馈 | `rework` | 请求上游修正（只向前） |
-| 监控 | `check_timeouts` | 释放超时停滞的任务 |
-| 查询 | `list_nodes` | 查看所有任务及其状态 |
-| | `history` | 查询事件日志 |
+| 类别 | 工具 |
+|----------|-------|
+| 结构 | `add_node`、`remove_node`、`split_node`、`refine_node`、`edit_node` |
+| 执行 | `get_task`、`finish_task` |
+| 反馈 | `rework` |
+| 取消 | `check_task` |
+| 监控 | `check_timeouts` |
+| 查询 | `list_nodes`、`history` |
+
+所有变更工具均支持 `reason` 字段用于事件日志审计。
+
+## 上下文流
+
+三个通道，每个上游条目都附带溯源归因：
+
+| 通道 | 传播范围 | 用途 |
+|---------|-------------|---------|
+| `critical` | 无限传播 | 结构化键值数据（决策、配置） |
+| `summary` | 2 跳 | 简要文本描述 |
+| `artifacts` | 无限传播 | 完整文档、代码、规格说明 |
+
+## 取消机制
+
+一种语义，两种实现：
+
+| 场景 | 机制 |
+|----------|-----------|
+| 跨进程（CLI、多机器） | `TokenStore` — 基于文件的 `.cascade/tokens/` |
+| 进程内（框架嵌入） | `CancellationToken` — 内存级，即时回调 |
+
+两者都使用 `CancelNotifier` 协议实现推送通知。
 
 ## 运行测试
 
 ```bash
-uv run pytest tests/
+uv run pytest tests/        # 196 个测试
+uv run ruff check src tests  # lint 检查
 ```
+
+## 文档
+
+- [指南](../guide.md) — 全面的使用教程
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — 开发指南
 
 ## 许可证
 
-Apache-2.0
+Apache-2.0 — 详见 [LICENSE](../../LICENSE)。

@@ -1,11 +1,23 @@
-[English](../../README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | **Español**
-
-> **Nota**: Este documento puede no reflejar los últimos cambios. Consulte el [README en inglés](../../README.md) para la versión más actualizada.
-
-
 # Cascade
 
-Un framework de planificación de tareas multi-agente basado en DAG. Los agentes reclaman tareas de un grafo de dependencias, pasan contexto a través de contratos en las aristas (edge contracts) y se coordinan mediante estado compartido en archivos. El grafo puede editarse dinámicamente durante la ejecución — dividir, refinar, rehacer — manteniendo la consistencia.
+[![CI](https://github.com/autoseek/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/autoseek/cascade/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../../LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
+[English](../../README.md) | [中文](README.zh-CN.md) | [日本語](README.ja.md) | **Español**
+
+
+Una fábrica de agentes con planificación dinámica de DAG. Los orquestadores construyen y adaptan grafos de tareas en tiempo real mientras los trabajadores sin estado reclaman, ejecutan y entregan — coordinándose mediante contratos en las aristas y flujo de contexto atribuido.
+
+## Características Principales
+
+- **DAG dinámico** — dividir, rehacer, refinar y eliminar tareas durante la ejecución
+- **Contexto atribuido** — cada contribución upstream se mantiene separada con procedencia (ruta, distancia, contrato)
+- **Aristas basadas en contratos** — cada arista lleva `expectation` (lo que necesita el consumidor) y `promise` (lo que entrega el productor)
+- **Planificación por ruta crítica** — las tareas READY se priorizan por profundidad downstream
+- **Protocolo de cancelación** — pull (verificar token) o push (CancelNotifier) entre procesos
+- **Protección de nodos ACTIVE** — no se pueden eliminar/dividir nodos con agentes activos
+- **Event sourcing** — cada mutación registrada con `reason` opcional para auditoría
 
 ## Instalación
 
@@ -13,7 +25,7 @@ Un framework de planificación de tareas multi-agente basado en DAG. Los agentes
 uv sync
 ```
 
-## Inicio rápido
+## Inicio Rápido
 
 ```python
 from cascade import GraphStorage
@@ -21,7 +33,7 @@ from tools import add_node, get_task, finish_task
 
 storage = GraphStorage(".cascade")
 
-# Build a task graph with contracts on edges
+# Construir un grafo de tareas — dividir horizontalmente para paralelismo
 add_node(storage, {"node_id": "analyze"})
 add_node(storage, {
     "node_id": "design",
@@ -33,30 +45,39 @@ add_node(storage, {
     }],
 })
 
-# Agent claims a task — prioritized by critical path
-task = get_task(storage, {"agent_id": "agent-001"})
+# El agente reclama una tarea — ruta crítica primero
+result = get_task(storage, {"agent_id": "agent-001"})
 
-# Complete with context that flows to downstream agents
+# Completar con contexto que fluye a los agentes downstream
 finish_task(storage, {
     "task_id": "analyze",
     "success": True,
-    "summary": "Requirements analyzed: auth + REST API",
+    "summary": "Requirements: JWT auth + REST API",
     "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
 })
 ```
 
-## Principios de diseño
+Cuando `agent-002` reclama `design`, ve:
 
-- **Contratos en las aristas** — cada arista lleva un `Contract(expectation, promise)`, ambos obligatorios. Distintos nodos descendentes pueden recibir diferentes promesas del mismo nodo ascendente.
-- **Estado de disponibilidad calculado** — sin `in_degree` en caché. Un Node está READY cuando todas sus dependencias están COMPLETED, derivado del grafo en tiempo real.
-- **Retroalimentación solo hacia adelante** — el retrabajo crea nodos correctivos que hacen crecer el grafo hacia adelante. Nunca se muta trabajo completado, nunca se crean aristas inversas.
-- **Planificación por ruta crítica** — `get_task` asigna el Node READY con la cadena descendente más profunda primero, minimizando el tiempo total de finalización.
-- **Event sourcing** — cada mutación se registra en `events.jsonl` de solo adición. Auditoría, viaje en el tiempo, reproducción.
-- **Propagación de contexto en 3 niveles** — `critical` (clave-valor, infinito), `summary` (texto, 2 saltos), `artifacts` (referencia a archivo, infinito).
+```json
+{
+  "upstream": [{
+    "node_id": "analyze",
+    "state": "COMPLETED",
+    "distance": 1,
+    "expectation": "Feature requirements and constraints",
+    "promise": "Deliver prioritized feature list",
+    "delivered": {
+      "summary": "Requirements: JWT auth + REST API",
+      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+    }
+  }]
+}
+```
 
-## Estructura de módulos
+Sin fusión, sin sobrescritura — cada fuente upstream es una entrada separada.
 
-Cadena de dependencias (verificada acíclica mediante ordenamiento topológico):
+## Arquitectura
 
 ```
 types → core → context → view → operations → tools
@@ -64,47 +85,63 @@ types → core → context → view → operations → tools
 
 | Paquete | Propósito |
 |---------|-----------|
-| `types` | Tipos de valor: `Contract`, `Context`, `EdgeId`, `ContextLevel` — cero dependencias internas |
-| `core` | Grafo `Cascade`, `Node`, `NodeState` con reglas de transición |
-| `context` | Propagación de contexto + `CancellationToken` al estilo Go |
-| `view` | Capa de presentación para agentes (`get_node_view`) |
-| `events` | Registro de eventos de solo adición (`EventStore`) |
-| `operations` | Mutaciones compuestas: `SplitOperation`, `RemoveOperation`, `ReworkOperation` |
-| `storage` | Persistencia JSON con bloqueo de archivos `fcntl` |
-| `tools` | Interfaz orientada a LLM — la frontera de serialización |
-
-## Estados de los Nodes
-
-```
-PENDING → READY → ACTIVE → COMPLETED
-                    ↕ release      ↘ FAILED
-                                   ↘ CANCELLED
-```
+| `types` | Tipos de valor: `Contract`, `Context`, `ContextEntry`, `TokenStatus` |
+| `core` | Grafo `Cascade`, `Node`, `NodeState` (FSM de 6 estados) |
+| `context` | Propagación de ancestros por BFS + cancelación (en proceso) |
+| `view` | Constructor de vista upstream (`get_node_view`) |
+| `events` | Log de eventos append-only (14 tipos de evento) |
+| `operations` | Mutaciones compuestas: Split, Remove, Rework |
+| `storage` | Persistencia JSON + bloqueo de archivos + almacén de tokens |
+| `tools` | 12 funciones para LLM — la frontera de serialización |
 
 ## Herramientas
 
-Funciones agnósticas al framework: `(GraphStorage, dict) → dict`.
+`(GraphStorage, dict) → dict` — agnóstico al framework.
 
-| Categoría | Herramientas | Descripción |
-|-----------|-------------|-------------|
-| Estructura | `add_node` | Crear un nodo de tarea |
-| | `remove_node` | Eliminar un nodo (cascada opcional) |
-| | `split_node` | Dividir una tarea en subtareas |
-| | `refine_node` | Agregar una dependencia a un nodo existente |
-| | `edit_node` | Actualizar estado o contexto |
-| Ejecución | `get_task` | Reclamar una tarea (prioridad por ruta crítica) |
-| | `finish_task` | Completar / fallar / liberar una tarea |
-| Retroalimentación | `rework` | Solicitar corrección ascendente (solo hacia adelante) |
-| Monitoreo | `check_timeouts` | Liberar tareas estancadas |
-| Consulta | `list_nodes` | Ver todas las tareas y estados |
-| | `history` | Consultar el registro de eventos |
+| Categoría | Herramientas |
+|-----------|-------------|
+| Estructura | `add_node`, `remove_node`, `split_node`, `refine_node`, `edit_node` |
+| Ejecución | `get_task`, `finish_task` |
+| Retroalimentación | `rework` |
+| Cancelación | `check_task` |
+| Monitoreo | `check_timeouts` |
+| Consulta | `list_nodes`, `history` |
 
-## Ejecución de tests
+Todas las herramientas de mutación soportan `reason` para auditoría del log de eventos.
+
+## Flujo de Contexto
+
+Tres canales, cada entrada upstream atribuida con procedencia:
+
+| Canal | Propagación | Usar para |
+|-------|-------------|-----------|
+| `critical` | Indefinida | Datos KV estructurados (decisiones, configuraciones) |
+| `summary` | 2 saltos | Descripción breve en texto |
+| `artifacts` | Indefinida | Documentos completos, código, especificaciones |
+
+## Cancelación
+
+Una semántica, dos implementaciones:
+
+| Escenario | Mecanismo |
+|-----------|-----------|
+| Entre procesos (CLI, multi-máquina) | `TokenStore` — respaldado en archivos `.cascade/tokens/` |
+| En proceso (integración con framework) | `CancellationToken` — en memoria, callbacks instantáneos |
+
+Ambos usan el protocolo `CancelNotifier` para notificaciones push.
+
+## Ejecutar Tests
 
 ```bash
-uv run pytest tests/
+uv run pytest tests/        # 196 tests
+uv run ruff check src tests  # lint
 ```
+
+## Documentación
+
+- [Guía](../guide.md) — recorrido completo
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — guías de desarrollo
 
 ## Licencia
 
-Apache-2.0
+Apache-2.0 — ver [LICENSE](../../LICENSE).
