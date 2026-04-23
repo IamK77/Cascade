@@ -22,7 +22,7 @@
 ## インストール
 
 ```bash
-uv sync
+pip install cascade-auto
 ```
 
 ## クイックスタート

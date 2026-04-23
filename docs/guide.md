@@ -5,6 +5,14 @@ From building your first task graph to running a multi-agent workflow with dynam
 ## 1. Setup
 
 ```bash
+pip install cascade-auto
+```
+
+Or for development:
+
+```bash
+git clone https://github.com/autoseek-ai/Cascade.git
+cd Cascade
 uv sync
 ```
 

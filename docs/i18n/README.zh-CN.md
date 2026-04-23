@@ -22,7 +22,7 @@
 ## 安装
 
 ```bash
-uv sync
+pip install cascade-auto
 ```
 
 ## 快速开始

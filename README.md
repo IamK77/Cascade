@@ -21,6 +21,14 @@ An agent factory with dynamic DAG scheduling. Orchestrators build and adapt task
 ## Installation
 
 ```bash
+pip install cascade-auto
+```
+
+For development:
+
+```bash
+git clone https://github.com/autoseek-ai/Cascade.git
+cd Cascade
 uv sync
 ```
 

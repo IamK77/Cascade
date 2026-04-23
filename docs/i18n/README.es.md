@@ -22,7 +22,7 @@ Una fábrica de agentes con planificación dinámica de DAG. Los orquestadores c
 ## Instalación
 
 ```bash
-uv sync
+pip install cascade-auto
 ```
 
 ## Inicio Rápido
