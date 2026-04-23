@@ -16,6 +16,7 @@
 
 from typing import Any
 
+from cascade.core.state import NodeState
 from cascade.operations.remove import RemoveOperation
 from cascade.storage.graph_storage import GraphStorage
 
@@ -39,6 +40,31 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
         with storage.lock():
             from cascade.core.cascade import Cascade
             cascade = storage.load() or Cascade()
+
+            if node_id not in cascade.nodes:
+                return {"success": False, "message": f"Node {node_id} not found", "data": {}}
+
+            node = cascade.nodes[node_id]
+            if node.state == NodeState.ACTIVE:
+                return {
+                    "success": False,
+                    "message": f"Cannot remove ACTIVE node {node_id} (agent: {node.agent_id}). "
+                               f"Use finish_task with release=true first.",
+                    "data": {"state": "ACTIVE", "agent_id": node.agent_id},
+                }
+
+            if should_cascade:
+                active_descendants = [
+                    dep.id for dep in cascade.get_dependents(node_id)
+                    if dep.state == NodeState.ACTIVE
+                ]
+                if active_descendants:
+                    return {
+                        "success": False,
+                        "message": f"Cannot cascade-remove: {active_descendants} are ACTIVE. "
+                                   f"Release them first.",
+                        "data": {"active_nodes": active_descendants},
+                    }
 
             operation = RemoveOperation(cascade)
             result = operation.execute(node_id=node_id, cascade=should_cascade)

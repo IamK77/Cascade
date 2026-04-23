@@ -17,6 +17,7 @@
 from typing import Any
 
 from cascade.core.node import Node
+from cascade.core.state import NodeState
 from cascade.operations.split import SplitOperation
 from cascade.storage.graph_storage import GraphStorage
 
@@ -49,7 +50,16 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             if parent_id not in cascade.nodes:
                 return {"success": False, "message": f"Parent node {parent_id} not found", "data": {}}
 
-            parent_state = cascade.nodes[parent_id].state
+            parent = cascade.nodes[parent_id]
+            if parent.state == NodeState.ACTIVE:
+                return {
+                    "success": False,
+                    "message": f"Cannot split ACTIVE node {parent_id} (agent: {parent.agent_id}). "
+                               f"Use finish_task with release=true first.",
+                    "data": {"state": "ACTIVE", "agent_id": parent.agent_id},
+                }
+
+            parent_state = parent.state
 
             new_nodes = []
             for node_data in new_nodes_data:
