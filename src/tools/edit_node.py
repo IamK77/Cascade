@@ -133,6 +133,9 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 }
 
             storage.save(cascade)
+            from cascade.events import EventType
+            storage.events.emit(EventType.NODE_EDITED, node_id=node_id,
+                                changes=changes, reason=params.get("reason", ""))
             return {
                 "success": True,
                 "message": f"Node {node_id} updated: {', '.join(changes)}",

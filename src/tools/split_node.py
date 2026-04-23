@@ -61,6 +61,11 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             result = operation.execute(parent_id=parent_id, new_nodes=new_nodes)
 
             storage.save(cascade)
+            if result.success:
+                from cascade.events import EventType
+                storage.events.emit(EventType.NODE_SPLIT, node_id=parent_id,
+                                    new_node_ids=result.data.new_node_ids if result.data else [],
+                                    reason=params.get("reason", ""))
             return {
                 "success": result.success,
                 "message": result.message,

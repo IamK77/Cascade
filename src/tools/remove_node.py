@@ -44,6 +44,12 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             result = operation.execute(node_id=node_id, cascade=should_cascade)
 
             storage.save(cascade)
+            if result.success:
+                from cascade.events import EventType
+                storage.events.emit(EventType.NODE_REMOVED, node_id=node_id,
+                                    cascade=should_cascade,
+                                    affected_nodes=result.affected_nodes,
+                                    reason=params.get("reason", ""))
             return {
                 "success": result.success,
                 "message": result.message,

@@ -65,10 +65,14 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     "data": {},
                 }
 
-            # add_edge handles readiness update automatically
             cascade.add_edge(dependency_id, node_id, expectation=expectation, promise=promise)
 
             storage.save(cascade)
+            from cascade.events import EventType
+            storage.events.emit(EventType.NODE_REFINED, node_id=node_id,
+                                dependency_id=dependency_id,
+                                expectation=expectation, promise=promise,
+                                reason=params.get("reason", ""))
             return {
                 "success": True,
                 "message": f"Node {node_id} now depends on {dependency_id}",

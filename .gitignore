@@ -1,6 +1,9 @@
 # Cascade runtime state (generated during execution)
 .cascade/
 
+# Test workspace for Cascade validation experiments
+playground/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

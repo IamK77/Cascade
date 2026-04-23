@@ -44,7 +44,9 @@ class EventType(Enum):
     TASK_RELEASED = "task_released"
     TASK_TIMED_OUT = "task_timed_out"
     REWORK_REQUESTED = "rework_requested"
+    NODE_EDITED = "node_edited"
     NODE_SPLIT = "node_split"
+    NODE_REFINED = "node_refined"
     NODE_CANCELLED = "node_cancelled"
 
 
