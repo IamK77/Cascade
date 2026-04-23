@@ -1,6 +1,10 @@
 # Cascade runtime state (generated during execution)
 .cascade/
 
+# Claude Code — track skills, ignore the rest
+.claude/*
+!.claude/skills/
+
 # Test workspace for Cascade validation experiments
 playground/
 
