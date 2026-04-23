@@ -28,6 +28,7 @@ Generated from [conventional commits](https://www.conventionalcommits.org/).
 ### Documentation
 
 - Update CHANGELOG.md for v0.3.0
+- Update CHANGELOG.md for v0.3.0
 - Add architecture, security policy, sync translations
 - Rewrite README for current architecture, update CONTRIBUTING
 - Update guide.md for upstream view, cancellation, and CLI changes
@@ -40,6 +41,7 @@ Generated from [conventional commits](https://www.conventionalcommits.org/).
 
 ### Fixed
 
+- Add contents:read permission for publish workflow
 - Trigger publish on tag push instead of release event
 - Format all code + fix release workflow for private repos
 - Resolve CI lint and type errors
