@@ -29,7 +29,7 @@ from __future__ import annotations
 from asyncio import Event
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from cascade.core.state import NodeState
 
@@ -115,10 +115,15 @@ class CancellationToken:
 
 @dataclass
 class CancellationPropagator:
-    """Handles cascade cancellation through the DAG."""
+    """Handles cascade cancellation through the DAG.
+
+    For in-process use. If a TokenStore is provided, invalidations
+    are also written to disk for cross-process visibility.
+    """
 
     cascade: Cascade
     node_tokens: dict[str, CancellationToken] = field(default_factory=dict)
+    token_store: Any | None = field(default=None, repr=False)
 
     def create_token(self, node_id: str) -> CancellationToken:
         token = CancellationToken()
@@ -140,6 +145,9 @@ class CancellationPropagator:
         token = self.node_tokens.get(node_id)
         if token:
             token.cancel(reason)
+
+        if self.token_store is not None:
+            self.token_store.invalidate(node_id, reason or "cancelled")
 
         node = self.cascade.nodes[node_id]
         node.update_state(NodeState.CANCELLED)

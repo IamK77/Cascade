@@ -1,6 +1,6 @@
 # Cascade
 
-DAG-based multi-agent task scheduling framework.
+DAG-based multi-agent task scheduling framework — an agent factory with dynamic DAG control.
 
 ## Commands
 
@@ -24,24 +24,40 @@ Module dependencies form a verified DAG — no circular imports.
 - Forward-only feedback — rework derives new nodes, never reverse edges
 - Independent task groups allowed — no connected graph constraint
 - Append-only event log at `.cascade/events.jsonl`
+- ACTIVE nodes protected — cannot remove/split without release
+- Maximize horizontal splitting for parallelism
 
-## Tools (11 total)
+## Tools (12 total)
 
 `add_node`, `remove_node`, `split_node`, `refine_node`, `edit_node`,
-`get_task`, `finish_task`, `rework`, `check_timeouts`, `list_nodes`, `history`
+`get_task`, `finish_task`, `check_task`, `rework`, `check_timeouts`, `list_nodes`, `history`
+
+All mutation tools support `reason` parameter for event log audit trail.
 
 ## Context Flow
 
-When completing a task, use `summary` (text, 2 hops), `critical` (KV, infinite),
-and `artifacts` (file, infinite) to pass output to downstream agents.
+Upstream view: each ancestor's context is kept separate with provenance.
+- `summary` (text, 2 hops) + `critical` (KV, infinite) + `artifacts` (file, infinite)
+- Direct parents (distance 1): include contract (expectation/promise)
+- Further ancestors: include path + distance, no contract
+- Fan-in: no key overwrite — each source is a separate entry
+
+## Cancellation
+
+Two implementations of the same semantic — task cancellation:
+- **In-process**: `CancellationToken` (memory, instant callbacks)
+- **Cross-process**: `TokenStore` (file-backed `.cascade/tokens/`)
+- Both use `CancelNotifier` protocol for push notifications
+- Pull: `check_task` tool or `TokenStore.check()`
+- Push: `FileNotifier`, `CallbackNotifier`, or custom adapter
 
 ## File Layout
 
-- `src/cascade/types.py` — shared value types (Contract, Context, EdgeId)
+- `src/cascade/types.py` — shared value types (Contract, Context, ContextEntry, TokenStatus)
 - `src/cascade/core/` — Cascade graph, Node, NodeState
-- `src/cascade/context/` — propagation + cancellation
-- `src/cascade/view.py` — agent task view builder
-- `src/cascade/events.py` — event store
+- `src/cascade/context/` — propagator (BFS ancestor traversal) + cancellation token
+- `src/cascade/view.py` — upstream view builder (get_node_view)
+- `src/cascade/events.py` — event store (14 event types)
 - `src/cascade/operations/` — Split, Remove, Rework
-- `src/cascade/storage/` — JSON persistence + file locking
-- `src/tools/` — LLM-facing tool functions
+- `src/cascade/storage/` — JSON persistence + file locking + token store
+- `src/tools/` — LLM-facing tool functions (12 tools)
