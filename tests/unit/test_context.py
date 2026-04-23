@@ -24,7 +24,6 @@ from cascade.context.cancellation import (
 )
 from cascade.context.context import Context
 from cascade.context.propagator import ContextPropagator
-from cascade.types import ContextLevel
 
 
 class TestContext:
@@ -40,32 +39,6 @@ class TestContext:
         assert "key1" in sample_context.critical
         assert sample_context.summary == "This is a summary"
         assert "Full Artifacts" in sample_context.artifacts
-
-    def test_propagate_to_critical(self):
-        context = Context(critical={"data": "value"})
-        assert context.propagate_to(ContextLevel.CRITICAL, distance=0)
-        assert context.propagate_to(ContextLevel.CRITICAL, distance=100)
-
-    def test_propagate_to_summary(self):
-        context = Context(summary="test")
-        assert context.propagate_to(ContextLevel.SUMMARY, distance=0)
-        assert context.propagate_to(ContextLevel.SUMMARY, distance=1)
-        assert context.propagate_to(ContextLevel.SUMMARY, distance=2)
-        assert not context.propagate_to(ContextLevel.SUMMARY, distance=3)
-
-    def test_propagate_to_artifacts(self):
-        context = Context(artifacts=".cascade/artifacts/node_a.md")
-        assert context.propagate_to(ContextLevel.ARTIFACTS, distance=0)
-        assert context.propagate_to(ContextLevel.ARTIFACTS, distance=1)
-        assert context.propagate_to(ContextLevel.ARTIFACTS, distance=100)
-
-    def test_merge_contexts(self):
-        ctx1 = Context(critical={"a": 1}, summary="Summary 1")
-        ctx2 = Context(critical={"b": 2}, summary="Summary 2")
-        merged = ctx1.merge(ctx2)
-        assert merged.critical == {"a": 1, "b": 2}
-        assert "Summary 1" in merged.summary
-        assert "Summary 2" in merged.summary
 
     def test_set_critical(self):
         context = Context()
@@ -90,39 +63,62 @@ class TestContext:
 class TestContextPropagator:
     """Tests for ContextPropagator."""
 
-    def test_propagate_from(self, sample_cascade_with_context):
-        propagator = ContextPropagator(sample_cascade_with_context)
-        source_context = sample_cascade_with_context.nodes["a"].context
-        result = propagator.propagate_from("a", source_context)
-        assert "a" in result.reached_nodes
-        assert "b" in result.reached_nodes
-
-    def test_propagate_to_ancestors(self, sample_cascade_with_context):
-        propagator = ContextPropagator(sample_cascade_with_context)
-        target_context = sample_cascade_with_context.nodes["b"].context
-        result = propagator.propagate_to_ancestors("b", target_context)
-        assert "b" in result.reached_nodes
-        assert "a" in result.reached_nodes
-
     def test_collect_context_at(self, sample_cascade_with_context):
         propagator = ContextPropagator(sample_cascade_with_context)
-        context = propagator.collect_context_at("b", max_distance=2)
-        assert "project" in context.critical
-        assert "depends_on" in context.critical
+        entries = propagator.collect_context_at("b")
+        assert len(entries) == 1
+        assert entries[0].node_id == "a"
+        assert entries[0].distance == 1
+        assert entries[0].path == ["a"]
+        assert entries[0].expectation == "Expect output from a"
+        assert entries[0].promise == "A promises output"
+        assert entries[0].critical["project"] == "test"
+        assert entries[0].summary == "Initial task"
 
-    def test_propagate_max_distance(self, sample_cascade_with_context):
-        propagator = ContextPropagator(sample_cascade_with_context)
-        source_context = sample_cascade_with_context.nodes["a"].context
-        result = propagator.propagate_from("a", source_context, max_distance=0)
-        assert "a" in result.reached_nodes
-        assert "b" not in result.reached_nodes
+    def test_collect_no_ancestors(self):
+        cascade = Cascade()
+        cascade.add_node(Node(id="root", state=NodeState.READY))
+        propagator = ContextPropagator(cascade)
+        entries = propagator.collect_context_at("root")
+        assert entries == []
 
-    def test_propagation_result_get_nodes_at_distance(self, sample_cascade_with_context):
-        propagator = ContextPropagator(sample_cascade_with_context)
-        source_context = sample_cascade_with_context.nodes["a"].context
-        result = propagator.propagate_from("a", source_context)
-        assert "a" in result.get_nodes_at_distance(0)
-        assert "b" in result.get_nodes_at_distance(1)
+    def test_collect_summary_limited_by_distance(self):
+        """Summary stops propagating beyond SUMMARY_MAX_DISTANCE."""
+        cascade = Cascade()
+        ctx = Context(critical={"k": "v"}, summary="grandparent summary")
+        cascade.add_node(Node(id="a", state=NodeState.COMPLETED, context=ctx))
+        cascade.add_node(Node(id="b", state=NodeState.COMPLETED))
+        cascade.add_node(Node(id="c", state=NodeState.PENDING))
+        cascade.add_edge("a", "b", expectation="E", promise="P1")
+        cascade.add_edge("b", "c", expectation="E", promise="P2")
+
+        propagator = ContextPropagator(cascade)
+        entries = propagator.collect_context_at("c")
+        a_entry = next(e for e in entries if e.node_id == "a")
+        assert a_entry.distance == 2
+        assert a_entry.path == ["a", "b"]
+        assert a_entry.summary == "grandparent summary"
+        assert a_entry.critical["k"] == "v"
+        assert a_entry.expectation == ""
+
+    def test_collect_diamond_no_overwrite(self):
+        """Fan-in: B and C both set same critical key — both preserved."""
+        cascade = Cascade()
+        cascade.add_node(Node(id="b", state=NodeState.COMPLETED,
+                              context=Context(critical={"branch": "B"})))
+        cascade.add_node(Node(id="c", state=NodeState.COMPLETED,
+                              context=Context(critical={"branch": "C"})))
+        cascade.add_node(Node(id="d", state=NodeState.PENDING))
+        cascade.add_edge("b", "d", expectation="Eb", promise="B output")
+        cascade.add_edge("c", "d", expectation="Ec", promise="C output")
+
+        propagator = ContextPropagator(cascade)
+        entries = propagator.collect_context_at("d")
+        branches = {e.critical["branch"] for e in entries}
+        assert branches == {"B", "C"}
+        for e in entries:
+            assert e.distance == 1
+            assert e.expectation != ""
 
 
 class TestCancellationToken:

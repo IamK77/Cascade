@@ -22,7 +22,6 @@ Dependency rule: types.py → (nothing in cascade/)
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any, TypeAlias
 
 # ---------------------------------------------------------------------------
@@ -57,60 +56,43 @@ ContextKV: TypeAlias = dict[str, Any]
 """Key-value pairs for critical context propagation."""
 
 
-class ContextLevel(Enum):
-    """Context propagation level.
+@dataclass(slots=True)
+class ContextEntry:
+    """An upstream node's contribution to the current node's context.
 
-    - CRITICAL: KV pairs, propagates indefinitely.
-    - SUMMARY: Text, propagates to grandchildren only (distance <= 2).
-    - ARTIFACTS: File path pointer, always propagates.
+    Each entry represents one ancestor and what it delivered.
+    Direct parents (distance 1) include the contract (expectation/promise).
+    Further ancestors include the traversal path for provenance.
     """
 
-    CRITICAL = 1
-    SUMMARY = 2
-    ARTIFACTS = 3
+    node_id: str
+    state: str
+    distance: int
+    path: list[str] = field(default_factory=list)
+    expectation: str = ""
+    promise: str = ""
+    summary: str = ""
+    critical: ContextKV = field(default_factory=dict)
+    artifacts: str = ""
 
 
 @dataclass
 class Context:
-    """Context carried by a node for downstream propagation.
+    """Context carried by a node — its own output, not inherited data.
 
-    Three levels of information:
-    - critical: Key-value data that propagates indefinitely.
-    - summary: Brief description, propagates to grandchildren (distance <= 2).
+    Three fields:
+    - critical: KV data (propagation distance owned by ContextPropagator).
+    - summary: Brief description of what the node accomplished.
     - artifacts: Content string (persisted to file by storage layer).
+
+    Context is never merged across nodes. Multi-source collection
+    produces list[ContextEntry] via ContextPropagator, keeping each
+    source's contribution separate and attributed.
     """
 
     critical: ContextKV = field(default_factory=dict)
     summary: str = ""
     artifacts: str = ""
-
-    def propagate_to(self, level: ContextLevel, distance: int) -> bool:
-        """Determine if context should propagate to given distance."""
-        if level == ContextLevel.CRITICAL:
-            return True
-        elif level == ContextLevel.SUMMARY:
-            return distance <= 2
-        elif level == ContextLevel.ARTIFACTS:
-            return True
-        return False
-
-    def merge(self, other: "Context") -> "Context":
-        """Merge another context into this one, returning a new Context."""
-        merged_critical = {**self.critical, **other.critical}
-
-        merged_summary = self.summary
-        if other.summary:
-            merged_summary = f"{merged_summary}\n{other.summary}" if merged_summary else other.summary
-
-        merged_artifacts = self.artifacts
-        if other.artifacts:
-            merged_artifacts = f"{merged_artifacts}\n{other.artifacts}" if merged_artifacts else other.artifacts
-
-        return Context(
-            critical=merged_critical,
-            summary=merged_summary,
-            artifacts=merged_artifacts,
-        )
 
     def describe(self) -> str:
         """Generate human-readable description."""

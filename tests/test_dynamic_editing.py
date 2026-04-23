@@ -136,9 +136,11 @@ class TestSplitDuringExecution:
         with temp_storage.lock():
             cascade = temp_storage.load()
             view = get_node_view(cascade, "b1")
-            assert "context" in view
-            assert view["context"]["critical"]["bug_count"] == 3
-            assert "Found 3 bugs" in view["context"]["summary"]
+            assert "upstream" in view
+            up = view["upstream"]
+            assert up[0]["node_id"] == "a"
+            assert up[0]["delivered"]["critical"]["bug_count"] == 3
+            assert up[0]["delivered"]["summary"] == "Found 3 bugs"
 
 
 class TestRefineDuringExecution:
@@ -212,7 +214,7 @@ class TestRefineDuringExecution:
         # b should be READY and see a's context
         result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "b"})
         assert result["success"]
-        assert result["data"]["task_info"]["context"]["critical"]["from_a"] is True
+        assert result["data"]["task_info"]["upstream"][0]["delivered"]["critical"]["from_a"] is True
 
 
 class TestAddNodeDuringExecution:
@@ -269,7 +271,7 @@ class TestAddNodeDuringExecution:
         # Should be immediately READY and see a's context
         result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "late_joiner"})
         assert result["success"]
-        assert result["data"]["task_info"]["context"]["critical"]["x"] == 1
+        assert result["data"]["task_info"]["upstream"][0]["delivered"]["critical"]["x"] == 1
 
 
 class TestRemoveDuringExecution:

@@ -30,10 +30,9 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     """Get all information an agent needs to execute a node.
 
     Composes data from multiple sources:
-    - Merged upstream context (via ContextPropagator)
-    - Edge contracts (expectations from dependencies)
-    - Promises to downstream dependents
-    - Visible descendant topology (2 hops)
+    - upstream: each ancestor with contract (if direct) and delivered context
+    - promises: what this node owes to downstream dependents
+    - visible_nodes: downstream topology (2 hops)
     """
     if node_id not in cascade.nodes:
         raise ValueError(f"Node {node_id} not found")
@@ -41,33 +40,39 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     node = cascade.nodes[node_id]
 
     propagator = ContextPropagator(cascade)
-    merged_context = propagator.collect_context_at(node_id)
+    entries = propagator.collect_context_at(node_id)
 
-    context_dict: dict[str, Any] = {}
-    if merged_context.critical:
-        context_dict["critical"] = merged_context.critical
-    if merged_context.summary:
-        context_dict["summary"] = merged_context.summary
-    if merged_context.artifacts:
-        context_dict["artifacts"] = merged_context.artifacts
+    upstream: list[dict[str, Any]] = []
+    for entry in entries:
+        item: dict[str, Any] = {
+            "node_id": entry.node_id,
+            "state": entry.state,
+            "distance": entry.distance,
+            "path": entry.path,
+        }
+        if entry.expectation:
+            item["expectation"] = entry.expectation
+        if entry.promise:
+            item["promise"] = entry.promise
 
-    contracts = []
-    for dep_info in cascade.get_node_dependencies_info(node_id):
-        contract_dict: dict[str, Any] = {"node_id": dep_info["node_id"]}
-        if dep_info["expectation"]:
-            contract_dict["expectation"] = dep_info["expectation"]
-        if dep_info["promise"]:
-            contract_dict["promise"] = dep_info["promise"]
-        contracts.append(contract_dict)
+        delivered: dict[str, Any] = {}
+        if entry.summary:
+            delivered["summary"] = entry.summary
+        if entry.critical:
+            delivered["critical"] = entry.critical
+        if entry.artifacts:
+            delivered["artifacts"] = entry.artifacts
+        if delivered:
+            item["delivered"] = delivered
+
+        upstream.append(item)
 
     promises = cascade.get_node_promises(node_id)
     visible_descendants = _get_visible_descendants(cascade, node_id, max_distance=2)
 
     result: dict[str, Any] = {"id": node.id, "state": node.state.name}
-    if context_dict:
-        result["context"] = context_dict
-    if contracts:
-        result["contracts"] = contracts
+    if upstream:
+        result["upstream"] = upstream
     if promises:
         result["promises"] = promises
     if visible_descendants:

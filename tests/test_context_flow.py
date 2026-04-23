@@ -29,6 +29,11 @@ def make_contract(node_id: str) -> dict:
     }
 
 
+def find_entry(upstream: list, node_id: str) -> dict:
+    """Find an upstream entry by node_id."""
+    return next(e for e in upstream if e["node_id"] == node_id)
+
+
 class TestContextFlow:
     """Tests that agent output flows through the DAG."""
 
@@ -41,7 +46,6 @@ class TestContextFlow:
             "expectations": [make_contract("a")],
         })
 
-        # Agent 1 claims and completes A with output
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
         finish_task.finish_task(temp_storage, {
             "task_id": "a",
@@ -49,12 +53,16 @@ class TestContextFlow:
             "summary": "Analysis found 3 API endpoints",
         })
 
-        # Agent 2 claims B — should see A's output
         result = get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "b"})
         task_info = result["data"]["task_info"]
 
-        assert "context" in task_info
-        assert "Analysis found 3 API endpoints" in task_info["context"]["summary"]
+        assert "upstream" in task_info
+        up = task_info["upstream"]
+        assert len(up) == 1
+        assert up[0]["node_id"] == "a"
+        assert up[0]["distance"] == 1
+        assert up[0]["expectation"] == "Expect output from a"
+        assert up[0]["delivered"]["summary"] == "Analysis found 3 API endpoints"
 
     def test_critical_propagates_indefinitely(self, temp_storage):
         """Critical KV data propagates through the entire chain."""
@@ -70,7 +78,6 @@ class TestContextFlow:
             "expectations": [make_contract("b")],
         })
 
-        # A completes with critical data
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
         finish_task.finish_task(temp_storage, {
             "task_id": "a",
@@ -79,7 +86,6 @@ class TestContextFlow:
             "critical": {"api_endpoints": ["/users", "/auth"], "schema_version": 2},
         })
 
-        # B completes, adding its own critical data
         get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "b"})
         finish_task.finish_task(temp_storage, {
             "task_id": "b",
@@ -88,13 +94,17 @@ class TestContextFlow:
             "critical": {"implementation_lang": "python"},
         })
 
-        # C should see critical data from BOTH A and B
         result = get_task.get_task(temp_storage, {"agent_id": "agent-3", "task_id": "c"})
-        task_info = result["data"]["task_info"]
+        up = result["data"]["task_info"]["upstream"]
 
-        assert task_info["context"]["critical"]["api_endpoints"] == ["/users", "/auth"]
-        assert task_info["context"]["critical"]["schema_version"] == 2
-        assert task_info["context"]["critical"]["implementation_lang"] == "python"
+        b_entry = find_entry(up, "b")
+        a_entry = find_entry(up, "a")
+        assert b_entry["distance"] == 1
+        assert b_entry["delivered"]["critical"]["implementation_lang"] == "python"
+        assert a_entry["distance"] == 2
+        assert a_entry["path"] == ["a", "b"]
+        assert a_entry["delivered"]["critical"]["api_endpoints"] == ["/users", "/auth"]
+        assert len(up) == 2
 
     def test_context_created_when_none(self, temp_storage):
         """finish_task creates context if node has none — no silent dropping."""
@@ -112,8 +122,8 @@ class TestContextFlow:
             assert cascade.nodes["a"].context is not None
             assert cascade.nodes["a"].context.summary == "This must not be silently dropped"
 
-    def test_diamond_context_merge(self, temp_storage):
-        """Context from parallel branches merges at the join node."""
+    def test_diamond_context_no_overwrite(self, temp_storage):
+        """Context from parallel branches kept separate at the join node."""
         #   a
         #  / \
         # b   c
@@ -133,37 +143,40 @@ class TestContextFlow:
             "expectations": [make_contract("b"), make_contract("c")],
         })
 
-        # Complete a
         get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
         finish_task.finish_task(temp_storage, {
-            "task_id": "a",
-            "success": True,
+            "task_id": "a", "success": True,
             "critical": {"root_data": "shared"},
         })
 
-        # Complete b and c with different outputs
         get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "b"})
         finish_task.finish_task(temp_storage, {
-            "task_id": "b",
-            "success": True,
+            "task_id": "b", "success": True,
             "summary": "Branch B done",
             "critical": {"branch": "B"},
         })
 
         get_task.get_task(temp_storage, {"agent_id": "a3", "task_id": "c"})
         finish_task.finish_task(temp_storage, {
-            "task_id": "c",
-            "success": True,
+            "task_id": "c", "success": True,
             "summary": "Branch C done",
-            "critical": {"branch": "C"},  # overwrites B's "branch" key — latest wins
+            "critical": {"branch": "C"},
         })
 
-        # D should see merged context from all ancestors
         result = get_task.get_task(temp_storage, {"agent_id": "a4", "task_id": "d"})
-        ctx = result["data"]["task_info"]["context"]
+        up = result["data"]["task_info"]["upstream"]
 
-        assert ctx["critical"]["root_data"] == "shared"  # from a
-        assert "Branch B done" in ctx["summary"] or "Branch C done" in ctx["summary"]
+        b_entry = find_entry(up, "b")
+        c_entry = find_entry(up, "c")
+        assert b_entry["distance"] == 1
+        assert b_entry["delivered"]["critical"]["branch"] == "B"
+        assert c_entry["distance"] == 1
+        assert c_entry["delivered"]["critical"]["branch"] == "C"
+
+        a_entries = [e for e in up if e["node_id"] == "a"]
+        assert len(a_entries) == 1
+        assert a_entries[0]["distance"] == 2
+        assert a_entries[0]["delivered"]["critical"]["root_data"] == "shared"
 
     def test_backward_compat_result_param(self, temp_storage):
         """'result' param still works as alias for 'summary'."""
@@ -175,10 +188,10 @@ class TestContextFlow:
 
         get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
         finish_task.finish_task(temp_storage, {
-            "task_id": "a",
-            "success": True,
-            "result": "Old-style result param",  # not 'summary'
+            "task_id": "a", "success": True,
+            "result": "Old-style result param",
         })
 
         result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "b"})
-        assert "Old-style result param" in result["data"]["task_info"]["context"]["summary"]
+        up = result["data"]["task_info"]["upstream"]
+        assert up[0]["delivered"]["summary"] == "Old-style result param"

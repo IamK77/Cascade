@@ -18,6 +18,6 @@ The canonical definition lives in cascade.types to avoid circular
 dependencies between core/ and context/.
 """
 
-from cascade.types import Context, ContextKV, ContextLevel
+from cascade.types import Context, ContextKV
 
-__all__ = ["Context", "ContextKV", "ContextLevel"]
+__all__ = ["Context", "ContextKV"]

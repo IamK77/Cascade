@@ -22,7 +22,7 @@ from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage, LockError
-from cascade.types import Context, ContextKV, ContextLevel, Contract, EdgeId
+from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId
 from cascade.view import get_node_view
 
 # Tools (framework-agnostic functions for LLM agents)
@@ -41,7 +41,7 @@ __all__ = [
     "Context",
     "Contract",
     "ContextKV",
-    "ContextLevel",
+    "ContextEntry",
     "EdgeId",
     # Core
     "Cascade",

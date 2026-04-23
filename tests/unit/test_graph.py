@@ -300,12 +300,14 @@ class TestGetNodeView:
         view = get_node_view(cascade,"b")
         assert view["id"] == "b"
         assert view["state"] == "READY"
-        assert "context" in view
-        assert view["context"]["critical"] == {"project": "test"}
-        assert "contracts" in view
-        assert len(view["contracts"]) == 1
-        assert view["contracts"][0]["node_id"] == "a"
-        assert view["contracts"][0]["expectation"] == "Expect analysis results"
+        assert "upstream" in view
+        assert len(view["upstream"]) == 1
+        entry = view["upstream"][0]
+        assert entry["node_id"] == "a"
+        assert entry["distance"] == 1
+        assert entry["expectation"] == "Expect analysis results"
+        assert entry["promise"] == "Promises to output analysis results"
+        assert entry["delivered"]["critical"] == {"project": "test"}
 
     def test_get_node_view_without_promise(self):
         cascade = Cascade()
