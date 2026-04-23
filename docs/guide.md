@@ -44,12 +44,12 @@ add_node(storage, {
 })
 ```
 
-Independent task groups are allowed — you can create multiple roots:
+**Maximize parallelism** — split horizontally wherever possible:
 
 ```python
 add_node(storage, {"node_id": "fix_frontend_bugs"})
 add_node(storage, {"node_id": "refactor_backend"})
-# These are independent — no connection needed
+# Independent tasks run in parallel — no connection needed
 ```
 
 ## 3. Claim and Complete Tasks
@@ -62,8 +62,7 @@ result = get_task(storage, {"agent_id": "agent-001"})
 task_info = result["data"]["task_info"]
 
 # task_info contains:
-# - context: merged from all completed ancestors
-# - contracts: what you expect from upstream
+# - upstream: each ancestor with contract + delivered context
 # - promises: what you owe to downstream
 # - visible_nodes: preview of downstream topology
 
@@ -80,6 +79,33 @@ finish_task(storage, {
 })
 ```
 
+### Upstream View
+
+When you claim a task, you see each ancestor's contribution separately:
+
+```json
+{
+  "upstream": [
+    {
+      "node_id": "analyze",
+      "state": "COMPLETED",
+      "distance": 1,
+      "path": ["analyze"],
+      "expectation": "Feature requirements and constraints",
+      "promise": "Deliver prioritized feature list",
+      "delivered": {
+        "summary": "Requirements: JWT auth + REST API",
+        "critical": {"auth_type": "JWT", "database": "PostgreSQL"}
+      }
+    }
+  ]
+}
+```
+
+- **distance 1** (direct parents): includes contract (expectation/promise)
+- **distance 2+** (grandparents): includes path for provenance, no contract
+- Fan-in: each source is separate — no key overwrite
+
 ### Context Channels
 
 Your output flows downstream through three channels:
@@ -92,18 +118,27 @@ Your output flows downstream through three channels:
 
 **Rule of thumb**: if downstream agents need to _use_ it programmatically, put it in `critical`. If they need to _read_ it, `summary`. If it's a full document, `artifacts`.
 
+### Contract Semantics
+
+- **expectation**: what the downstream node needs — consumer's perspective
+- **promise**: what the upstream node delivers — producer's perspective
+
+The framework warns if multiple edges to the same node have identical promises.
+
 ## 4. Dynamic Editing
 
-The graph can change while agents are working.
+The initial DAG is a starting hypothesis. The orchestrator monitors and adapts.
 
 ### Split — break a big task into smaller ones
 
 ```python
 from tools import split_node
 
+# ACTIVE nodes must be released first
 split_node(storage, {
     "parent_id": "implement",
     "new_nodes": [{"node_id": "impl_auth"}, {"node_id": "impl_api"}],
+    "reason": "Task too large for one agent",
 })
 # implement removed, new nodes inherit its dependencies and dependents
 ```
@@ -118,6 +153,7 @@ refine_node(storage, {
     "dependency_id": "design_schema",
     "expectation": "Database schema for CRUD operations",
     "promise": "PostgreSQL schema with migrations",
+    "reason": "Discovered hidden dependency during implementation",
 })
 # impl_api goes PENDING if design_schema isn't completed yet
 ```
@@ -141,7 +177,66 @@ rework(storage, {
 # Agent's task goes PENDING until corrective work completes
 ```
 
-## 5. Multi-Agent Coordination
+### Remove — cancel unnecessary tasks
+
+```python
+from tools import remove_node
+
+# ACTIVE nodes cannot be removed — release first
+remove_node(storage, {
+    "node_id": "deprecated_module",
+    "cascade": True,          # also remove all dependents
+    "reason": "No longer needed after architecture change",
+})
+```
+
+All mutation tools support `reason` — recorded in the event log for audit.
+
+## 5. Cancellation
+
+Two implementations of the same semantic:
+
+### Cross-process (file-based)
+
+```python
+from tools import check_task
+
+# Pull: check if a task claim is still valid
+result = check_task(storage, {"task_id": "analyze"})
+# {"valid": true, "agent_id": "agent-001", ...}
+```
+
+### In-process (memory-based)
+
+```python
+from cascade.context.cancellation import CancellationToken
+
+token = CancellationToken()
+get_task(storage, {
+    "agent_id": "agent-001",
+    "task_id": "analyze",
+    "cancel_notifier": token,  # CancellationToken IS a CancelNotifier
+})
+
+# In another coroutine/thread — when task is released/reworked/timed out:
+# token.is_cancelled becomes True, registered callbacks fire instantly
+```
+
+### Push notifications
+
+```python
+from cascade.storage.token_store import FileNotifier
+
+get_task(storage, {
+    "agent_id": "agent-001",
+    "task_id": "analyze",
+    "cancel_notifier": FileNotifier("/tmp/agent-001.cancel"),
+})
+# When task is invalidated, framework writes to that file
+# Implement CancelNotifier protocol for webhook, Redis, etc.
+```
+
+## 6. Multi-Agent Coordination
 
 Multiple agents share the same `.cascade/` directory. File locking ensures consistency.
 
@@ -153,6 +248,7 @@ get_task(s, {"agent_id": "agent-1"})  get_task(s, {"agent_id": "agent-2"})
 
 - **One task per agent** — `get_task` with an active task returns a reminder
 - **Critical path priority** — longest downstream chain is scheduled first
+- **ACTIVE protection** — cannot remove/split a node with an active agent
 - **Timeouts** — auto-release stalled tasks:
 
 ```python
@@ -162,7 +258,7 @@ from tools.check_timeouts import check_timeouts
 check_timeouts(storage, {"default_timeout": 1800})  # release stalled > 30min
 ```
 
-## 6. Monitoring
+## 7. Monitoring
 
 ### List tasks
 
@@ -181,30 +277,20 @@ history(storage, {"node_id": "analyze"})         # one node's events
 history(storage, {"last_n": 10})                 # last 10
 ```
 
-### Visualization
-
-```python
-from cascade.viz import to_ascii, to_mermaid
-
-cascade = GraphStorage(".cascade").load()
-print(to_ascii(cascade))     # terminal view with critical path markers
-print(to_mermaid(cascade))   # paste into any mermaid renderer
-```
-
-## 7. Error Recovery
+## 8. Error Recovery
 
 ```python
 # Release — give up temporarily, task returns to READY
-finish_task(storage, {"task_id": "build", "release": True, "result": "Blocked"})
+finish_task(storage, {"task_id": "build", "release": True, "summary": "Blocked"})
 
 # Fail — task cannot be completed, downstream stays PENDING
-finish_task(storage, {"task_id": "deploy", "success": False, "result": "Error"})
+finish_task(storage, {"task_id": "deploy", "success": False, "summary": "Error"})
 
 # Cascade fail — abort entire downstream chain
 finish_task(storage, {"task_id": "core", "success": False, "cascade": True})
 ```
 
-## 8. Framework Integration
+## 9. Framework Integration
 
 Tools are `(GraphStorage, dict) → dict`. Wrap for any framework:
 
@@ -240,11 +326,12 @@ cascade get-task --agent <id> [--task <id>] [--timeout <sec>]
 cascade finish-task --task <id> --success [--summary <text>] [--critical '<json>']
 cascade finish-task --task <id> --fail [--reason <text>] [--cascade]
 cascade finish-task --task <id> --release [--reason <text>]
-cascade split-node --parent <id> --children <id1,id2>
-cascade refine-node --node <id> --dep <id> --expectation <text> --promise <text>
-cascade remove-node --node <id> [--cascade]
-cascade edit-node --node <id> [--state <state>] [--critical '<json>']
+cascade split-node --parent <id> --children <id1,id2> [--reason <text>]
+cascade refine-node --node <id> --dep <id> --expectation <text> --promise <text> [--reason <text>]
+cascade remove-node --node <id> [--cascade] [--reason <text>]
+cascade edit-node --node <id> [--state <state>] [--critical '<json>'] [--context-merge replace|merge|append] [--reason <text>]
 cascade rework --source <id> --corrective <id> --reason <text> --agent <id>
+cascade check-task --task <id>
 cascade check-timeouts [--default-timeout <sec>]
 cascade history [--node <id>] [--type <type>] [--last <n>] [--summary]
 cascade list-nodes [--state <state>]
