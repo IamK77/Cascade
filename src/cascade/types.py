@@ -21,7 +21,7 @@ and the standard library.
 Dependency rule: types.py → (nothing in cascade/)
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, TypeAlias
 
 # ---------------------------------------------------------------------------
@@ -56,6 +56,36 @@ ContextKV: TypeAlias = dict[str, Any]
 """Key-value pairs for critical context propagation."""
 
 
+# ---------------------------------------------------------------------------
+# Token — task claim status for cancellation support.
+# ---------------------------------------------------------------------------
+@dataclass(slots=True)
+class TokenStatus:
+    """Status of a task claim token.
+
+    Created when an agent claims a task. Invalidated when the task
+    is released, reworked, timed out, or cancelled. Provides both
+    pull (check()) and push (CancelNotifier) cancellation interfaces.
+    """
+
+    node_id: str
+    agent_id: str
+    valid: bool
+    claimed_at: float
+    reason: str = ""
+    invalidated_at: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "TokenStatus":
+        return cls(**{k: v for k, v in d.items() if k in cls.__slots__})
+
+
+# ---------------------------------------------------------------------------
+# Context entry — upstream contribution with provenance.
+# ---------------------------------------------------------------------------
 @dataclass(slots=True)
 class ContextEntry:
     """An upstream node's contribution to the current node's context.

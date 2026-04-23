@@ -82,6 +82,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f" (reason: {summary})"
 
                 storage.save(cascade)
+                storage.tokens.invalidate(task_id, reason="released")
                 from cascade.events import EventType
                 storage.events.emit(EventType.TASK_RELEASED, node_id=task_id, reason=summary)
                 return {
@@ -114,6 +115,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f", unblocked: {unblocked}"
 
                 storage.save(cascade)
+                storage.tokens.cleanup(task_id)
                 from cascade.events import EventType
                 storage.events.emit(EventType.TASK_COMPLETED, node_id=task_id, unblocked=unblocked)
                 return {
@@ -154,6 +156,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                     message += f": {summary}"
 
                 storage.save(cascade)
+                storage.tokens.cleanup(task_id)
                 from cascade.events import EventType
                 storage.events.emit(EventType.TASK_FAILED, node_id=task_id,
                                     reason=summary, affected=affected, cascade=should_cascade)

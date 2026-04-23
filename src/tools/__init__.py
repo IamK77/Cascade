@@ -46,6 +46,7 @@ __all__ = [
     # Feedback operations
     "rework",
     # Monitoring operations
+    "check_task",
     "check_timeouts",
     # Query operations
     "list_nodes",
@@ -63,6 +64,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
     """Get all available tools as a dictionary."""
     from tools import (
         add_node,
+        check_task,
         check_timeouts,
         edit_node,
         finish_task,
@@ -83,6 +85,7 @@ def get_all_tools() -> dict[str, ToolFunc]:
         "edit_node": edit_node.edit_node,
         "get_task": get_task.get_task,
         "finish_task": finish_task.finish_task,
+        "check_task": check_task.check_task,
         "rework": rework.rework,
         "check_timeouts": check_timeouts.check_timeouts,
         "list_nodes": list_nodes.list_nodes,

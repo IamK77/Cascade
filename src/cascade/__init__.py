@@ -22,7 +22,8 @@ from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage, LockError
-from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId
+from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
+from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId, TokenStatus
 from cascade.view import get_node_view
 
 # Tools (framework-agnostic functions for LLM agents)
@@ -43,6 +44,11 @@ __all__ = [
     "ContextKV",
     "ContextEntry",
     "EdgeId",
+    "TokenStatus",
+    # Cancellation
+    "CancelNotifier",
+    "FileNotifier",
+    "TokenStore",
     # Core
     "Cascade",
     "Node",

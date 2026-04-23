@@ -98,10 +98,13 @@ def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
 
 def cmd_split_node(args: argparse.Namespace) -> dict[str, Any]:
     children = [c.strip() for c in args.children.split(",") if c.strip()]
-    return execute_tool(get_storage(args.storage), "split_node", {
+    params: dict[str, Any] = {
         "parent_id": args.parent,
         "new_nodes": [{"node_id": cid} for cid in children],
-    })
+    }
+    if args.reason:
+        params["reason"] = args.reason
+    return execute_tool(get_storage(args.storage), "split_node", params)
 
 
 def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
@@ -110,14 +113,16 @@ def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
         params["expectation"] = args.expectation
     if args.promise:
         params["promise"] = args.promise
+    if args.reason:
+        params["reason"] = args.reason
     return execute_tool(get_storage(args.storage), "refine_node", params)
 
 
 def cmd_remove_node(args: argparse.Namespace) -> dict[str, Any]:
-    return execute_tool(get_storage(args.storage), "remove_node", {
-        "node_id": args.node,
-        "cascade": args.cascade,
-    })
+    params: dict[str, Any] = {"node_id": args.node, "cascade": args.cascade}
+    if args.reason:
+        params["reason"] = args.reason
+    return execute_tool(get_storage(args.storage), "remove_node", params)
 
 
 def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
@@ -133,6 +138,10 @@ def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
             return {"success": False, "message": "Invalid JSON for --critical"}
     if args.artifacts:
         params["artifacts"] = args.artifacts
+    if args.context_merge:
+        params["context_merge"] = args.context_merge
+    if args.reason:
+        params["reason"] = args.reason
     return execute_tool(get_storage(args.storage), "edit_node", params)
 
 
@@ -148,6 +157,10 @@ def cmd_rework(args: argparse.Namespace) -> dict[str, Any]:
         "corrective_promise": args.corrective_promise,
     }
     return execute_tool(get_storage(args.storage), "rework", params)
+
+
+def cmd_check_task(args: argparse.Namespace) -> dict[str, Any]:
+    return execute_tool(get_storage(args.storage), "check_task", {"task_id": args.task})
 
 
 def cmd_check_timeouts(args: argparse.Namespace) -> dict[str, Any]:
@@ -220,6 +233,7 @@ def main() -> None:
     p = sub.add_parser("split-node", help="Split a task into subtasks")
     p.add_argument("--parent", "-p", required=True, help="Parent node ID")
     p.add_argument("--children", "-c", required=True, help="Comma-separated child IDs")
+    p.add_argument("--reason", help="Why this split is needed (recorded in event log)")
     p.set_defaults(func=cmd_split_node)
 
     # refine-node
@@ -227,13 +241,15 @@ def main() -> None:
     p.add_argument("--node", "-n", required=True, help="Node ID")
     p.add_argument("--dep", "-d", required=True, help="Dependency ID")
     p.add_argument("--expectation", help="What node expects from dep")
-    p.add_argument("--promise", help="What dep promises")
+    p.add_argument("--promise", help="What dep promises to deliver")
+    p.add_argument("--reason", help="Why this dependency is needed (recorded in event log)")
     p.set_defaults(func=cmd_refine_node)
 
     # remove-node
     p = sub.add_parser("remove-node", help="Remove a node")
     p.add_argument("--node", "-n", required=True, help="Node ID")
     p.add_argument("--cascade", action="store_true", help="Also remove dependents")
+    p.add_argument("--reason", help="Why this node is being removed (recorded in event log)")
     p.set_defaults(func=cmd_remove_node)
 
     # edit-node
@@ -243,6 +259,8 @@ def main() -> None:
     p.add_argument("--summary", help="Summary text")
     p.add_argument("--critical", help="Critical context as JSON")
     p.add_argument("--artifacts", help="Artifacts content")
+    p.add_argument("--context-merge", choices=["replace", "merge", "append"], help="How to merge context")
+    p.add_argument("--reason", help="Why this edit is needed (recorded in event log)")
     p.set_defaults(func=cmd_edit_node)
 
     # rework
@@ -256,6 +274,11 @@ def main() -> None:
     p.add_argument("--corrective-expectation", required=True, help="What requester expects from correction")
     p.add_argument("--corrective-promise", required=True, help="What corrective promises")
     p.set_defaults(func=cmd_rework)
+
+    # check-task
+    p = sub.add_parser("check-task", help="Check if a task claim is still valid (pull cancellation)")
+    p.add_argument("--task", "-t", required=True, help="Task ID to check")
+    p.set_defaults(func=cmd_check_task)
 
     # check-timeouts
     p = sub.add_parser("check-timeouts", help="Release stalled tasks")

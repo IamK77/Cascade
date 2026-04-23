@@ -26,6 +26,7 @@ from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.events import EventStore
+from cascade.storage.token_store import TokenStore
 from cascade.types import Context, Contract
 
 
@@ -67,6 +68,7 @@ class GraphStorage:
         self._lock_file: IO[str] | None = None
         self._lock_path = self.base_dir / ".lock"
         self.events = EventStore(self.base_dir)
+        self.tokens = TokenStore(self.base_dir)
 
     @classmethod
     def project(cls, base_dir: Path | str | None = None) -> "GraphStorage":

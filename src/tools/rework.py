@@ -105,6 +105,7 @@ def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             if result.success:
                 active_node.agent_id = None
                 storage.save(cascade)
+                storage.tokens.invalidate(active_node.id, reason="rework_requested")
                 from cascade.events import EventType
                 storage.events.emit(
                     EventType.REWORK_REQUESTED,

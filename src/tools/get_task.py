@@ -142,6 +142,8 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             task_info = get_node_view(cascade, task_id)
             storage.save(cascade)
+            storage.tokens.create(task_id, agent_id, node.claimed_at,
+                                  notifier=params.get("cancel_notifier"))
             from cascade.events import EventType
             storage.events.emit(EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id)
 

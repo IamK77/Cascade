@@ -81,6 +81,7 @@ def check_timeouts(storage: GraphStorage, params: dict[str, Any]) -> dict[str, A
                     "elapsed_seconds": round(elapsed, 1),
                     "timeout_seconds": effective_timeout,
                 })
+                storage.tokens.invalidate(node.id, reason="timed_out")
                 from cascade.events import EventType
                 storage.events.emit(EventType.TASK_TIMED_OUT, node_id=node.id,
                                     agent_id=old_agent, elapsed=round(elapsed, 1))
