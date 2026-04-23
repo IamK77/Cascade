@@ -21,8 +21,8 @@ uv sync
 Every workflow starts with a DAG. Nodes are tasks, edges are dependencies with contracts.
 
 ```python
-from cascade import GraphStorage
-from tools import add_node
+from cascade import GraphStorage, add_node
+
 
 storage = GraphStorage(".cascade")
 
@@ -63,7 +63,7 @@ add_node(storage, {"node_id": "refactor_backend"})
 ## 3. Claim and Complete Tasks
 
 ```python
-from tools import get_task, finish_task
+from cascade import get_task, finish_task
 
 # Agent claims the highest-priority READY task (critical path first)
 result = get_task(storage, {"agent_id": "agent-001"})
@@ -140,7 +140,7 @@ The initial DAG is a starting hypothesis. The orchestrator monitors and adapts.
 ### Split — break a big task into smaller ones
 
 ```python
-from tools import split_node
+from cascade import split_node
 
 # ACTIVE nodes must be released first
 split_node(storage, {
@@ -154,7 +154,7 @@ split_node(storage, {
 ### Refine — add a missing dependency
 
 ```python
-from tools import refine_node
+from cascade import refine_node
 
 refine_node(storage, {
     "node_id": "impl_api",
@@ -169,7 +169,7 @@ refine_node(storage, {
 ### Rework — upstream output was wrong
 
 ```python
-from tools.rework import rework
+from cascade import rework
 
 rework(storage, {
     "source_node_id": "analyze",
@@ -188,7 +188,7 @@ rework(storage, {
 ### Remove — cancel unnecessary tasks
 
 ```python
-from tools import remove_node
+from cascade import remove_node
 
 # ACTIVE nodes cannot be removed — release first
 remove_node(storage, {
@@ -207,7 +207,7 @@ Two implementations of the same semantic:
 ### Cross-process (file-based)
 
 ```python
-from tools import check_task
+from cascade import check_task
 
 # Pull: check if a task claim is still valid
 result = check_task(storage, {"task_id": "analyze"})
@@ -262,7 +262,7 @@ get_task(s, {"agent_id": "agent-1"})  get_task(s, {"agent_id": "agent-2"})
 ```python
 get_task(storage, {"agent_id": "agent-1", "timeout": 3600})  # 1 hour
 
-from tools.check_timeouts import check_timeouts
+from cascade import check_timeouts
 check_timeouts(storage, {"default_timeout": 1800})  # release stalled > 30min
 ```
 
@@ -271,7 +271,7 @@ check_timeouts(storage, {"default_timeout": 1800})  # release stalled > 30min
 ### List tasks
 
 ```python
-from tools import list_nodes
+from cascade import list_nodes
 list_nodes(storage, {})                          # all
 list_nodes(storage, {"state_filter": "READY"})   # only ready
 ```
@@ -279,7 +279,7 @@ list_nodes(storage, {"state_filter": "READY"})   # only ready
 ### Event history
 
 ```python
-from tools.history import history
+from cascade import history
 history(storage, {"summary": True})              # counts by type
 history(storage, {"node_id": "analyze"})         # one node's events
 history(storage, {"last_n": 10})                 # last 10
@@ -303,8 +303,8 @@ finish_task(storage, {"task_id": "core", "success": False, "cascade": True})
 Tools are `(GraphStorage, dict) → dict`. Wrap for any framework:
 
 ```python
-from cascade import GraphStorage
-from tools import get_task, finish_task
+from cascade import GraphStorage, add_node
+from cascade import get_task, finish_task
 
 storage = GraphStorage(".cascade")
 

@@ -36,9 +36,9 @@ uv sync
 
 ```python
 from cascade import GraphStorage
-from tools import add_node, get_task, finish_task
+from cascade import GraphStorage, add_node, get_task, finish_task
 
-storage = GraphStorage(".cascade")
+storage = GraphStorage()
 
 # Build a task graph — split horizontally for parallelism
 add_node(storage, {"node_id": "analyze"})

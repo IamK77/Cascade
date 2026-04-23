@@ -28,8 +28,7 @@ pip install cascade-auto
 ## クイックスタート
 
 ```python
-from cascade import GraphStorage
-from tools import add_node, get_task, finish_task
+from cascade import GraphStorage, add_node, get_task, finish_task
 
 storage = GraphStorage(".cascade")
 
