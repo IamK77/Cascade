@@ -75,12 +75,10 @@ def sample_cascade_with_context():
     context_a = Context(
         critical={"project": "test"},
         summary="Initial task",
-        artifacts="# Task A\nThis is the initial task."
+        artifacts="# Task A\nThis is the initial task.",
     )
     context_b = Context(
-        critical={"depends_on": "a"},
-        summary="Dependent task",
-        artifacts="# Task B\nDepends on A."
+        critical={"depends_on": "a"}, summary="Dependent task", artifacts="# Task B\nDepends on A."
     )
 
     cascade.add_node(Node(id="a", state=NodeState.READY, context=context_a))
@@ -100,9 +98,7 @@ def sample_cascade_with_contracts():
     cascade.add_node(Node(id="b", state=NodeState.PENDING))
 
     cascade.add_edge(
-        "a", "b",
-        expectation="Expect config results",
-        promise="Promise to output config results"
+        "a", "b", expectation="Expect config results", promise="Promise to output config results"
     )
 
     return cascade
@@ -114,7 +110,7 @@ def sample_context():
     return Context(
         critical={"key1": "value1", "key2": "value2"},
         summary="This is a summary",
-        artifacts="# Full Artifacts\n\nDetailed content here."
+        artifacts="# Full Artifacts\n\nDetailed content here.",
     )
 
 

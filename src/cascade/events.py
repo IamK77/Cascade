@@ -122,7 +122,8 @@ class EventStore:
     def read_by_node(self, node_id: str) -> list[Event]:
         """Read events related to a specific node."""
         return [
-            e for e in self.read_all()
+            e
+            for e in self.read_all()
             if e.data.get("node_id") == node_id
             or e.data.get("source_node_id") == node_id
             or e.data.get("corrective_node_id") == node_id

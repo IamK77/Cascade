@@ -43,13 +43,19 @@ class TestGraphStorage:
     def sample_cascade(self):
         cascade = Cascade()
         node_a = Node(
-            id="a", state=NodeState.READY,
+            id="a",
+            state=NodeState.READY,
             context=Context(critical={"project": "test"}, summary="This is node A"),
         )
         node_b = Node(id="b", state=NodeState.PENDING)
         cascade.add_node(node_a)
         cascade.add_node(node_b)
-        cascade.add_edge("a", "b", expectation="Expect analysis results", promise="Promises to output analysis results")
+        cascade.add_edge(
+            "a",
+            "b",
+            expectation="Expect analysis results",
+            promise="Promises to output analysis results",
+        )
         return cascade
 
     def test_save_and_load(self, storage, sample_cascade):
@@ -97,7 +103,8 @@ class TestGraphStorage:
     def test_save_node_incremental(self, storage, sample_cascade):
         storage.save(sample_cascade)
         sample_cascade.nodes["a"].context = Context(
-            critical={"project": "updated"}, summary="Updated summary",
+            critical={"project": "updated"},
+            summary="Updated summary",
         )
         storage.save_node(sample_cascade, "a")
 
@@ -129,8 +136,11 @@ class TestGraphStorage:
         cascade = Cascade()
         artifacts_content = "# Task Artifacts\n\nThis is the full documentation."
         node = Node(
-            id="task_a", state=NodeState.READY,
-            context=Context(critical={"project": "test"}, summary="Task A summary", artifacts=artifacts_content),
+            id="task_a",
+            state=NodeState.READY,
+            context=Context(
+                critical={"project": "test"}, summary="Task A summary", artifacts=artifacts_content
+            ),
         )
         cascade.add_node(node)
         storage.save(cascade)
@@ -140,12 +150,16 @@ class TestGraphStorage:
         assert artifacts_file.read_text(encoding="utf-8") == artifacts_content
 
         graph_data = json.loads((temp_dir / "graph.json").read_text(encoding="utf-8"))
-        assert graph_data["nodes"]["task_a"]["context"]["artifacts"] == ".cascade/artifacts/task_a.md"
+        assert (
+            graph_data["nodes"]["task_a"]["context"]["artifacts"] == ".cascade/artifacts/task_a.md"
+        )
 
     def test_artifacts_loaded_from_file(self, storage):
         cascade = Cascade()
         artifacts_content = "# Detailed Documentation\n\nFull content here."
-        node = Node(id="doc_node", state=NodeState.READY, context=Context(artifacts=artifacts_content))
+        node = Node(
+            id="doc_node", state=NodeState.READY, context=Context(artifacts=artifacts_content)
+        )
         cascade.add_node(node)
         storage.save(cascade)
 
@@ -158,7 +172,8 @@ class TestGraphStorage:
         cascade = Cascade()
         content = "# Existing Artifacts\n\nPre-created content."
         node = Node(
-            id="pre_node", state=NodeState.READY,
+            id="pre_node",
+            state=NodeState.READY,
             context=Context(artifacts=content),
         )
         cascade.add_node(node)

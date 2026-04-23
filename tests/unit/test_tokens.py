@@ -78,16 +78,19 @@ class TestCancelNotifier:
     def test_file_notifier(self, temp_storage):
         notify_path = temp_storage.base_dir / "test-cancel.json"
         store = temp_storage.tokens
-        store.create("task-a", "agent-1", time.time(),
-                     notifier=FileNotifier(notify_path))
+        store.create("task-a", "agent-1", time.time(), notifier=FileNotifier(notify_path))
         store.invalidate("task-a", "cancelled")
         assert notify_path.exists()
 
     def test_callback_notifier(self, temp_storage):
         received = []
         store = temp_storage.tokens
-        store.create("task-a", "agent-1", time.time(),
-                     notifier=CallbackNotifier(lambda t: received.append(t)))
+        store.create(
+            "task-a",
+            "agent-1",
+            time.time(),
+            notifier=CallbackNotifier(lambda t: received.append(t)),
+        )
         store.invalidate("task-a", "timed_out")
         assert len(received) == 1
         assert received[0].reason == "timed_out"
@@ -172,10 +175,13 @@ class TestActiveProtection:
         add_node.add_node(temp_storage, {"node_id": "a"})
         get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
 
-        r = split_node.split_node(temp_storage, {
-            "parent_id": "a",
-            "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
-        })
+        r = split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "a",
+                "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
+            },
+        )
         assert not r["success"]
         assert "ACTIVE" in r["message"]
 
@@ -192,8 +198,11 @@ class TestActiveProtection:
         get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
         finish_task.finish_task(temp_storage, {"task_id": "a", "release": True})
 
-        r = split_node.split_node(temp_storage, {
-            "parent_id": "a",
-            "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
-        })
+        r = split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "a",
+                "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
+            },
+        )
         assert r["success"]

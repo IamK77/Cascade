@@ -3,8 +3,8 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
-name = "cascade"
-version = "0.2.0"
+name = "cascade-auto"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "typing-extensions" },

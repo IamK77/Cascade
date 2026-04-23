@@ -48,6 +48,7 @@ def check_timeouts(storage: GraphStorage, params: dict[str, Any]) -> dict[str, A
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             now = time.time()
@@ -75,23 +76,32 @@ def check_timeouts(storage: GraphStorage, params: dict[str, Any]) -> dict[str, A
                 node.claimed_at = None
                 node.timeout = None
 
-                released.append({
-                    "task_id": node.id,
-                    "agent_id": old_agent,
-                    "elapsed_seconds": round(elapsed, 1),
-                    "timeout_seconds": effective_timeout,
-                })
+                released.append(
+                    {
+                        "task_id": node.id,
+                        "agent_id": old_agent,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "timeout_seconds": effective_timeout,
+                    }
+                )
                 storage.tokens.invalidate(node.id, reason="timed_out")
                 from cascade.events import EventType
-                storage.events.emit(EventType.TASK_TIMED_OUT, node_id=node.id,
-                                    agent_id=old_agent, elapsed=round(elapsed, 1))
+
+                storage.events.emit(
+                    EventType.TASK_TIMED_OUT,
+                    node_id=node.id,
+                    agent_id=old_agent,
+                    elapsed=round(elapsed, 1),
+                )
 
             if released:
                 storage.save(cascade)
 
             return {
                 "success": True,
-                "message": f"Released {len(released)} timed-out task(s)" if released else "No timed-out tasks found",
+                "message": f"Released {len(released)} timed-out task(s)"
+                if released
+                else "No timed-out tasks found",
                 "data": {
                     "released": released,
                     "count": len(released),

@@ -82,14 +82,18 @@ class NodeState(Enum):
 _VALID_TRANSITIONS: dict[NodeState, frozenset[NodeState]] = {
     NodeState.READY: frozenset({NodeState.ACTIVE, NodeState.FAILED, NodeState.CANCELLED}),
     NodeState.PENDING: frozenset({NodeState.READY, NodeState.FAILED, NodeState.CANCELLED}),
-    NodeState.ACTIVE: frozenset({NodeState.COMPLETED, NodeState.FAILED, NodeState.CANCELLED, NodeState.READY}),
+    NodeState.ACTIVE: frozenset(
+        {NodeState.COMPLETED, NodeState.FAILED, NodeState.CANCELLED, NodeState.READY}
+    ),
     NodeState.COMPLETED: frozenset({NodeState.CANCELLED}),
     NodeState.FAILED: frozenset({NodeState.CANCELLED}),
     NodeState.CANCELLED: frozenset(),
 }
 
-_TERMINAL_STATES: frozenset[NodeState] = frozenset({
-    NodeState.COMPLETED,
-    NodeState.CANCELLED,
-    NodeState.FAILED,
-})
+_TERMINAL_STATES: frozenset[NodeState] = frozenset(
+    {
+        NodeState.COMPLETED,
+        NodeState.CANCELLED,
+        NodeState.FAILED,
+    }
+)

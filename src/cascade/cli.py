@@ -40,6 +40,7 @@ def output(result: dict[str, Any]) -> None:
 # Command handlers
 # ---------------------------------------------------------------------------
 
+
 def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
     deps = [d.strip() for d in (args.deps or "").split(",") if d.strip()]
     dependents = [d.strip() for d in (args.dependents or "").split(",") if d.strip()]
@@ -187,6 +188,7 @@ def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
 # Parser
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="cascade",
@@ -259,7 +261,9 @@ def main() -> None:
     p.add_argument("--summary", help="Summary text")
     p.add_argument("--critical", help="Critical context as JSON")
     p.add_argument("--artifacts", help="Artifacts content")
-    p.add_argument("--context-merge", choices=["replace", "merge", "append"], help="How to merge context")
+    p.add_argument(
+        "--context-merge", choices=["replace", "merge", "append"], help="How to merge context"
+    )
     p.add_argument("--reason", help="Why this edit is needed (recorded in event log)")
     p.set_defaults(func=cmd_edit_node)
 
@@ -269,14 +273,20 @@ def main() -> None:
     p.add_argument("--corrective", required=True, help="ID for corrective node")
     p.add_argument("--reason", required=True, help="Why rework is needed")
     p.add_argument("--agent", required=True, help="Agent requesting rework")
-    p.add_argument("--source-expectation", required=True, help="What corrective expects from source")
+    p.add_argument(
+        "--source-expectation", required=True, help="What corrective expects from source"
+    )
     p.add_argument("--source-promise", required=True, help="What source promises")
-    p.add_argument("--corrective-expectation", required=True, help="What requester expects from correction")
+    p.add_argument(
+        "--corrective-expectation", required=True, help="What requester expects from correction"
+    )
     p.add_argument("--corrective-promise", required=True, help="What corrective promises")
     p.set_defaults(func=cmd_rework)
 
     # check-task
-    p = sub.add_parser("check-task", help="Check if a task claim is still valid (pull cancellation)")
+    p = sub.add_parser(
+        "check-task", help="Check if a task claim is still valid (pull cancellation)"
+    )
     p.add_argument("--task", "-t", required=True, help="Task ID to check")
     p.set_defaults(func=cmd_check_task)
 

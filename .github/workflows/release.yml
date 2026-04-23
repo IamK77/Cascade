@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate changelog
+      - name: Generate release notes
         uses: orhun/git-cliff-action@v4
         id: cliff
         with:
@@ -25,7 +25,6 @@ jobs:
           args: --latest --strip header
         env:
           OUTPUT: CHANGES.md
-          GITHUB_REPO: ${{ github.repository }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -33,14 +32,13 @@ jobs:
           body_path: CHANGES.md
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update CHANGELOG.md
+      - name: Generate full CHANGELOG
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --tag ${{ github.ref_name }}
         env:
           OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
 
       - name: Commit CHANGELOG.md
         run: |

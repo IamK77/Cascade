@@ -39,25 +39,34 @@ class TestSplitDuringExecution:
         """Split a PENDING task while its upstream dependency is being worked on."""
         # Build: a -> b -> c
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "c",
-            "dependencies": ["b"],
-            "expectations": [make_contract("b")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "c",
+                "dependencies": ["b"],
+                "expectations": [make_contract("b")],
+            },
+        )
 
         # Agent claims a (a is ACTIVE, b and c are PENDING)
         get_task.get_task(temp_storage, {"agent_id": "agent-1"})
 
         # Meanwhile, someone decides b is too broad → split into b1, b2
-        result = split_node.split_node(temp_storage, {
-            "parent_id": "b",
-            "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-        })
+        result = split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "b",
+                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
+            },
+        )
         assert result["success"], result["message"]
 
         with temp_storage.lock():
@@ -81,26 +90,35 @@ class TestSplitDuringExecution:
     def test_split_then_complete_upstream(self, temp_storage):
         """After splitting, completing the upstream should unblock split nodes."""
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
 
         # Split b before a completes
-        split_node.split_node(temp_storage, {
-            "parent_id": "b",
-            "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-        })
+        split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "b",
+                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
+            },
+        )
 
         # Now complete a
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "a",
-            "success": True,
-            "summary": "Analysis complete",
-            "critical": {"result": "data from a"},
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "a",
+                "success": True,
+                "summary": "Analysis complete",
+                "critical": {"result": "data from a"},
+            },
+        )
 
         # b1 and b2 should now be READY
         with temp_storage.lock():
@@ -111,26 +129,35 @@ class TestSplitDuringExecution:
     def test_split_context_propagation(self, temp_storage):
         """Context from completed upstream should reach split nodes."""
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
 
         # Complete a with context
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "a",
-            "success": True,
-            "summary": "Found 3 bugs",
-            "critical": {"bug_count": 3, "severity": "high"},
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "a",
+                "success": True,
+                "summary": "Found 3 bugs",
+                "critical": {"bug_count": 3, "severity": "high"},
+            },
+        )
 
         # Split b into b1, b2
-        split_node.split_node(temp_storage, {
-            "parent_id": "b",
-            "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-        })
+        split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "b",
+                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
+            },
+        )
 
         # b1 should see a's context
         with temp_storage.lock():
@@ -152,12 +179,15 @@ class TestRefineDuringExecution:
         add_node.add_node(temp_storage, {"node_id": "b"})
 
         # Both are READY. Now add dependency: b depends on a.
-        result = refine_node.refine_node(temp_storage, {
-            "node_id": "b",
-            "dependency_id": "a",
-            "expectation": "Need a's output first",
-            "promise": "Will provide output",
-        })
+        result = refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependency_id": "a",
+                "expectation": "Need a's output first",
+                "promise": "Will provide output",
+            },
+        )
         assert result["success"]
 
         with temp_storage.lock():
@@ -176,12 +206,15 @@ class TestRefineDuringExecution:
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
 
         # Meanwhile, someone refines: c now depends on b
-        refine_node.refine_node(temp_storage, {
-            "node_id": "c",
-            "dependency_id": "b",
-            "expectation": "Need b's output",
-            "promise": "Will provide output",
-        })
+        refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "c",
+                "dependency_id": "b",
+                "expectation": "Need b's output",
+                "promise": "Will provide output",
+            },
+        )
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -195,21 +228,27 @@ class TestRefineDuringExecution:
         add_node.add_node(temp_storage, {"node_id": "b"})
 
         # Refine: b depends on a
-        refine_node.refine_node(temp_storage, {
-            "node_id": "b",
-            "dependency_id": "a",
-            "expectation": "E",
-            "promise": "P",
-        })
+        refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependency_id": "a",
+                "expectation": "E",
+                "promise": "P",
+            },
+        )
 
         # Complete a
         get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "a",
-            "success": True,
-            "summary": "Done",
-            "critical": {"from_a": True},
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "a",
+                "success": True,
+                "summary": "Done",
+                "critical": {"from_a": True},
+            },
+        )
 
         # b should be READY and see a's context
         result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "b"})
@@ -223,11 +262,14 @@ class TestAddNodeDuringExecution:
     def test_add_node_to_running_graph(self, temp_storage):
         """Add a new task while others are being executed."""
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
 
         # Agent starts a
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
@@ -237,11 +279,14 @@ class TestAddNodeDuringExecution:
         assert result["success"]
 
         # And a new task depending on the running task
-        result = add_node.add_node(temp_storage, {
-            "node_id": "d_depends_on_a",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "d_depends_on_a",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
         assert result["success"]
 
         with temp_storage.lock():
@@ -255,17 +300,25 @@ class TestAddNodeDuringExecution:
         """Add a node that depends on an already-completed task → immediately READY."""
         add_node.add_node(temp_storage, {"node_id": "a"})
         get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "a", "success": True,
-            "summary": "Done", "critical": {"x": 1},
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "a",
+                "success": True,
+                "summary": "Done",
+                "critical": {"x": 1},
+            },
+        )
 
         # Add new node depending on completed a
-        result = add_node.add_node(temp_storage, {
-            "node_id": "late_joiner",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "late_joiner",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
         assert result["success"]
 
         # Should be immediately READY and see a's context
@@ -280,16 +333,22 @@ class TestRemoveDuringExecution:
     def test_remove_pending_node(self, temp_storage):
         """Remove a PENDING task — its dependents should adjust."""
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [make_contract("a")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "c",
-            "dependencies": ["b"],
-            "expectations": [make_contract("b")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [make_contract("a")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "c",
+                "dependencies": ["b"],
+                "expectations": [make_contract("b")],
+            },
+        )
 
         # Remove b — c loses its dependency
         result = remove_node.remove_node(temp_storage, {"node_id": "b"})
@@ -319,33 +378,45 @@ class TestCombinedDynamicEditing:
         """
         # 1. Initial graph
         add_node.add_node(temp_storage, {"node_id": "analyze"})
-        add_node.add_node(temp_storage, {
-            "node_id": "implement",
-            "dependencies": ["analyze"],
-            "expectations": [make_contract("analyze")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "test",
-            "dependencies": ["implement"],
-            "expectations": [make_contract("implement")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "implement",
+                "dependencies": ["analyze"],
+                "expectations": [make_contract("analyze")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "test",
+                "dependencies": ["implement"],
+                "expectations": [make_contract("implement")],
+            },
+        )
 
         # 2. Agent starts analyze
         get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "analyze"})
 
         # 3. Split implement while analyze is running
-        split_node.split_node(temp_storage, {
-            "parent_id": "implement",
-            "new_nodes": [{"node_id": "impl_auth"}, {"node_id": "impl_api"}],
-        })
+        split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "implement",
+                "new_nodes": [{"node_id": "impl_auth"}, {"node_id": "impl_api"}],
+            },
+        )
 
         # 4. Complete analyze with context
-        finish_task.finish_task(temp_storage, {
-            "task_id": "analyze",
-            "success": True,
-            "summary": "Found auth and API requirements",
-            "critical": {"needs_auth": True, "api_version": "v2"},
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "analyze",
+                "success": True,
+                "summary": "Found auth and API requirements",
+                "critical": {"needs_auth": True, "api_version": "v2"},
+            },
+        )
 
         # 5. Both impl nodes should be READY
         with temp_storage.lock():
@@ -358,11 +429,16 @@ class TestCombinedDynamicEditing:
         get_task.get_task(temp_storage, {"agent_id": "a3", "task_id": "impl_api"})
 
         # 6. impl_api agent discovers it needs a schema task first
-        add_node.add_node(temp_storage, {
-            "node_id": "design_schema",
-            "dependents": ["impl_api"],
-            "expectations": [make_contract("impl_api", "API schema design", "Schema for v2 API")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "design_schema",
+                "dependents": ["impl_api"],
+                "expectations": [
+                    make_contract("impl_api", "API schema design", "Schema for v2 API")
+                ],
+            },
+        )
 
         # impl_api should still be ACTIVE (refine only affects PENDING/READY)
         with temp_storage.lock():
@@ -370,25 +446,34 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["impl_api"].state == NodeState.ACTIVE
 
         # 7. Complete everything
-        finish_task.finish_task(temp_storage, {
-            "task_id": "impl_auth",
-            "success": True,
-            "summary": "Auth module done",
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "impl_auth",
+                "success": True,
+                "summary": "Auth module done",
+            },
+        )
 
         # design_schema is READY (no deps)
         get_task.get_task(temp_storage, {"agent_id": "a4", "task_id": "design_schema"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "design_schema",
-            "success": True,
-            "summary": "Schema designed",
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "design_schema",
+                "success": True,
+                "summary": "Schema designed",
+            },
+        )
 
-        finish_task.finish_task(temp_storage, {
-            "task_id": "impl_api",
-            "success": True,
-            "summary": "API module done",
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "impl_api",
+                "success": True,
+                "summary": "API module done",
+            },
+        )
 
         # test should now be READY (all deps completed)
         with temp_storage.lock():
@@ -397,11 +482,14 @@ class TestCombinedDynamicEditing:
 
         # Complete test
         get_task.get_task(temp_storage, {"agent_id": "a5", "task_id": "test"})
-        finish_task.finish_task(temp_storage, {
-            "task_id": "test",
-            "success": True,
-            "summary": "All tests pass",
-        })
+        finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "test",
+                "success": True,
+                "summary": "All tests pass",
+            },
+        )
 
         # Everything should be COMPLETED
         with temp_storage.lock():

@@ -55,9 +55,16 @@ def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         Dict with success, message, data.
     """
     # Validate required params
-    required = ["source_node_id", "corrective_node_id", "reason", "agent_id",
-                "source_expectation", "source_promise",
-                "corrective_expectation", "corrective_promise"]
+    required = [
+        "source_node_id",
+        "corrective_node_id",
+        "reason",
+        "agent_id",
+        "source_expectation",
+        "source_promise",
+        "corrective_expectation",
+        "corrective_promise",
+    ]
     for field in required:
         if not params.get(field):
             return {"success": False, "message": f"Missing required parameter: {field}", "data": {}}
@@ -107,6 +114,7 @@ def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 storage.save(cascade)
                 storage.tokens.invalidate(active_node.id, reason="rework_requested")
                 from cascade.events import EventType
+
                 storage.events.emit(
                     EventType.REWORK_REQUESTED,
                     source_node_id=source_node_id,

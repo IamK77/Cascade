@@ -151,5 +151,7 @@ class Context:
         critical_keys = list(self.critical.keys())[:3]
         critical_str = str(critical_keys) if critical_keys else "{}"
         summary_preview = self.summary[:30] + "..." if len(self.summary) > 30 else self.summary
-        artifacts_preview = self.artifacts[:30] + "..." if len(self.artifacts) > 30 else self.artifacts
+        artifacts_preview = (
+            self.artifacts[:30] + "..." if len(self.artifacts) > 30 else self.artifacts
+        )
         return f"Context(critical={critical_str}, summary={summary_preview!r}, artifacts={artifacts_preview!r})"

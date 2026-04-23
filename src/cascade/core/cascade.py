@@ -222,7 +222,12 @@ class Cascade:
         node = self.nodes.get(node_id)
         if node is None:
             return
-        if node.state in (NodeState.ACTIVE, NodeState.COMPLETED, NodeState.FAILED, NodeState.CANCELLED):
+        if node.state in (
+            NodeState.ACTIVE,
+            NodeState.COMPLETED,
+            NodeState.FAILED,
+            NodeState.CANCELLED,
+        ):
             return
 
         pending = self.pending_dependency_count(node_id)
@@ -333,11 +338,13 @@ class Cascade:
         result = []
         for dep_id in self._reverse.get(node_id, set()):
             contract = self.get_contract(dep_id, node_id)
-            result.append({
-                "node_id": dep_id,
-                "expectation": contract.expectation if contract else None,
-                "promise": contract.promise if contract else None,
-            })
+            result.append(
+                {
+                    "node_id": dep_id,
+                    "expectation": contract.expectation if contract else None,
+                    "promise": contract.promise if contract else None,
+                }
+            )
         return result
 
     def get_node_promises(self, node_id: str) -> list[dict[str, Any]]:

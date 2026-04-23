@@ -57,6 +57,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             if task_id not in cascade.nodes:
@@ -84,6 +85,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 storage.save(cascade)
                 storage.tokens.invalidate(task_id, reason="released")
                 from cascade.events import EventType
+
                 storage.events.emit(EventType.TASK_RELEASED, node_id=task_id, reason=summary)
                 return {
                     "success": True,
@@ -117,6 +119,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 storage.save(cascade)
                 storage.tokens.cleanup(task_id)
                 from cascade.events import EventType
+
                 storage.events.emit(EventType.TASK_COMPLETED, node_id=task_id, unblocked=unblocked)
                 return {
                     "success": True,
@@ -133,6 +136,7 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 node.agent_id = None
 
                 if should_cascade:
+
                     def fail_recursive(nid: str) -> None:
                         current = cascade.nodes[nid]
                         if current.state.is_terminal():
@@ -158,8 +162,14 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 storage.save(cascade)
                 storage.tokens.cleanup(task_id)
                 from cascade.events import EventType
-                storage.events.emit(EventType.TASK_FAILED, node_id=task_id,
-                                    reason=summary, affected=affected, cascade=should_cascade)
+
+                storage.events.emit(
+                    EventType.TASK_FAILED,
+                    node_id=task_id,
+                    reason=summary,
+                    affected=affected,
+                    cascade=should_cascade,
+                )
                 return {
                     "success": True,
                     "message": message,

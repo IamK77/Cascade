@@ -269,27 +269,33 @@ class TestGetNodeView:
     def test_get_node_view_basic(self):
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
-        view = get_node_view(cascade,"a")
+        view = get_node_view(cascade, "a")
         assert view["id"] == "a"
         assert view["state"] == "READY"
 
     def test_get_node_view_not_found(self):
         cascade = Cascade()
         with pytest.raises(ValueError, match="not found"):
-            get_node_view(cascade,"nonexistent")
+            get_node_view(cascade, "nonexistent")
 
     def test_get_node_view_with_contracts(self):
         cascade = Cascade()
 
         node_a = Node(
-            id="a", state=NodeState.READY,
+            id="a",
+            state=NodeState.READY,
             context=Context(critical={"project": "test"}, summary="Node A"),
         )
         node_b = Node(id="b", state=NodeState.PENDING)
 
         cascade.add_node(node_a)
         cascade.add_node(node_b)
-        cascade.add_edge("a", "b", expectation="Expect analysis results", promise="Promises to output analysis results")
+        cascade.add_edge(
+            "a",
+            "b",
+            expectation="Expect analysis results",
+            promise="Promises to output analysis results",
+        )
 
         node_a.update_state(NodeState.ACTIVE)
         node_a.update_state(NodeState.COMPLETED)
@@ -297,7 +303,7 @@ class TestGetNodeView:
         # Notify completion to unblock b
         cascade.notify_completion("a")
 
-        view = get_node_view(cascade,"b")
+        view = get_node_view(cascade, "b")
         assert view["id"] == "b"
         assert view["state"] == "READY"
         assert "upstream" in view
@@ -312,7 +318,7 @@ class TestGetNodeView:
     def test_get_node_view_without_promise(self):
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
-        view = get_node_view(cascade,"a")
+        view = get_node_view(cascade, "a")
         assert view["id"] == "a"
         assert "promises" not in view
 
@@ -320,13 +326,17 @@ class TestGetNodeView:
         import json
 
         cascade = Cascade()
-        node_a = Node(id="a", state=NodeState.READY, context=Context(critical={"key": "value"}, summary="Summary"))
+        node_a = Node(
+            id="a",
+            state=NodeState.READY,
+            context=Context(critical={"key": "value"}, summary="Summary"),
+        )
         node_b = Node(id="b", state=NodeState.PENDING)
         cascade.add_node(node_a)
         cascade.add_node(node_b)
         cascade.add_edge("a", "b", expectation="Expectation", promise="Promise")
 
-        view = get_node_view(cascade,"b")
+        view = get_node_view(cascade, "b")
         json_str = json.dumps(view, ensure_ascii=False)
         loaded = json.loads(json_str)
         assert loaded["id"] == "b"
@@ -343,7 +353,7 @@ class TestGetNodeView:
         cascade.add_edge("b", "c", expectation="Expect output from B", promise="B promises output")
         cascade.add_edge("c", "d", expectation="Expect output from C", promise="C promises output")
 
-        view = get_node_view(cascade,"b")
+        view = get_node_view(cascade, "b")
         assert "visible_nodes" in view
         visible = view["visible_nodes"]
         assert "1" in visible
@@ -355,7 +365,7 @@ class TestGetNodeView:
     def test_get_node_view_no_descendants(self):
         cascade = Cascade()
         cascade.add_node(Node(id="leaf", state=NodeState.READY))
-        view = get_node_view(cascade,"leaf")
+        view = get_node_view(cascade, "leaf")
         assert "visible_nodes" not in view or view.get("visible_nodes") == {}
 
     def test_get_node_view_multiple_children(self):
@@ -369,7 +379,7 @@ class TestGetNodeView:
         cascade.add_edge("a", "c", expectation="Expect from A", promise="A promises")
         cascade.add_edge("a", "d", expectation="Expect from A", promise="A promises")
 
-        view = get_node_view(cascade,"a")
+        view = get_node_view(cascade, "a")
         assert "visible_nodes" in view
         children = view["visible_nodes"]["1"]
         assert len(children) == 3
@@ -382,7 +392,7 @@ class TestGetNodeView:
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
         cascade.add_edge("a", "b", expectation="Expect data", promise="Promise to output data")
 
-        view = get_node_view(cascade,"a")
+        view = get_node_view(cascade, "a")
         assert "promises" in view
         assert len(view["promises"]) == 1
         assert view["promises"][0]["to_node"] == "b"

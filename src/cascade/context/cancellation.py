@@ -185,10 +185,14 @@ class CancellationPropagator:
             del self.node_tokens[node_id]
         if node_id in self.cascade.nodes:
             pending = self.cascade.pending_dependency_count(node_id)
-            self.cascade.nodes[node_id].state = NodeState.READY if pending == 0 else NodeState.PENDING
+            self.cascade.nodes[node_id].state = (
+                NodeState.READY if pending == 0 else NodeState.PENDING
+            )
 
     def reset_all(self) -> None:
         self.node_tokens.clear()
         for node_id in self.cascade.nodes:
             pending = self.cascade.pending_dependency_count(node_id)
-            self.cascade.nodes[node_id].state = NodeState.READY if pending == 0 else NodeState.PENDING
+            self.cascade.nodes[node_id].state = (
+                NodeState.READY if pending == 0 else NodeState.PENDING
+            )

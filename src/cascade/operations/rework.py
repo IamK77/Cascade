@@ -84,7 +84,8 @@ class ReworkOperation(NodeOperation):
         requester = self._cascade.nodes[requesting_node_id]
         if requester.state != NodeState.ACTIVE:
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"Requesting node '{requesting_node_id}' must be ACTIVE (current: {requester.state.name})",
             )
 
@@ -97,21 +98,24 @@ class ReworkOperation(NodeOperation):
         source = self._cascade.nodes[source_node_id]
         if source.state != NodeState.COMPLETED:
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"Source node '{source_node_id}' must be COMPLETED (current: {source.state.name})",
             )
 
         # Validate corrective node doesn't exist
         if corrective_node_id in self._cascade.nodes:
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"Corrective node '{corrective_node_id}' already exists",
             )
 
         # Validate source is actually an upstream dependency of requester
         if not self._cascade.has_dependency(requesting_node_id, source_node_id):
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"'{source_node_id}' is not a dependency of '{requesting_node_id}'",
             )
 
@@ -129,13 +133,15 @@ class ReworkOperation(NodeOperation):
 
             # 2. source → corrective (corrective agent sees original output)
             self._cascade.add_edge(
-                source_node_id, corrective_node_id,
+                source_node_id,
+                corrective_node_id,
                 contract=source_contract,
             )
 
             # 3. corrective → requester (requester waits for correction)
             self._cascade.add_edge(
-                corrective_node_id, requesting_node_id,
+                corrective_node_id,
+                requesting_node_id,
                 contract=corrective_contract,
             )
             # add_edge triggers _update_readiness on requester:
@@ -163,6 +169,7 @@ class ReworkOperation(NodeOperation):
 
         except ValueError as e:
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"Rework failed: {e}",
             )

@@ -280,7 +280,8 @@ class GraphStorage:
 
             if from_id in cascade.nodes and to_id in cascade.nodes:
                 cascade._restore_edge(
-                    from_id, to_id,
+                    from_id,
+                    to_id,
                     Contract(expectation=expectation, promise=promise),
                 )
 

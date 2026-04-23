@@ -60,8 +60,7 @@ class NodeOperation(ABC):
         self._cascade = cascade
 
     @abstractmethod
-    def execute(self, *args: Any, **kwargs: Any) -> OperationResult[Any]:
-        ...
+    def execute(self, *args: Any, **kwargs: Any) -> OperationResult[Any]: ...
 
     def validate(self) -> tuple[bool, str | None]:
         is_acyclic = self._cascade.find_cycle() is None

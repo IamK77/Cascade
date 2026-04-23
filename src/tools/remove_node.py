@@ -39,6 +39,7 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             if node_id not in cascade.nodes:
@@ -49,20 +50,21 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
                 return {
                     "success": False,
                     "message": f"Cannot remove ACTIVE node {node_id} (agent: {node.agent_id}). "
-                               f"Use finish_task with release=true first.",
+                    f"Use finish_task with release=true first.",
                     "data": {"state": "ACTIVE", "agent_id": node.agent_id},
                 }
 
             if should_cascade:
                 active_descendants = [
-                    dep.id for dep in cascade.get_dependents(node_id)
+                    dep.id
+                    for dep in cascade.get_dependents(node_id)
                     if dep.state == NodeState.ACTIVE
                 ]
                 if active_descendants:
                     return {
                         "success": False,
                         "message": f"Cannot cascade-remove: {active_descendants} are ACTIVE. "
-                                   f"Release them first.",
+                        f"Release them first.",
                         "data": {"active_nodes": active_descendants},
                     }
 
@@ -72,10 +74,14 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             storage.save(cascade)
             if result.success:
                 from cascade.events import EventType
-                storage.events.emit(EventType.NODE_REMOVED, node_id=node_id,
-                                    cascade=should_cascade,
-                                    affected_nodes=result.affected_nodes,
-                                    reason=params.get("reason", ""))
+
+                storage.events.emit(
+                    EventType.NODE_REMOVED,
+                    node_id=node_id,
+                    cascade=should_cascade,
+                    affected_nodes=result.affected_nodes,
+                    reason=params.get("reason", ""),
+                )
             return {
                 "success": result.success,
                 "message": result.message,

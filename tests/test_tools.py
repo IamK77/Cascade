@@ -43,11 +43,14 @@ class TestGetTask:
 
     def test_get_any_task(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
         result = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
         assert result["success"] is True
@@ -65,26 +68,35 @@ class TestGetTask:
 
     def test_get_task_not_ready(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
         result = get_task.get_task(temp_storage, {"task_id": "task_b", "agent_id": "agent_1"})
         assert result["success"] is False
 
     def test_agent_tracking(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
         result1 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
         assert result1["success"] is True
@@ -113,18 +125,24 @@ class TestFinishTask:
 
     def test_complete_task(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
-        result = finish_task.finish_task(temp_storage, {
-            "task_id": "task_a",
-            "success": True,
-            "result": "Task completed successfully",
-        })
+        result = finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "task_a",
+                "success": True,
+                "result": "Task completed successfully",
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -137,11 +155,14 @@ class TestFinishTask:
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
 
-        result = finish_task.finish_task(temp_storage, {
-            "task_id": "task_a",
-            "success": False,
-            "result": "Something went wrong",
-        })
+        result = finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "task_a",
+                "success": False,
+                "result": "Something went wrong",
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -150,23 +171,32 @@ class TestFinishTask:
 
     def test_fail_task_cascade(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_c",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_c",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
-        result = finish_task.finish_task(temp_storage, {
-            "task_id": "task_a",
-            "success": False,
-            "cascade": True,
-        })
+        result = finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "task_a",
+                "success": False,
+                "cascade": True,
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -183,11 +213,14 @@ class TestFinishTask:
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
-        result = finish_task.finish_task(temp_storage, {
-            "task_id": "task_a",
-            "release": True,
-            "result": "Need more information",
-        })
+        result = finish_task.finish_task(
+            temp_storage,
+            {
+                "task_id": "task_a",
+                "release": True,
+                "result": "Need more information",
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -212,22 +245,31 @@ class TestAddNode:
 
     def test_add_node_with_dependencies(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
-        result = add_node.add_node(temp_storage, {
-            "node_id": "new_task",
-            "dependencies": ["task_a", "task_b"],
-            "expectations": [make_contract("task_a"), make_contract("task_b")],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "new_task",
+                "dependencies": ["task_a", "task_b"],
+                "expectations": [make_contract("task_a"), make_contract("task_b")],
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -237,11 +279,14 @@ class TestAddNode:
 
     def test_add_node_dependency_not_exists(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(temp_storage, {
-            "node_id": "new_task",
-            "dependencies": ["non_existent"],
-            "expectations": [make_contract("non_existent")],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "new_task",
+                "dependencies": ["non_existent"],
+                "expectations": [make_contract("non_existent")],
+            },
+        )
         assert result["success"] is False
         assert "not found" in result["message"]
 
@@ -263,17 +308,25 @@ class TestAddNode:
 
     def test_add_node_with_dependents(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
-        result = add_node.add_node(temp_storage, {
-            "node_id": "new_parent",
-            "dependents": ["child"],
-            "expectations": [make_contract("child", "Child expects input", "New parent provides input")],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "new_parent",
+                "dependents": ["child"],
+                "expectations": [
+                    make_contract("child", "Child expects input", "New parent provides input")
+                ],
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -283,11 +336,14 @@ class TestAddNode:
     def test_independent_subgraph_with_deps(self, temp_storage):
         """Independent subgraphs can each have their own dependency chains."""
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
         # Independent root — allowed now
         result = add_node.add_node(temp_storage, {"node_id": "other_root"})
@@ -295,30 +351,41 @@ class TestAddNode:
 
     def test_missing_contract_for_dependency(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+            },
+        )
         assert result["success"] is False
         assert "Missing contract" in result["message"]
 
     def test_empty_expectation_rejected(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [{"node_id": "root", "expectation": "", "promise": "some promise"}],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+                "expectations": [{"node_id": "root", "expectation": "", "promise": "some promise"}],
+            },
+        )
         assert result["success"] is False
         assert "expectation is required" in result["message"]
 
     def test_empty_promise_rejected(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [{"node_id": "root", "expectation": "some expectation", "promise": ""}],
-        })
+        result = add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+                "expectations": [
+                    {"node_id": "root", "expectation": "some expectation", "promise": ""}
+                ],
+            },
+        )
         assert result["success"] is False
         assert "promise is required" in result["message"]
 
@@ -328,23 +395,32 @@ class TestRefineNode:
 
     def test_refine_node(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
-        result = refine_node.refine_node(temp_storage, {
-            "node_id": "task_b",
-            "dependency_id": "task_a",
-            "expectation": "Expect output from task_a",
-            "promise": "Promise to provide results",
-        })
+        result = refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependency_id": "task_a",
+                "expectation": "Expect output from task_a",
+                "promise": "Promise to provide results",
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -353,25 +429,34 @@ class TestRefineNode:
 
     def test_refine_node_requires_contract(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
-        result = refine_node.refine_node(temp_storage, {
-            "node_id": "task_a",
-            "dependency_id": "root",
-            "promise": "some promise",
-        })
+        result = refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependency_id": "root",
+                "promise": "some promise",
+            },
+        )
         assert result["success"] is False
         assert "expectation" in result["message"].lower()
 
-        result = refine_node.refine_node(temp_storage, {
-            "node_id": "task_a",
-            "dependency_id": "root",
-            "expectation": "some expectation",
-        })
+        result = refine_node.refine_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependency_id": "root",
+                "expectation": "some expectation",
+            },
+        )
         assert result["success"] is False
         assert "promise" in result["message"].lower()
 
@@ -381,16 +466,22 @@ class TestRemoveNode:
 
     def test_remove_node(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
         result = remove_node.remove_node(temp_storage, {"node_id": "task_b"})
         assert result["success"] is True
@@ -405,19 +496,25 @@ class TestSplitNode:
 
     def test_split_node(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
-        result = split_node.split_node(temp_storage, {
-            "parent_id": "task_b",
-            "new_nodes": [
-                {"node_id": "task_b1"},
-                {"node_id": "task_b2"},
-            ],
-        })
+        result = split_node.split_node(
+            temp_storage,
+            {
+                "parent_id": "task_b",
+                "new_nodes": [
+                    {"node_id": "task_b1"},
+                    {"node_id": "task_b2"},
+                ],
+            },
+        )
         assert result["success"] is True
 
         with temp_storage.lock():
@@ -431,21 +528,30 @@ class TestListNodes:
 
     def test_list_all_nodes(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_a",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
-        add_node.add_node(temp_storage, {
-            "node_id": "task_c",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_a",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_c",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
         result = list_nodes.list_nodes(temp_storage, {})
         assert result["success"] is True
@@ -453,11 +559,14 @@ class TestListNodes:
 
     def test_list_nodes_with_filter(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["task_a"],
-            "expectations": [make_contract("task_a")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["task_a"],
+                "expectations": [make_contract("task_a")],
+            },
+        )
 
         result = list_nodes.list_nodes(temp_storage, {"state_filter": "READY"})
         assert result["success"] is True
@@ -469,13 +578,17 @@ class TestCheckTimeouts:
 
     def test_release_timed_out_task(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 0.01})
+        get_task.get_task(
+            temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 0.01}
+        )
 
         # Wait for timeout
         import time
+
         time.sleep(0.02)
 
         from tools.check_timeouts import check_timeouts
+
         result = check_timeouts(temp_storage, {})
 
         assert result["success"] is True
@@ -494,6 +607,7 @@ class TestCheckTimeouts:
         get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
 
         from tools.check_timeouts import check_timeouts
+
         result = check_timeouts(temp_storage, {})
 
         assert result["success"] is True
@@ -510,6 +624,7 @@ class TestCheckTimeouts:
             temp_storage.save(cascade)
 
         from tools.check_timeouts import check_timeouts
+
         result = check_timeouts(temp_storage, {"default_timeout": 60})
 
         assert result["success"] is True
@@ -517,9 +632,12 @@ class TestCheckTimeouts:
 
     def test_not_yet_timed_out(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 3600})
+        get_task.get_task(
+            temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 3600}
+        )
 
         from tools.check_timeouts import check_timeouts
+
         result = check_timeouts(temp_storage, {})
 
         assert result["success"] is True

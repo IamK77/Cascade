@@ -27,6 +27,7 @@ def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             nodes_list: list[dict[str, Any]] = []

@@ -80,17 +80,19 @@ class ContextPropagator:
                                 expectation = contract.expectation
                                 promise = contract.promise
 
-                        entries.append(ContextEntry(
-                            node_id=current_id,
-                            state=node.state.name,
-                            distance=distance,
-                            path=path_to[current_id],
-                            expectation=expectation,
-                            promise=promise,
-                            summary=entry_summary,
-                            critical=entry_critical,
-                            artifacts=entry_artifacts,
-                        ))
+                        entries.append(
+                            ContextEntry(
+                                node_id=current_id,
+                                state=node.state.name,
+                                distance=distance,
+                                path=path_to[current_id],
+                                expectation=expectation,
+                                promise=promise,
+                                summary=entry_summary,
+                                critical=entry_critical,
+                                artifacts=entry_artifacts,
+                            )
+                        )
 
             for dependency in self._cascade.get_dependencies(current_id):
                 if dependency.id not in visited:

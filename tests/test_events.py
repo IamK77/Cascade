@@ -14,7 +14,6 @@
 
 """Tests for event sourcing — event store and tool integration."""
 
-
 from cascade.events import EventType
 from tools import add_node, finish_task, get_task
 from tools.history import history
@@ -67,8 +66,12 @@ class TestEventStore:
 
     def test_event_serialization(self, temp_storage):
         store = temp_storage.events
-        store.emit(EventType.REWORK_REQUESTED, source_node_id="a",
-                   corrective_node_id="a_fix", reason="wrong")
+        store.emit(
+            EventType.REWORK_REQUESTED,
+            source_node_id="a",
+            corrective_node_id="a_fix",
+            reason="wrong",
+        )
 
         events = store.read_all()
         assert events[0].data["reason"] == "wrong"
@@ -104,7 +107,9 @@ class TestEventIntegration:
     def test_fail_emits_event(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
-        finish_task.finish_task(temp_storage, {"task_id": "task_a", "success": False, "result": "broke"})
+        finish_task.finish_task(
+            temp_storage, {"task_id": "task_a", "success": False, "result": "broke"}
+        )
 
         events = temp_storage.events.read_by_type(EventType.TASK_FAILED)
         assert len(events) == 1
@@ -113,7 +118,9 @@ class TestEventIntegration:
     def test_release_emits_event(self, temp_storage):
         add_node.add_node(temp_storage, {"node_id": "task_a"})
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
-        finish_task.finish_task(temp_storage, {"task_id": "task_a", "release": True, "result": "stuck"})
+        finish_task.finish_task(
+            temp_storage, {"task_id": "task_a", "release": True, "result": "stuck"}
+        )
 
         events = temp_storage.events.read_by_type(EventType.TASK_RELEASED)
         assert len(events) == 1
@@ -121,11 +128,14 @@ class TestEventIntegration:
     def test_full_lifecycle_event_trail(self, temp_storage):
         """End-to-end: add -> claim -> complete -> claim next."""
         add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+            },
+        )
         get_task.get_task(temp_storage, {"agent_id": "agent-1"})
         finish_task.finish_task(temp_storage, {"task_id": "a", "success": True})
         get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "b"})
@@ -133,11 +143,11 @@ class TestEventIntegration:
         all_events = temp_storage.events.read_all()
         types = [e.type for e in all_events]
         assert types == [
-            EventType.NODE_ADDED,      # a
-            EventType.NODE_ADDED,      # b
-            EventType.TASK_CLAIMED,    # agent-1 claims a
+            EventType.NODE_ADDED,  # a
+            EventType.NODE_ADDED,  # b
+            EventType.TASK_CLAIMED,  # agent-1 claims a
             EventType.TASK_COMPLETED,  # a completed
-            EventType.TASK_CLAIMED,    # agent-2 claims b
+            EventType.TASK_CLAIMED,  # agent-2 claims b
         ]
 
 

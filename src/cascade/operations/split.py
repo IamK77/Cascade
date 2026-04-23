@@ -51,7 +51,8 @@ class SplitOperation(NodeOperation):
         for node in new_nodes:
             if node.id in self._cascade.nodes and node.id != parent_id:
                 return OperationResult(
-                    success=False, affected_nodes=[],
+                    success=False,
+                    affected_nodes=[],
                     message=f"Node {node.id} already exists",
                 )
             new_node_ids.append(node.id)
@@ -100,7 +101,8 @@ class SplitOperation(NodeOperation):
             )
         except ValueError as e:
             return OperationResult(
-                success=False, affected_nodes=[],
+                success=False,
+                affected_nodes=[],
                 message=f"Failed to split node: {e}",
             )
 

@@ -79,11 +79,13 @@ def history(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         formatted = []
         for event in events:
             ts = datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat()
-            formatted.append({
-                "type": event.type.value,
-                "timestamp": ts,
-                "data": event.data,
-            })
+            formatted.append(
+                {
+                    "type": event.type.value,
+                    "timestamp": ts,
+                    "data": event.data,
+                }
+            )
 
         return {
             "success": True,

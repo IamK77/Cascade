@@ -97,10 +97,18 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             for dep_id in dependencies:
                 if dep_id not in cascade.nodes:
-                    return {"success": False, "message": f"Dependency {dep_id} not found. Create it first.", "data": {}}
+                    return {
+                        "success": False,
+                        "message": f"Dependency {dep_id} not found. Create it first.",
+                        "data": {},
+                    }
             for dep_id in dependents:
                 if dep_id not in cascade.nodes:
-                    return {"success": False, "message": f"Dependent {dep_id} not found. Create it first.", "data": {}}
+                    return {
+                        "success": False,
+                        "message": f"Dependent {dep_id} not found. Create it first.",
+                        "data": {},
+                    }
 
             # Compute initial state: READY if no deps or all deps completed, else PENDING
             initial_state = NodeState.READY
@@ -115,18 +123,33 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             for dep_id in dependencies:
                 exp_info = expectations_map[dep_id]
-                cascade.add_edge(dep_id, node_id, expectation=exp_info["expectation"], promise=exp_info["promise"])
+                cascade.add_edge(
+                    dep_id,
+                    node_id,
+                    expectation=exp_info["expectation"],
+                    promise=exp_info["promise"],
+                )
                 affected_nodes.append(dep_id)
 
             for dep_id in dependents:
                 exp_info = expectations_map[dep_id]
-                cascade.add_edge(node_id, dep_id, expectation=exp_info["expectation"], promise=exp_info["promise"])
+                cascade.add_edge(
+                    node_id,
+                    dep_id,
+                    expectation=exp_info["expectation"],
+                    promise=exp_info["promise"],
+                )
                 affected_nodes.append(dep_id)
 
             storage.save(cascade)
             from cascade.events import EventType
-            storage.events.emit(EventType.NODE_ADDED, node_id=node_id,
-                                dependencies=dependencies, dependents=dependents)
+
+            storage.events.emit(
+                EventType.NODE_ADDED,
+                node_id=node_id,
+                dependencies=dependencies,
+                dependents=dependents,
+            )
             return {
                 "success": True,
                 "message": f"Node {node_id} added successfully",

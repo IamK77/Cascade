@@ -104,10 +104,12 @@ class TestContextPropagator:
     def test_collect_diamond_no_overwrite(self):
         """Fan-in: B and C both set same critical key — both preserved."""
         cascade = Cascade()
-        cascade.add_node(Node(id="b", state=NodeState.COMPLETED,
-                              context=Context(critical={"branch": "B"})))
-        cascade.add_node(Node(id="c", state=NodeState.COMPLETED,
-                              context=Context(critical={"branch": "C"})))
+        cascade.add_node(
+            Node(id="b", state=NodeState.COMPLETED, context=Context(critical={"branch": "B"}))
+        )
+        cascade.add_node(
+            Node(id="c", state=NodeState.COMPLETED, context=Context(critical={"branch": "C"}))
+        )
         cascade.add_node(Node(id="d", state=NodeState.PENDING))
         cascade.add_edge("b", "d", expectation="Eb", promise="B output")
         cascade.add_edge("c", "d", expectation="Ec", promise="C output")

@@ -45,17 +45,22 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             if parent_id not in cascade.nodes:
-                return {"success": False, "message": f"Parent node {parent_id} not found", "data": {}}
+                return {
+                    "success": False,
+                    "message": f"Parent node {parent_id} not found",
+                    "data": {},
+                }
 
             parent = cascade.nodes[parent_id]
             if parent.state == NodeState.ACTIVE:
                 return {
                     "success": False,
                     "message": f"Cannot split ACTIVE node {parent_id} (agent: {parent.agent_id}). "
-                               f"Use finish_task with release=true first.",
+                    f"Use finish_task with release=true first.",
                     "data": {"state": "ACTIVE", "agent_id": parent.agent_id},
                 }
 
@@ -64,7 +69,11 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             new_nodes = []
             for node_data in new_nodes_data:
                 if "node_id" not in node_data:
-                    return {"success": False, "message": "Each new node must have a node_id", "data": {}}
+                    return {
+                        "success": False,
+                        "message": "Each new node must have a node_id",
+                        "data": {},
+                    }
                 new_nodes.append(Node(id=node_data["node_id"], state=parent_state))
 
             operation = SplitOperation(cascade)
@@ -73,9 +82,13 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             storage.save(cascade)
             if result.success:
                 from cascade.events import EventType
-                storage.events.emit(EventType.NODE_SPLIT, node_id=parent_id,
-                                    new_node_ids=result.data.new_node_ids if result.data else [],
-                                    reason=params.get("reason", ""))
+
+                storage.events.emit(
+                    EventType.NODE_SPLIT,
+                    node_id=parent_id,
+                    new_node_ids=result.data.new_node_ids if result.data else [],
+                    reason=params.get("reason", ""),
+                )
             return {
                 "success": result.success,
                 "message": result.message,

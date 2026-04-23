@@ -87,6 +87,7 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             if node_id not in cascade.nodes:
@@ -134,8 +135,13 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             storage.save(cascade)
             from cascade.events import EventType
-            storage.events.emit(EventType.NODE_EDITED, node_id=node_id,
-                                changes=changes, reason=params.get("reason", ""))
+
+            storage.events.emit(
+                EventType.NODE_EDITED,
+                node_id=node_id,
+                changes=changes,
+                reason=params.get("reason", ""),
+            )
             return {
                 "success": True,
                 "message": f"Node {node_id} updated: {', '.join(changes)}",

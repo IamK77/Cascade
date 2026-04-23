@@ -14,7 +14,6 @@
 
 """Tests for the rework mechanism — upstream feedback via forward derivation."""
 
-
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
@@ -38,10 +37,16 @@ class TestReworkOperation:
     def _build_a_to_b(self) -> Cascade:
         """Build a simple A -> B graph where A is completed and B is active."""
         cascade = Cascade()
-        cascade.add_node(Node(id="A", state=NodeState.READY, context=Context(
-            critical={"result": "wrong analysis"},
-            summary="Original analysis output",
-        )))
+        cascade.add_node(
+            Node(
+                id="A",
+                state=NodeState.READY,
+                context=Context(
+                    critical={"result": "wrong analysis"},
+                    summary="Original analysis output",
+                ),
+            )
+        )
         cascade.add_node(Node(id="B", state=NodeState.PENDING))
         cascade.add_edge("A", "B", expectation="Expect analysis", promise="Provide analysis")
 
@@ -213,11 +218,14 @@ class TestReworkTool:
         """Test rework through the tool interface."""
         # Build graph: root -> task_b
         add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(temp_storage, {
-            "node_id": "task_b",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "task_b",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
 
         # Complete root
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "root"})
@@ -227,16 +235,19 @@ class TestReworkTool:
         get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "task_b"})
 
         # Agent 2 discovers root's output is wrong, requests rework
-        result = rework(temp_storage, {
-            "source_node_id": "root",
-            "corrective_node_id": "root_fix",
-            "reason": "Root analysis missed edge case",
-            "agent_id": "agent-2",
-            "source_expectation": "Original analysis to review",
-            "source_promise": "Root's original output",
-            "corrective_expectation": "Revised analysis",
-            "corrective_promise": "Corrected analysis",
-        })
+        result = rework(
+            temp_storage,
+            {
+                "source_node_id": "root",
+                "corrective_node_id": "root_fix",
+                "reason": "Root analysis missed edge case",
+                "agent_id": "agent-2",
+                "source_expectation": "Original analysis to review",
+                "source_promise": "Root's original output",
+                "corrective_expectation": "Revised analysis",
+                "corrective_promise": "Corrected analysis",
+            },
+        )
 
         assert result["success"] is True
         assert result["data"]["corrective_node_id"] == "root_fix"
@@ -269,16 +280,19 @@ class TestReworkTool:
         """Test rework fails if agent has no active task."""
         add_node.add_node(temp_storage, {"node_id": "root"})
 
-        result = rework(temp_storage, {
-            "source_node_id": "root",
-            "corrective_node_id": "root_fix",
-            "reason": "Wrong",
-            "agent_id": "agent-no-task",
-            "source_expectation": "E",
-            "source_promise": "P",
-            "corrective_expectation": "E2",
-            "corrective_promise": "P2",
-        })
+        result = rework(
+            temp_storage,
+            {
+                "source_node_id": "root",
+                "corrective_node_id": "root_fix",
+                "reason": "Wrong",
+                "agent_id": "agent-no-task",
+                "source_expectation": "E",
+                "source_promise": "P",
+                "corrective_expectation": "E2",
+                "corrective_promise": "P2",
+            },
+        )
 
         assert not result["success"]
         assert "no active task" in result["message"]
@@ -289,22 +303,29 @@ class TestReworkTool:
         get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "root"})
         finish_task.finish_task(temp_storage, {"task_id": "root", "success": True})
 
-        add_node.add_node(temp_storage, {
-            "node_id": "child",
-            "dependencies": ["root"],
-            "expectations": [make_contract("root")],
-        })
+        add_node.add_node(
+            temp_storage,
+            {
+                "node_id": "child",
+                "dependencies": ["root"],
+                "expectations": [make_contract("root")],
+            },
+        )
         get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "child"})
 
-        result = execute_tool(temp_storage, "rework", {
-            "source_node_id": "root",
-            "corrective_node_id": "root_v2",
-            "reason": "Needs revision",
-            "agent_id": "agent-2",
-            "source_expectation": "E",
-            "source_promise": "P",
-            "corrective_expectation": "E2",
-            "corrective_promise": "P2",
-        })
+        result = execute_tool(
+            temp_storage,
+            "rework",
+            {
+                "source_node_id": "root",
+                "corrective_node_id": "root_v2",
+                "reason": "Needs revision",
+                "agent_id": "agent-2",
+                "source_expectation": "E",
+                "source_promise": "P",
+                "corrective_expectation": "E2",
+                "corrective_promise": "P2",
+            },
+        )
 
         assert result["success"] is True

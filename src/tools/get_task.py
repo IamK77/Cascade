@@ -48,6 +48,7 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             existing_node = cascade.find_agent_active_task(agent_id)
@@ -116,8 +117,12 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 ready_nodes = cascade.get_ready_nodes()
 
                 if not ready_nodes:
-                    active_count = sum(1 for n in cascade.nodes.values() if n.state == NodeState.ACTIVE)
-                    pending_count = sum(1 for n in cascade.nodes.values() if n.state == NodeState.PENDING)
+                    active_count = sum(
+                        1 for n in cascade.nodes.values() if n.state == NodeState.ACTIVE
+                    )
+                    pending_count = sum(
+                        1 for n in cascade.nodes.values() if n.state == NodeState.PENDING
+                    )
 
                     if active_count > 0:
                         return {
@@ -142,9 +147,11 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
 
             task_info = get_node_view(cascade, task_id)
             storage.save(cascade)
-            storage.tokens.create(task_id, agent_id, node.claimed_at,
-                                  notifier=params.get("cancel_notifier"))
+            storage.tokens.create(
+                task_id, agent_id, node.claimed_at, notifier=params.get("cancel_notifier")
+            )
             from cascade.events import EventType
+
             storage.events.emit(EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id)
 
             return {

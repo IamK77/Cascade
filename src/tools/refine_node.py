@@ -33,7 +33,11 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     if "node_id" not in params:
         return {"success": False, "message": "Missing required parameter: node_id", "data": {}}
     if "dependency_id" not in params:
-        return {"success": False, "message": "Missing required parameter: dependency_id", "data": {}}
+        return {
+            "success": False,
+            "message": "Missing required parameter: dependency_id",
+            "data": {},
+        }
 
     node_id = params["node_id"]
     dependency_id = params["dependency_id"]
@@ -48,15 +52,24 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     try:
         with storage.lock():
             from cascade.core.cascade import Cascade
+
             cascade = storage.load() or Cascade()
 
             if node_id not in cascade.nodes:
                 return {"success": False, "message": f"Node {node_id} not found", "data": {}}
             if dependency_id not in cascade.nodes:
-                return {"success": False, "message": f"Dependency {dependency_id} not found. Create it first with add_node.", "data": {}}
+                return {
+                    "success": False,
+                    "message": f"Dependency {dependency_id} not found. Create it first with add_node.",
+                    "data": {},
+                }
 
             if cascade.has_dependency(node_id, dependency_id):
-                return {"success": False, "message": f"Node {node_id} already depends on {dependency_id}", "data": {}}
+                return {
+                    "success": False,
+                    "message": f"Node {node_id} already depends on {dependency_id}",
+                    "data": {},
+                }
 
             if cascade._has_path(node_id, dependency_id):
                 return {
@@ -69,14 +82,23 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
 
             storage.save(cascade)
             from cascade.events import EventType
-            storage.events.emit(EventType.NODE_REFINED, node_id=node_id,
-                                dependency_id=dependency_id,
-                                expectation=expectation, promise=promise,
-                                reason=params.get("reason", ""))
+
+            storage.events.emit(
+                EventType.NODE_REFINED,
+                node_id=node_id,
+                dependency_id=dependency_id,
+                expectation=expectation,
+                promise=promise,
+                reason=params.get("reason", ""),
+            )
             return {
                 "success": True,
                 "message": f"Node {node_id} now depends on {dependency_id}",
-                "data": {"node_id": node_id, "dependency_id": dependency_id, "affected_nodes": [node_id, dependency_id]},
+                "data": {
+                    "node_id": node_id,
+                    "dependency_id": dependency_id,
+                    "affected_nodes": [node_id, dependency_id],
+                },
             }
 
     except Exception as e:

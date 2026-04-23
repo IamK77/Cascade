@@ -23,11 +23,11 @@ from cascade.core.state import NodeState
 
 # Mermaid state → style mapping
 _STATE_STYLES: dict[NodeState, str] = {
-    NodeState.READY: "fill:#4CAF50,color:#fff",     # green
-    NodeState.PENDING: "fill:#9E9E9E,color:#fff",   # gray
-    NodeState.ACTIVE: "fill:#2196F3,color:#fff",     # blue
+    NodeState.READY: "fill:#4CAF50,color:#fff",  # green
+    NodeState.PENDING: "fill:#9E9E9E,color:#fff",  # gray
+    NodeState.ACTIVE: "fill:#2196F3,color:#fff",  # blue
     NodeState.COMPLETED: "fill:#8BC34A,color:#fff",  # light green
-    NodeState.FAILED: "fill:#F44336,color:#fff",     # red
+    NodeState.FAILED: "fill:#F44336,color:#fff",  # red
     NodeState.CANCELLED: "fill:#FF9800,color:#fff",  # orange
 }
 
@@ -41,7 +41,9 @@ _STATE_ICONS: dict[NodeState, str] = {
 }
 
 
-def to_mermaid(cascade: Cascade, show_contracts: bool = False, show_critical_path: bool = True) -> str:
+def to_mermaid(
+    cascade: Cascade, show_contracts: bool = False, show_critical_path: bool = True
+) -> str:
     """Generate a Mermaid flowchart from the Cascade.
 
     Args:
@@ -71,11 +73,11 @@ def to_mermaid(cascade: Cascade, show_contracts: bool = False, show_critical_pat
 
         # Mermaid node shape based on state
         if node.state == NodeState.ACTIVE:
-            lines.append(f"    {node_id}[[\"{label}\"]]")  # stadium shape
+            lines.append(f'    {node_id}[["{label}"]]')  # stadium shape
         elif node.state.is_terminal():
-            lines.append(f"    {node_id}([\"{label}\"])")   # rounded
+            lines.append(f'    {node_id}(["{label}"])')  # rounded
         else:
-            lines.append(f"    {node_id}[\"{label}\"]")     # rectangle
+            lines.append(f'    {node_id}["{label}"]')  # rectangle
 
     lines.append("")
 
@@ -91,7 +93,7 @@ def to_mermaid(cascade: Cascade, show_contracts: bool = False, show_critical_pat
             label = contract.expectation[:40]
             if len(contract.expectation) > 40:
                 label += "..."
-            lines.append(f"    {from_id} {arrow}|\"{label}\"| {to_id}")
+            lines.append(f'    {from_id} {arrow}|"{label}"| {to_id}')
         else:
             lines.append(f"    {from_id} {arrow} {to_id}")
 
