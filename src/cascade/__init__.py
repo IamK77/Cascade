@@ -14,7 +14,7 @@
 
 """Cascade - A cascade-based collaboration framework for multi-agent systems."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from cascade.context.cancellation import CancellationToken, CancelledError
 from cascade.context.propagator import ContextPropagator
