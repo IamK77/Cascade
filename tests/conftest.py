@@ -19,11 +19,18 @@ from pathlib import Path
 
 import pytest
 
+from cascade.client import CascadeClient
 from cascade.context.context import Context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.storage.graph_storage import GraphStorage
+
+
+@pytest.fixture
+def client(temp_storage):
+    """Create a CascadeClient backed by temp storage."""
+    return CascadeClient(temp_storage.base_dir)
 
 
 @pytest.fixture

@@ -19,55 +19,33 @@ These tests verify that the system remains consistent when
 nodes are split, refined, added, or removed mid-execution.
 """
 
+from cascade.client import CascadeClient, Contract
 from cascade.core.state import NodeState
 from cascade.view import get_node_view
-from tools import add_node, finish_task, get_task, refine_node, remove_node, split_node
-
-
-def make_contract(node_id: str, expectation: str = "", promise: str = "") -> dict:
-    return {
-        "node_id": node_id,
-        "expectation": expectation or f"Expect output from {node_id}",
-        "promise": promise or "Promise output to dependent",
-    }
 
 
 class TestSplitDuringExecution:
     """Split a node while the graph is being executed."""
 
-    def test_split_pending_node_while_upstream_active(self, temp_storage):
+    def test_split_pending_node_while_upstream_active(self, client: CascadeClient, temp_storage):
         """Split a PENDING task while its upstream dependency is being worked on."""
         # Build: a -> b -> c
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        client.add("a")
+        client.add(
+            "b",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "c",
-                "dependencies": ["b"],
-                "expectations": [make_contract("b")],
-            },
+        client.add(
+            "c",
+            deps={"b": Contract("Expect output from b", "Promise output to dependent")},
         )
 
         # Agent claims a (a is ACTIVE, b and c are PENDING)
-        get_task.get_task(temp_storage, {"agent_id": "agent-1"})
+        client.claim("agent-1")
 
-        # Meanwhile, someone decides b is too broad → split into b1, b2
-        result = split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "b",
-                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-            },
-        )
-        assert result["success"], result["message"]
+        # Meanwhile, someone decides b is too broad -> split into b1, b2
+        result = client.split("b", into=["b1", "b2"])
+        assert result.success, result.message
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -87,37 +65,23 @@ class TestSplitDuringExecution:
             # a is still ACTIVE
             assert cascade.nodes["a"].state == NodeState.ACTIVE
 
-    def test_split_then_complete_upstream(self, temp_storage):
+    def test_split_then_complete_upstream(self, client: CascadeClient, temp_storage):
         """After splitting, completing the upstream should unblock split nodes."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        client.add("a")
+        client.add(
+            "b",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
 
         # Split b before a completes
-        split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "b",
-                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-            },
-        )
+        client.split("b", into=["b1", "b2"])
 
         # Now complete a
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "a",
-                "success": True,
-                "summary": "Analysis complete",
-                "critical": {"result": "data from a"},
-            },
+        client.claim("agent-1", "a")
+        client.complete(
+            "a",
+            summary="Analysis complete",
+            critical={"result": "data from a"},
         )
 
         # b1 and b2 should now be READY
@@ -126,38 +90,24 @@ class TestSplitDuringExecution:
             assert cascade.nodes["b1"].state == NodeState.READY
             assert cascade.nodes["b2"].state == NodeState.READY
 
-    def test_split_context_propagation(self, temp_storage):
+    def test_split_context_propagation(self, client: CascadeClient, temp_storage):
         """Context from completed upstream should reach split nodes."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        client.add("a")
+        client.add(
+            "b",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
 
         # Complete a with context
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "a",
-                "success": True,
-                "summary": "Found 3 bugs",
-                "critical": {"bug_count": 3, "severity": "high"},
-            },
+        client.claim("agent-1", "a")
+        client.complete(
+            "a",
+            summary="Found 3 bugs",
+            critical={"bug_count": 3, "severity": "high"},
         )
 
         # Split b into b1, b2
-        split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "b",
-                "new_nodes": [{"node_id": "b1"}, {"node_id": "b2"}],
-            },
-        )
+        client.split("b", into=["b1", "b2"])
 
         # b1 should see a's context
         with temp_storage.lock():
@@ -173,22 +123,19 @@ class TestSplitDuringExecution:
 class TestRefineDuringExecution:
     """Add new dependencies to nodes mid-execution."""
 
-    def test_refine_ready_node_becomes_pending(self, temp_storage):
-        """A READY task gets a new dependency → goes back to PENDING."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
+    def test_refine_ready_node_becomes_pending(self, client: CascadeClient, temp_storage):
+        """A READY task gets a new dependency -> goes back to PENDING."""
+        client.add("a")
+        client.add("b")
 
         # Both are READY. Now add dependency: b depends on a.
-        result = refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependency_id": "a",
-                "expectation": "Need a's output first",
-                "promise": "Will provide output",
-            },
+        result = client.refine(
+            "b",
+            "a",
+            expectation="Need a's output first",
+            promise="Will provide output",
         )
-        assert result["success"]
+        assert result.success
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -196,24 +143,21 @@ class TestRefineDuringExecution:
             assert cascade.nodes["b"].state == NodeState.PENDING
             assert cascade.pending_dependency_count("b") == 1
 
-    def test_refine_while_agent_active_on_another(self, temp_storage):
+    def test_refine_while_agent_active_on_another(self, client: CascadeClient, temp_storage):
         """Add a dependency while an agent is working on a different task."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
-        add_node.add_node(temp_storage, {"node_id": "c"})
+        client.add("a")
+        client.add("b")
+        client.add("c")
 
         # Agent starts working on a
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
+        client.claim("agent-1", "a")
 
         # Meanwhile, someone refines: c now depends on b
-        refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "c",
-                "dependency_id": "b",
-                "expectation": "Need b's output",
-                "promise": "Will provide output",
-            },
+        client.refine(
+            "c",
+            "b",
+            expectation="Need b's output",
+            promise="Will provide output",
         )
 
         with temp_storage.lock():
@@ -222,72 +166,47 @@ class TestRefineDuringExecution:
             assert cascade.nodes["c"].state == NodeState.PENDING
             assert cascade.has_dependency("c", "b")
 
-    def test_refine_then_complete_chain(self, temp_storage):
+    def test_refine_then_complete_chain(self, client: CascadeClient):
         """After refining, completing the chain unblocks correctly."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
+        client.add("a")
+        client.add("b")
 
         # Refine: b depends on a
-        refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependency_id": "a",
-                "expectation": "E",
-                "promise": "P",
-            },
-        )
+        client.refine("b", "a", expectation="E", promise="P")
 
         # Complete a
-        get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "a",
-                "success": True,
-                "summary": "Done",
-                "critical": {"from_a": True},
-            },
-        )
+        client.claim("a1", "a")
+        client.complete("a", summary="Done", critical={"from_a": True})
 
         # b should be READY and see a's context
-        result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "b"})
-        assert result["success"]
-        assert result["data"]["task_info"]["upstream"][0]["delivered"]["critical"]["from_a"] is True
+        task = client.claim("a2", "b")
+        assert task.upstream[0]["delivered"]["critical"]["from_a"] is True
 
 
 class TestAddNodeDuringExecution:
     """Add new nodes to a running graph."""
 
-    def test_add_node_to_running_graph(self, temp_storage):
+    def test_add_node_to_running_graph(self, client: CascadeClient, temp_storage):
         """Add a new task while others are being executed."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        client.add("a")
+        client.add(
+            "b",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
 
         # Agent starts a
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "a"})
+        client.claim("agent-1", "a")
 
         # Someone adds a new independent task
-        result = add_node.add_node(temp_storage, {"node_id": "c_independent"})
-        assert result["success"]
+        result = client.add("c_independent")
+        assert result.success
 
         # And a new task depending on the running task
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "d_depends_on_a",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        result = client.add(
+            "d_depends_on_a",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
-        assert result["success"]
+        assert result.success
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -296,68 +215,47 @@ class TestAddNodeDuringExecution:
             # d is PENDING (depends on active a)
             assert cascade.nodes["d_depends_on_a"].state == NodeState.PENDING
 
-    def test_add_node_depending_on_completed(self, temp_storage):
-        """Add a node that depends on an already-completed task → immediately READY."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "a"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "a",
-                "success": True,
-                "summary": "Done",
-                "critical": {"x": 1},
-            },
-        )
+    def test_add_node_depending_on_completed(self, client: CascadeClient):
+        """Add a node that depends on an already-completed task -> immediately READY."""
+        client.add("a")
+        client.claim("a1", "a")
+        client.complete("a", summary="Done", critical={"x": 1})
 
         # Add new node depending on completed a
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "late_joiner",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+        result = client.add(
+            "late_joiner",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
-        assert result["success"]
+        assert result.success
 
         # Should be immediately READY and see a's context
-        result = get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "late_joiner"})
-        assert result["success"]
-        assert result["data"]["task_info"]["upstream"][0]["delivered"]["critical"]["x"] == 1
+        task = client.claim("a2", "late_joiner")
+        assert task.upstream[0]["delivered"]["critical"]["x"] == 1
 
 
 class TestRemoveDuringExecution:
     """Remove nodes from a running graph."""
 
-    def test_remove_pending_node(self, temp_storage):
-        """Remove a PENDING task — its dependents should adjust."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [make_contract("a")],
-            },
+    def test_remove_pending_node(self, client: CascadeClient, temp_storage):
+        """Remove a PENDING task -- its dependents should adjust."""
+        client.add("a")
+        client.add(
+            "b",
+            deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "c",
-                "dependencies": ["b"],
-                "expectations": [make_contract("b")],
-            },
+        client.add(
+            "c",
+            deps={"b": Contract("Expect output from b", "Promise output to dependent")},
         )
 
-        # Remove b — c loses its dependency
-        result = remove_node.remove_node(temp_storage, {"node_id": "b"})
-        assert result["success"]
+        # Remove b -- c loses its dependency
+        result = client.remove("b")
+        assert result.success
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert "b" not in cascade.nodes
-            # c should now have no dependencies → READY
+            # c should now have no dependencies -> READY
             assert cascade.pending_dependency_count("c") == 0
             assert cascade.nodes["c"].state == NodeState.READY
 
@@ -365,7 +263,7 @@ class TestRemoveDuringExecution:
 class TestCombinedDynamicEditing:
     """Complex scenarios combining multiple dynamic edits."""
 
-    def test_full_dynamic_workflow(self, temp_storage):
+    def test_full_dynamic_workflow(self, client: CascadeClient, temp_storage):
         """
         Simulate a realistic dynamic workflow:
         1. Build initial graph: analyze -> implement -> test
@@ -377,45 +275,29 @@ class TestCombinedDynamicEditing:
         7. Complete everything
         """
         # 1. Initial graph
-        add_node.add_node(temp_storage, {"node_id": "analyze"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "implement",
-                "dependencies": ["analyze"],
-                "expectations": [make_contract("analyze")],
-            },
+        client.add("analyze")
+        client.add(
+            "implement",
+            deps={"analyze": Contract("Expect output from analyze", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "test",
-                "dependencies": ["implement"],
-                "expectations": [make_contract("implement")],
+        client.add(
+            "test",
+            deps={
+                "implement": Contract("Expect output from implement", "Promise output to dependent")
             },
         )
 
         # 2. Agent starts analyze
-        get_task.get_task(temp_storage, {"agent_id": "a1", "task_id": "analyze"})
+        client.claim("a1", "analyze")
 
         # 3. Split implement while analyze is running
-        split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "implement",
-                "new_nodes": [{"node_id": "impl_auth"}, {"node_id": "impl_api"}],
-            },
-        )
+        client.split("implement", into=["impl_auth", "impl_api"])
 
         # 4. Complete analyze with context
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "analyze",
-                "success": True,
-                "summary": "Found auth and API requirements",
-                "critical": {"needs_auth": True, "api_version": "v2"},
-            },
+        client.complete(
+            "analyze",
+            summary="Found auth and API requirements",
+            critical={"needs_auth": True, "api_version": "v2"},
         )
 
         # 5. Both impl nodes should be READY
@@ -425,18 +307,14 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["impl_api"].state == NodeState.READY
 
         # Agents pick them up
-        get_task.get_task(temp_storage, {"agent_id": "a2", "task_id": "impl_auth"})
-        get_task.get_task(temp_storage, {"agent_id": "a3", "task_id": "impl_api"})
+        client.claim("a2", "impl_auth")
+        client.claim("a3", "impl_api")
 
         # 6. impl_api agent discovers it needs a schema task first
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "design_schema",
-                "dependents": ["impl_api"],
-                "expectations": [
-                    make_contract("impl_api", "API schema design", "Schema for v2 API")
-                ],
+        client.add(
+            "design_schema",
+            dependents={
+                "impl_api": Contract("API schema design", "Schema for v2 API"),
             },
         )
 
@@ -446,34 +324,13 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["impl_api"].state == NodeState.ACTIVE
 
         # 7. Complete everything
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "impl_auth",
-                "success": True,
-                "summary": "Auth module done",
-            },
-        )
+        client.complete("impl_auth", summary="Auth module done")
 
         # design_schema is READY (no deps)
-        get_task.get_task(temp_storage, {"agent_id": "a4", "task_id": "design_schema"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "design_schema",
-                "success": True,
-                "summary": "Schema designed",
-            },
-        )
+        client.claim("a4", "design_schema")
+        client.complete("design_schema", summary="Schema designed")
 
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "impl_api",
-                "success": True,
-                "summary": "API module done",
-            },
-        )
+        client.complete("impl_api", summary="API module done")
 
         # test should now be READY (all deps completed)
         with temp_storage.lock():
@@ -481,15 +338,8 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["test"].state == NodeState.READY
 
         # Complete test
-        get_task.get_task(temp_storage, {"agent_id": "a5", "task_id": "test"})
-        finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "test",
-                "success": True,
-                "summary": "All tests pass",
-            },
-        )
+        client.claim("a5", "test")
+        client.complete("test", summary="All tests pass")
 
         # Everything should be COMPLETED
         with temp_storage.lock():

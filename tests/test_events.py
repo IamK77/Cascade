@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for event sourcing — event store and tool integration."""
+"""Tests for event sourcing -- event store and CascadeClient integration."""
 
+from cascade.client import CascadeClient, Contract
 from cascade.events import EventType
-from tools import add_node, finish_task, get_task
-from tools.history import history
 
 
 class TestEventStore:
@@ -78,67 +77,56 @@ class TestEventStore:
 
 
 class TestEventIntegration:
-    """Tests that tools emit events automatically."""
+    """Tests that CascadeClient operations emit events automatically."""
 
-    def test_add_node_emits_event(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
+    def test_add_node_emits_event(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
 
         events = temp_storage.events.read_all()
         assert len(events) == 1
         assert events[0].type == EventType.NODE_ADDED
         assert events[0].data["node_id"] == "task_a"
 
-    def test_claim_emits_event(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
+    def test_claim_emits_event(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent-1", "task_a")
 
         events = temp_storage.events.read_by_type(EventType.TASK_CLAIMED)
         assert len(events) == 1
         assert events[0].data["agent_id"] == "agent-1"
 
-    def test_complete_emits_event(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
-        finish_task.finish_task(temp_storage, {"task_id": "task_a", "success": True})
+    def test_complete_emits_event(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent-1", "task_a")
+        client.complete("task_a")
 
         events = temp_storage.events.read_by_type(EventType.TASK_COMPLETED)
         assert len(events) == 1
 
-    def test_fail_emits_event(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
-        finish_task.finish_task(
-            temp_storage, {"task_id": "task_a", "success": False, "result": "broke"}
-        )
+    def test_fail_emits_event(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent-1", "task_a")
+        client.fail("task_a", reason="broke")
 
         events = temp_storage.events.read_by_type(EventType.TASK_FAILED)
         assert len(events) == 1
         assert events[0].data["reason"] == "broke"
 
-    def test_release_emits_event(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "task_a"})
-        finish_task.finish_task(
-            temp_storage, {"task_id": "task_a", "release": True, "result": "stuck"}
-        )
+    def test_release_emits_event(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent-1", "task_a")
+        client.release("task_a", reason="stuck")
 
         events = temp_storage.events.read_by_type(EventType.TASK_RELEASED)
         assert len(events) == 1
 
-    def test_full_lifecycle_event_trail(self, temp_storage):
+    def test_full_lifecycle_event_trail(self, client: CascadeClient, temp_storage):
         """End-to-end: add -> claim -> complete -> claim next."""
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            },
-        )
-        get_task.get_task(temp_storage, {"agent_id": "agent-1"})
-        finish_task.finish_task(temp_storage, {"task_id": "a", "success": True})
-        get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "b"})
+        client.add("a")
+        client.add("b", deps={"a": Contract("E", "P")})
+        client.claim("agent-1")
+        client.complete("a")
+        client.claim("agent-2", "b")
 
         all_events = temp_storage.events.read_all()
         types = [e.type for e in all_events]
@@ -152,37 +140,37 @@ class TestEventIntegration:
 
 
 class TestHistoryTool:
-    """Tests for the history query tool."""
+    """Tests for the history query method."""
 
-    def test_history_all(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
+    def test_history_all(self, client: CascadeClient):
+        client.add("a")
+        client.add("b")
 
-        result = history(temp_storage, {})
-        assert result["success"]
-        assert result["data"]["count"] == 2
+        result = client.history()
+        assert result.success
+        assert result.data["count"] == 2
 
-    def test_history_by_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
+    def test_history_by_node(self, client: CascadeClient):
+        client.add("a")
+        client.add("b")
 
-        result = history(temp_storage, {"node_id": "a"})
-        assert result["success"]
-        assert result["data"]["count"] == 1
+        result = client.history(node_id="a")
+        assert result.success
+        assert result.data["count"] == 1
 
-    def test_history_summary(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "x"})
+    def test_history_summary(self, client: CascadeClient):
+        client.add("a")
+        client.claim("x")
 
-        result = history(temp_storage, {"summary": True})
-        assert result["success"]
-        assert result["data"]["summary"]["node_added"] == 1
-        assert result["data"]["summary"]["task_claimed"] == 1
+        result = client.history(summary=True)
+        assert result.success
+        assert result.data["summary"]["node_added"] == 1
+        assert result.data["summary"]["task_claimed"] == 1
 
-    def test_history_last_n(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        add_node.add_node(temp_storage, {"node_id": "b"})
-        add_node.add_node(temp_storage, {"node_id": "c"})
+    def test_history_last_n(self, client: CascadeClient):
+        client.add("a")
+        client.add("b")
+        client.add("c")
 
-        result = history(temp_storage, {"last_n": 2})
-        assert result["data"]["count"] == 2
+        result = client.history(last_n=2)
+        assert result.data["count"] == 2

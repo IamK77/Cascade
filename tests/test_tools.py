@@ -12,138 +12,93 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for LLM tools."""
+"""Tests for Cascade operations via CascadeClient."""
 
-import pytest
+import time
 
+from cascade.client import CascadeClient, Contract
 from cascade.core.state import NodeState
-from tools import (
-    add_node,
-    execute_tool,
-    finish_task,
-    get_task,
-    list_nodes,
-    refine_node,
-    remove_node,
-    split_node,
-)
-
-
-def make_contract(node_id: str, expectation: str = "", promise: str = "") -> dict:
-    """Helper to create contract for tests."""
-    return {
-        "node_id": node_id,
-        "expectation": expectation or f"Expect output from {node_id}",
-        "promise": promise or "Promise output to dependent",
-    }
 
 
 class TestGetTask:
-    """Tests for get_task tool."""
+    """Tests for claim (formerly get_task)."""
 
-    def test_get_any_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_get_any_task(self, client: CascadeClient):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        result = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
-        assert result["success"] is True
-        assert result["data"]["state"] == "ACTIVE"
-        assert "task_info" in result["data"]
+        task = client.claim("agent_1")
+        assert task.state == "ACTIVE"
+        assert task.id == "task_a"
 
-    def test_get_specific_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        result = get_task.get_task(temp_storage, {"task_id": "task_a", "agent_id": "agent_1"})
-        assert result["success"] is True
+    def test_get_specific_task(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        task = client.claim("agent_1", "task_a")
+        assert task.id == "task_a"
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
-    def test_get_task_not_ready(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_get_task_not_ready(self, client: CascadeClient):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
-        result = get_task.get_task(temp_storage, {"task_id": "task_b", "agent_id": "agent_1"})
-        assert result["success"] is False
+        result = client._claim_inner("agent_1", "task_b")
+        assert result.success is False
 
-    def test_agent_tracking(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_agent_tracking(self, client: CascadeClient):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add(
+            "task_b",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result1 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
-        assert result1["success"] is True
+        task1 = client.claim("agent_1")
+        assert task1.id == "root"
 
-        result2 = get_task.get_task(temp_storage, {"agent_id": "agent_1"})
-        assert result2["success"] is True
-        assert result2["data"].get("reminder") is True
+        # Second claim returns the already-active task with reminder
+        result = client._claim_inner("agent_1")
+        assert result.success is True
+        assert result.data.get("reminder") is True
 
-    def test_no_available_tasks(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1"})
-        finish_task.finish_task(temp_storage, {"task_id": "task_a", "success": True})
+    def test_no_available_tasks(self, client: CascadeClient):
+        client.add("task_a")
+        client.claim("agent_1")
+        client.complete("task_a")
 
-        result = get_task.get_task(temp_storage, {"agent_id": "agent_2"})
-        assert result["success"] is False
+        result = client._claim_inner("agent_2")
+        assert result.success is False
 
-    def test_agent_id_required(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        result = get_task.get_task(temp_storage, {})
-        assert result["success"] is False
-        assert "agent_id is required" in result["message"]
+    def test_agent_id_required(self, client: CascadeClient):
+        client.add("task_a")
+        result = client._claim_inner("")
+        assert result.success is False
+        assert "agent_id is required" in result.message
 
 
 class TestFinishTask:
-    """Tests for finish_task tool."""
+    """Tests for complete/fail/release (formerly finish_task)."""
 
-    def test_complete_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_complete_task(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
-        result = finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "task_a",
-                "success": True,
-                "result": "Task completed successfully",
-            },
-        )
-        assert result["success"] is True
+        client.claim("agent_1", "task_a")
+        result = client.complete("task_a", summary="Task completed successfully")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -151,53 +106,31 @@ class TestFinishTask:
             assert cascade.pending_dependency_count("task_b") == 0
             assert cascade.nodes["task_b"].state == NodeState.READY
 
-    def test_fail_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+    def test_fail_task(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent_1", "task_a")
 
-        result = finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "task_a",
-                "success": False,
-                "result": "Something went wrong",
-            },
-        )
-        assert result["success"] is True
+        result = client.fail("task_a", reason="Something went wrong")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.FAILED
 
-    def test_fail_task_cascade(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_fail_task_cascade(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_c",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+        client.add(
+            "task_c",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
-        result = finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "task_a",
-                "success": False,
-                "cascade": True,
-            },
-        )
-        assert result["success"] is True
+        client.claim("agent_1", "task_a")
+        result = client.fail("task_a", cascade=True)
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -205,99 +138,82 @@ class TestFinishTask:
             assert cascade.nodes["task_b"].state == NodeState.FAILED
             assert cascade.nodes["task_c"].state == NodeState.FAILED
 
-    def test_release_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+    def test_release_task(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent_1", "task_a")
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
-        result = finish_task.finish_task(
-            temp_storage,
-            {
-                "task_id": "task_a",
-                "release": True,
-                "result": "Need more information",
-            },
-        )
-        assert result["success"] is True
+        result = client.release("task_a", reason="Need more information")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.READY
 
-        result2 = get_task.get_task(temp_storage, {"task_id": "task_a", "agent_id": "agent_2"})
-        assert result2["success"] is True
+        task2 = client.claim("agent_2", "task_a")
+        assert task2.id == "task_a"
 
 
 class TestAddNode:
-    """Tests for add_node tool."""
+    """Tests for add (formerly add_node)."""
 
-    def test_add_basic_node(self, temp_storage):
-        result = add_node.add_node(temp_storage, {"node_id": "new_task"})
-        assert result["success"] is True
+    def test_add_basic_node(self, client: CascadeClient, temp_storage):
+        result = client.add("new_task")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert "new_task" in cascade.nodes
             assert cascade.nodes["new_task"].state == NodeState.READY
 
-    def test_add_node_with_dependencies(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_add_node_with_dependencies(self, client: CascadeClient, temp_storage):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add(
+            "task_b",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "new_task",
-                "dependencies": ["task_a", "task_b"],
-                "expectations": [make_contract("task_a"), make_contract("task_b")],
+        result = client.add(
+            "new_task",
+            deps={
+                "task_a": Contract("Expect output from task_a", "Promise output to dependent"),
+                "task_b": Contract("Expect output from task_b", "Promise output to dependent"),
             },
         )
-        assert result["success"] is True
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.pending_dependency_count("new_task") == 2
             assert cascade.nodes["new_task"].state == NodeState.PENDING
 
-    def test_add_node_dependency_not_exists(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "new_task",
-                "dependencies": ["non_existent"],
-                "expectations": [make_contract("non_existent")],
+    def test_add_node_dependency_not_exists(self, client: CascadeClient):
+        client.add("root")
+        result = client.add(
+            "new_task",
+            deps={
+                "non_existent": Contract(
+                    "Expect output from non_existent", "Promise output to dependent"
+                )
             },
         )
-        assert result["success"] is False
-        assert "not found" in result["message"]
+        assert result.success is False
+        assert "not found" in result.message
 
-    def test_independent_subgraphs_allowed(self, temp_storage):
+    def test_independent_subgraphs_allowed(self, client: CascadeClient, temp_storage):
         """Multiple independent task groups are allowed."""
-        result = add_node.add_node(temp_storage, {"node_id": "group_a_root"})
-        assert result["success"] is True
+        result = client.add("group_a_root")
+        assert result.success is True
 
-        # Independent node — no longer rejected
-        result = add_node.add_node(temp_storage, {"node_id": "group_b_root"})
-        assert result["success"] is True
+        result = client.add("group_b_root")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -306,185 +222,93 @@ class TestAddNode:
             assert cascade.nodes["group_a_root"].state == NodeState.READY
             assert cascade.nodes["group_b_root"].state == NodeState.READY
 
-    def test_add_node_with_dependents(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_add_node_with_dependents(self, client: CascadeClient, temp_storage):
+        client.add("root")
+        client.add(
+            "child",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "new_parent",
-                "dependents": ["child"],
-                "expectations": [
-                    make_contract("child", "Child expects input", "New parent provides input")
-                ],
-            },
+        result = client.add(
+            "new_parent",
+            dependents={"child": Contract("Child expects input", "New parent provides input")},
         )
-        assert result["success"] is True
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.pending_dependency_count("child") == 2
 
-    def test_independent_subgraph_with_deps(self, temp_storage):
+    def test_independent_subgraph_with_deps(self, client: CascadeClient):
         """Independent subgraphs can each have their own dependency chains."""
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add("root")
+        client.add(
+            "child",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        # Independent root — allowed now
-        result = add_node.add_node(temp_storage, {"node_id": "other_root"})
-        assert result["success"] is True
-
-    def test_missing_contract_for_dependency(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-            },
-        )
-        assert result["success"] is False
-        assert "Missing contract" in result["message"]
-
-    def test_empty_expectation_rejected(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-                "expectations": [{"node_id": "root", "expectation": "", "promise": "some promise"}],
-            },
-        )
-        assert result["success"] is False
-        assert "expectation is required" in result["message"]
-
-    def test_empty_promise_rejected(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        result = add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-                "expectations": [
-                    {"node_id": "root", "expectation": "some expectation", "promise": ""}
-                ],
-            },
-        )
-        assert result["success"] is False
-        assert "promise is required" in result["message"]
+        result = client.add("other_root")
+        assert result.success is True
 
 
 class TestRefineNode:
-    """Tests for refine_node tool."""
+    """Tests for refine (formerly refine_node)."""
 
-    def test_refine_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_refine_node(self, client: CascadeClient, temp_storage):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add(
+            "task_b",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result = refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependency_id": "task_a",
-                "expectation": "Expect output from task_a",
-                "promise": "Promise to provide results",
-            },
+        result = client.refine(
+            "task_b",
+            "task_a",
+            expectation="Expect output from task_a",
+            promise="Promise to provide results",
         )
-        assert result["success"] is True
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.pending_dependency_count("task_b") == 2
 
-    def test_refine_node_requires_contract(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_refine_node_requires_contract(self, client: CascadeClient):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result = refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependency_id": "root",
-                "promise": "some promise",
-            },
-        )
-        assert result["success"] is False
-        assert "expectation" in result["message"].lower()
+        result = client.refine("task_a", "root", expectation="", promise="some promise")
+        assert result.success is False
+        assert "expectation" in result.message.lower()
 
-        result = refine_node.refine_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependency_id": "root",
-                "expectation": "some expectation",
-            },
-        )
-        assert result["success"] is False
-        assert "promise" in result["message"].lower()
+        result = client.refine("task_a", "root", expectation="some expectation", promise="")
+        assert result.success is False
+        assert "promise" in result.message.lower()
 
 
 class TestRemoveNode:
-    """Tests for remove_node tool."""
+    """Tests for remove (formerly remove_node)."""
 
-    def test_remove_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_remove_node(self, client: CascadeClient, temp_storage):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        result = remove_node.remove_node(temp_storage, {"node_id": "task_b"})
-        assert result["success"] is True
+        result = client.remove("task_b")
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -492,30 +316,17 @@ class TestRemoveNode:
 
 
 class TestSplitNode:
-    """Tests for split_node tool."""
+    """Tests for split (formerly split_node)."""
 
-    def test_split_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_split_node(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        result = split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "task_b",
-                "new_nodes": [
-                    {"node_id": "task_b1"},
-                    {"node_id": "task_b2"},
-                ],
-            },
-        )
-        assert result["success"] is True
+        result = client.split("task_b", into=["task_b1", "task_b2"])
+        assert result.success is True
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -524,133 +335,83 @@ class TestSplitNode:
 
 
 class TestListNodes:
-    """Tests for list_nodes tool."""
+    """Tests for nodes (formerly list_nodes)."""
 
-    def test_list_all_nodes(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_a",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+    def test_list_all_nodes(self, client: CascadeClient):
+        client.add("root")
+        client.add(
+            "task_a",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add(
+            "task_b",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_c",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add(
+            "task_c",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        result = list_nodes.list_nodes(temp_storage, {})
-        assert result["success"] is True
-        assert result["data"]["count"] == 4
+        nodes = client.nodes()
+        assert len(nodes) == 4
 
-    def test_list_nodes_with_filter(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["task_a"],
-                "expectations": [make_contract("task_a")],
-            },
+    def test_list_nodes_with_filter(self, client: CascadeClient):
+        client.add("task_a")
+        client.add(
+            "task_b",
+            deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        result = list_nodes.list_nodes(temp_storage, {"state_filter": "READY"})
-        assert result["success"] is True
-        assert result["data"]["count"] == 1
+        nodes = client.nodes(state="READY")
+        assert len(nodes) == 1
 
 
 class TestCheckTimeouts:
-    """Tests for check_timeouts tool."""
+    """Tests for check_timeouts."""
 
-    def test_release_timed_out_task(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(
-            temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 0.01}
-        )
-
-        # Wait for timeout
-        import time
+    def test_release_timed_out_task(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent_1", "task_a", timeout=0.01)
 
         time.sleep(0.02)
 
-        from tools.check_timeouts import check_timeouts
-
-        result = check_timeouts(temp_storage, {})
-
-        assert result["success"] is True
-        assert result["data"]["count"] == 1
-        assert result["data"]["released"][0]["task_id"] == "task_a"
-        assert result["data"]["released"][0]["agent_id"] == "agent_1"
+        result = client.check_timeouts()
+        assert result.success is True
+        assert result.data["count"] == 1
+        assert result.data["released"][0]["task_id"] == "task_a"
+        assert result.data["released"][0]["agent_id"] == "agent_1"
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.READY
             assert cascade.nodes["task_a"].agent_id is None
 
-    def test_no_timeout_no_release(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        # No timeout specified
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+    def test_no_timeout_no_release(self, client: CascadeClient):
+        client.add("task_a")
+        client.claim("agent_1", "task_a")
 
-        from tools.check_timeouts import check_timeouts
+        result = client.check_timeouts()
+        assert result.success is True
+        assert result.data["count"] == 0
 
-        result = check_timeouts(temp_storage, {})
-
-        assert result["success"] is True
-        assert result["data"]["count"] == 0
-
-    def test_default_timeout(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(temp_storage, {"agent_id": "agent_1", "task_id": "task_a"})
+    def test_default_timeout(self, client: CascadeClient, temp_storage):
+        client.add("task_a")
+        client.claim("agent_1", "task_a")
 
         # Force claimed_at to the past
         with temp_storage.lock():
             cascade = temp_storage.load()
-            cascade.nodes["task_a"].claimed_at = 0.0  # epoch = definitely expired
+            cascade.nodes["task_a"].claimed_at = 0.0
             temp_storage.save(cascade)
 
-        from tools.check_timeouts import check_timeouts
+        result = client.check_timeouts(default_timeout=60)
+        assert result.success is True
+        assert result.data["count"] == 1
 
-        result = check_timeouts(temp_storage, {"default_timeout": 60})
+    def test_not_yet_timed_out(self, client: CascadeClient):
+        client.add("task_a")
+        client.claim("agent_1", "task_a", timeout=3600)
 
-        assert result["success"] is True
-        assert result["data"]["count"] == 1
-
-    def test_not_yet_timed_out(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "task_a"})
-        get_task.get_task(
-            temp_storage, {"agent_id": "agent_1", "task_id": "task_a", "timeout": 3600}
-        )
-
-        from tools.check_timeouts import check_timeouts
-
-        result = check_timeouts(temp_storage, {})
-
-        assert result["success"] is True
-        assert result["data"]["count"] == 0
-
-
-class TestExecuteTool:
-    """Tests for the execute_tool wrapper function."""
-
-    def test_execute_valid_tool(self, temp_storage):
-        result = execute_tool(temp_storage, "add_node", {"node_id": "test"})
-        assert result["success"] is True
-
-    def test_execute_invalid_tool(self, temp_storage):
-        with pytest.raises(ValueError, match="Unknown tool"):
-            execute_tool(temp_storage, "invalid_tool", {})
+        result = client.check_timeouts()
+        assert result.success is True
+        assert result.data["count"] == 0

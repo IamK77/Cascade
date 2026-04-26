@@ -12,23 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for the rework mechanism — upstream feedback via forward derivation."""
+"""Tests for the rework mechanism -- upstream feedback via forward derivation."""
 
+from cascade.client import CascadeClient, Contract
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.operations.rework import ReworkOperation
-from cascade.types import Context, Contract
-from tools import add_node, execute_tool, finish_task, get_task
-from tools.rework import rework
-
-
-def make_contract(node_id: str) -> dict:
-    return {
-        "node_id": node_id,
-        "expectation": f"Expect output from {node_id}",
-        "promise": "Promise output to dependent",
-    }
+from cascade.types import Context
 
 
 class TestReworkOperation:
@@ -212,45 +203,38 @@ class TestReworkOperation:
 
 
 class TestReworkTool:
-    """Tests for the rework tool (full integration with storage)."""
+    """Tests for rework via CascadeClient (full integration with storage)."""
 
-    def test_rework_via_tool(self, temp_storage):
-        """Test rework through the tool interface."""
+    def test_rework_via_client(self, client: CascadeClient, temp_storage):
+        """Test rework through the client interface."""
         # Build graph: root -> task_b
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "task_b",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
+        client.add("root")
+        client.add(
+            "task_b",
+            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
         # Complete root
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "root"})
-        finish_task.finish_task(temp_storage, {"task_id": "root", "success": True})
+        client.claim("agent-1", "root")
+        client.complete("root")
 
         # Agent 2 picks up task_b
-        get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "task_b"})
+        client.claim("agent-2", "task_b")
 
         # Agent 2 discovers root's output is wrong, requests rework
-        result = rework(
-            temp_storage,
-            {
-                "source_node_id": "root",
-                "corrective_node_id": "root_fix",
-                "reason": "Root analysis missed edge case",
-                "agent_id": "agent-2",
-                "source_expectation": "Original analysis to review",
-                "source_promise": "Root's original output",
-                "corrective_expectation": "Revised analysis",
-                "corrective_promise": "Corrected analysis",
-            },
+        result = client.rework(
+            source="root",
+            corrective="root_fix",
+            reason="Root analysis missed edge case",
+            agent_id="agent-2",
+            source_expectation="Original analysis to review",
+            source_promise="Root's original output",
+            corrective_expectation="Revised analysis",
+            corrective_promise="Corrected analysis",
         )
 
-        assert result["success"] is True
-        assert result["data"]["corrective_node_id"] == "root_fix"
+        assert result.success is True
+        assert result.data["corrective_node_id"] == "root_fix"
 
         # Verify graph state
         with temp_storage.lock():
@@ -270,62 +254,35 @@ class TestReworkTool:
             # DAG is valid
             assert not cascade.has_cycle()
 
-    def test_rework_missing_params(self, temp_storage):
+    def test_rework_missing_params(self, client: CascadeClient):
         """Test that rework validates required params."""
-        result = rework(temp_storage, {})
-        assert not result["success"]
-        assert "Missing required" in result["message"]
+        result = client.rework(
+            source="",
+            corrective="",
+            reason="",
+            agent_id="",
+            source_expectation="",
+            source_promise="",
+            corrective_expectation="",
+            corrective_promise="",
+        )
+        assert not result.success
+        assert "Missing required" in result.message
 
-    def test_rework_no_active_task(self, temp_storage):
+    def test_rework_no_active_task(self, client: CascadeClient):
         """Test rework fails if agent has no active task."""
-        add_node.add_node(temp_storage, {"node_id": "root"})
+        client.add("root")
 
-        result = rework(
-            temp_storage,
-            {
-                "source_node_id": "root",
-                "corrective_node_id": "root_fix",
-                "reason": "Wrong",
-                "agent_id": "agent-no-task",
-                "source_expectation": "E",
-                "source_promise": "P",
-                "corrective_expectation": "E2",
-                "corrective_promise": "P2",
-            },
+        result = client.rework(
+            source="root",
+            corrective="root_fix",
+            reason="Wrong",
+            agent_id="agent-no-task",
+            source_expectation="E",
+            source_promise="P",
+            corrective_expectation="E2",
+            corrective_promise="P2",
         )
 
-        assert not result["success"]
-        assert "no active task" in result["message"]
-
-    def test_rework_via_execute_tool(self, temp_storage):
-        """Test rework is accessible via execute_tool."""
-        add_node.add_node(temp_storage, {"node_id": "root"})
-        get_task.get_task(temp_storage, {"agent_id": "agent-1", "task_id": "root"})
-        finish_task.finish_task(temp_storage, {"task_id": "root", "success": True})
-
-        add_node.add_node(
-            temp_storage,
-            {
-                "node_id": "child",
-                "dependencies": ["root"],
-                "expectations": [make_contract("root")],
-            },
-        )
-        get_task.get_task(temp_storage, {"agent_id": "agent-2", "task_id": "child"})
-
-        result = execute_tool(
-            temp_storage,
-            "rework",
-            {
-                "source_node_id": "root",
-                "corrective_node_id": "root_v2",
-                "reason": "Needs revision",
-                "agent_id": "agent-2",
-                "source_expectation": "E",
-                "source_promise": "P",
-                "corrective_expectation": "E2",
-                "corrective_promise": "P2",
-            },
-        )
-
-        assert result["success"] is True
+        assert not result.success
+        assert "no active task" in result.message

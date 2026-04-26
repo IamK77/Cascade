@@ -16,13 +16,13 @@
 
 import time
 
+from cascade.client import CascadeClient
 from cascade.context.cancellation import CancellationToken
 from cascade.storage.token_store import (
     CallbackNotifier,
     CancelNotifier,
     FileNotifier,
 )
-from tools import add_node, check_task, finish_task, get_task, remove_node, split_node
 
 
 class TestTokenStore:
@@ -119,90 +119,78 @@ class TestCancelNotifier:
 
 
 class TestTokenIntegration:
-    """Tests for token integration with tools."""
+    """Tests for token integration with CascadeClient."""
 
-    def test_get_task_creates_token(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
+    def test_get_task_creates_token(self, client: CascadeClient, temp_storage):
+        client.add("a")
+        client.claim("w1", "a")
 
         token = temp_storage.tokens.check("a")
         assert token is not None
         assert token.valid
         assert token.agent_id == "w1"
 
-    def test_finish_complete_cleans_token(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {"task_id": "a", "success": True, "summary": "done"})
+    def test_finish_complete_cleans_token(self, client: CascadeClient, temp_storage):
+        client.add("a")
+        client.claim("w1", "a")
+        client.complete("a", summary="done")
 
         assert temp_storage.tokens.check("a") is None
 
-    def test_finish_release_invalidates_token(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {"task_id": "a", "release": True})
+    def test_finish_release_invalidates_token(self, client: CascadeClient, temp_storage):
+        client.add("a")
+        client.claim("w1", "a")
+        client.release("a")
 
         token = temp_storage.tokens.check("a")
         assert not token.valid
         assert token.reason == "released"
 
-    def test_check_task_tool(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
+    def test_check_task_tool(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
 
-        r = check_task.check_task(temp_storage, {"task_id": "a"})
-        assert r["success"]
-        assert r["data"]["valid"]
+        r = client.check("a")
+        assert r.success
+        assert r.data["valid"]
 
-    def test_check_task_no_token(self, temp_storage):
-        r = check_task.check_task(temp_storage, {"task_id": "nope"})
-        assert r["data"]["valid"] is False
+    def test_check_task_no_token(self, client: CascadeClient):
+        r = client.check("nope")
+        assert r.data["valid"] is False
 
 
 class TestActiveProtection:
     """Tests for ACTIVE node protection on remove/split."""
 
-    def test_cannot_remove_active_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
+    def test_cannot_remove_active_node(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
 
-        r = remove_node.remove_node(temp_storage, {"node_id": "a"})
-        assert not r["success"]
-        assert "ACTIVE" in r["message"]
-        assert "release" in r["message"].lower()
+        r = client.remove("a")
+        assert not r.success
+        assert "ACTIVE" in r.message
+        assert "release" in r.message.lower()
 
-    def test_cannot_split_active_node(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
+    def test_cannot_split_active_node(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
 
-        r = split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "a",
-                "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
-            },
-        )
-        assert not r["success"]
-        assert "ACTIVE" in r["message"]
+        r = client.split("a", into=["a1", "a2"])
+        assert not r.success
+        assert "ACTIVE" in r.message
 
-    def test_can_remove_after_release(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {"task_id": "a", "release": True})
+    def test_can_remove_after_release(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
+        client.release("a")
 
-        r = remove_node.remove_node(temp_storage, {"node_id": "a"})
-        assert r["success"]
+        r = client.remove("a")
+        assert r.success
 
-    def test_can_split_after_release(self, temp_storage):
-        add_node.add_node(temp_storage, {"node_id": "a"})
-        get_task.get_task(temp_storage, {"agent_id": "w1", "task_id": "a"})
-        finish_task.finish_task(temp_storage, {"task_id": "a", "release": True})
+    def test_can_split_after_release(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
+        client.release("a")
 
-        r = split_node.split_node(
-            temp_storage,
-            {
-                "parent_id": "a",
-                "new_nodes": [{"node_id": "a1"}, {"node_id": "a2"}],
-            },
-        )
-        assert r["success"]
+        r = client.split("a", into=["a1", "a2"])
+        assert r.success
