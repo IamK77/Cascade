@@ -61,10 +61,9 @@ Check: !`command -v cascade >/dev/null 2>&1 && echo "✅ cascade CLI available" 
 ### Python API (for subagents / programmatic use)
 
 ```python
-from cascade import GraphStorage
-from tools import add_node, get_task, finish_task
+from cascade import GraphStorage, add_node, get_task, finish_task
 
-storage = GraphStorage(".cascade")
+storage = GraphStorage()
 add_node(storage, {"node_id": "analyze"})
 get_task(storage, {"agent_id": "agent-001"})
 finish_task(storage, {"task_id": "analyze", "success": True, "summary": "Done"})
@@ -92,6 +91,7 @@ Both use the same underlying tools and share the same `.cascade/` state.
 | `remove-node` | Delete a task | [commands/remove-node.md](commands/remove-node.md) |
 | `edit-node` | Update properties | [commands/edit-node.md](commands/edit-node.md) |
 | `rework` | Request upstream correction | [commands/rework.md](commands/rework.md) |
+| `check-task` | Check if task claim is still valid | [commands/check-task.md](commands/check-task.md) |
 | `check-timeouts` | Release stalled tasks | [commands/check-timeouts.md](commands/check-timeouts.md) |
 | `history` | Query event log | [commands/history.md](commands/history.md) |
 
