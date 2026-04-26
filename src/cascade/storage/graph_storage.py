@@ -15,6 +15,7 @@
 """Storage for Cascade persistence."""
 
 import json
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
@@ -67,6 +68,7 @@ class GraphStorage:
 
         self.artifacts_dir = self.base_dir / "artifacts"
         self._file_lock = FileLock(self.base_dir / ".lock")
+        self._thread_lock = threading.Lock()
         self.events = EventStore(self.base_dir)
         self.tokens = TokenStore(self.base_dir)
 
@@ -83,9 +85,21 @@ class GraphStorage:
 
     @contextmanager
     def lock(self, timeout: float = 10.0, blocking: bool = True) -> Generator[None, None, None]:
-        """Acquire file lock for atomic operations."""
-        self.base_dir.mkdir(parents=True, exist_ok=True)
+        """Acquire lock for atomic operations.
+
+        Two layers: threading.Lock for intra-process safety (multiple
+        threads in one process), FileLock for inter-process safety
+        (multiple processes accessing the same .cascade/ directory).
+        """
+        acquired = self._thread_lock.acquire(timeout=timeout if blocking else 0)
+        if not acquired:
+            raise LockError(
+                "Could not acquire lock: another thread holds it"
+                if not blocking
+                else f"Could not acquire thread lock within {timeout} seconds"
+            )
         try:
+            self.base_dir.mkdir(parents=True, exist_ok=True)
             with self._file_lock.acquire(timeout=timeout if blocking else 0):
                 yield
         except Timeout:
@@ -94,6 +108,8 @@ class GraphStorage:
                 if blocking
                 else "Could not acquire lock: another process holds it"
             )
+        finally:
+            self._thread_lock.release()
 
     # ------------------------------------------------------------------
     # Save
