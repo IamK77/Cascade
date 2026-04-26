@@ -14,13 +14,14 @@
 
 """Storage for Cascade persistence."""
 
-import fcntl
 import json
 from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import IO, Any
+from typing import Any
+
+from filelock import FileLock, Timeout
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
@@ -65,8 +66,7 @@ class GraphStorage:
             self.base_dir = Path.cwd() / ".cascade"
 
         self.artifacts_dir = self.base_dir / "artifacts"
-        self._lock_file: IO[str] | None = None
-        self._lock_path = self.base_dir / ".lock"
+        self._file_lock = FileLock(self.base_dir / ".lock")
         self.events = EventStore(self.base_dir)
         self.tokens = TokenStore(self.base_dir)
 
@@ -84,37 +84,16 @@ class GraphStorage:
     @contextmanager
     def lock(self, timeout: float = 10.0, blocking: bool = True) -> Generator[None, None, None]:
         """Acquire file lock for atomic operations."""
-        import time
-
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        self._lock_file = open(self._lock_path, "w")
-
-        start_time = time.time()
-        while True:
-            try:
-                flag = fcntl.LOCK_EX
-                if not blocking:
-                    flag |= fcntl.LOCK_NB
-                fcntl.flock(self._lock_file.fileno(), flag)
-                break
-            except OSError:
-                if not blocking:
-                    self._lock_file.close()
-                    self._lock_file = None
-                    raise LockError("Could not acquire lock: another process holds it")
-                if time.time() - start_time >= timeout:
-                    self._lock_file.close()
-                    self._lock_file = None
-                    raise LockError(f"Could not acquire lock within {timeout} seconds")
-                time.sleep(0.1)
-
         try:
-            yield
-        finally:
-            if self._lock_file:
-                fcntl.flock(self._lock_file.fileno(), fcntl.LOCK_UN)
-                self._lock_file.close()
-                self._lock_file = None
+            with self._file_lock.acquire(timeout=timeout if blocking else 0):
+                yield
+        except Timeout:
+            raise LockError(
+                f"Could not acquire lock within {timeout} seconds"
+                if blocking
+                else "Could not acquire lock: another process holds it"
+            )
 
     # ------------------------------------------------------------------
     # Save
