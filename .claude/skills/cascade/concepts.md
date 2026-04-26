@@ -200,10 +200,11 @@ cascade history --summary
 Repeat Step 3 for newly READY tasks until all tasks are COMPLETED.
 
 **Key rules for sub-agent prompts:**
-- Tell the worker its exact task ID — don't let it browse for tasks
-- Tell it to read upstream context from `cascade get-task` output
-- Tell it to call `cascade finish-task` with summary + critical when done
-- Keep the prompt focused — workers should NOT explore the workspace
+- **Keep prompts minimal** — only task ID + basic instructions. Do NOT copy context into the prompt.
+- All context flows through Cascade: `cascade get-task` returns upstream deliveries, contracts, and promises.
+- Putting context in the Agent prompt bypasses Cascade's context system AND makes agent startup slower.
+- Tell the worker to call `cascade finish-task` with summary + critical when done.
+- Workers should NOT explore the workspace — everything they need is in the get-task output.
 
 ### When to Use Each DAG Operation
 
