@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Cascade - A cascade-based collaboration framework for multi-agent systems."""
+"""Cascade - A DAG-based multi-agent task scheduling framework."""
 
 __version__ = "0.3.0"
 
+from cascade.client import CascadeClient
 from cascade.context.cancellation import CancellationToken, CancelledError
 from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
@@ -26,18 +27,9 @@ from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
 from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId, TokenStatus
 from cascade.view import get_node_view
 
-# Tools (framework-agnostic functions for LLM agents)
-from tools.add_node import add_node
-from tools.edit_node import edit_node
-from tools.finish_task import finish_task
-from tools.get_task import get_task
-from tools.list_nodes import list_nodes
-from tools.refine_node import refine_node
-from tools.remove_node import remove_node
-from tools.rework import rework
-from tools.split_node import split_node
-
 __all__ = [
+    # Client
+    "CascadeClient",
     # Types
     "Context",
     "Contract",
@@ -45,34 +37,21 @@ __all__ = [
     "ContextEntry",
     "EdgeId",
     "TokenStatus",
-    # Cancellation
-    "CancelNotifier",
-    "FileNotifier",
-    "TokenStore",
     # Core
     "Cascade",
     "Node",
     "NodeState",
-    # Propagation
-    "ContextPropagator",
+    # Cancellation
+    "CancelNotifier",
     "CancellationToken",
     "CancelledError",
+    "FileNotifier",
+    "TokenStore",
+    # Propagation
+    "ContextPropagator",
     # View
     "get_node_view",
     # Storage
     "GraphStorage",
     "LockError",
-    # Tools (structure)
-    "add_node",
-    "remove_node",
-    "split_node",
-    "refine_node",
-    "edit_node",
-    # Tools (execution)
-    "get_task",
-    "finish_task",
-    # Tools (feedback)
-    "rework",
-    # Tools (query)
-    "list_nodes",
 ]

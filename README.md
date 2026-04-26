@@ -41,33 +41,24 @@ uv sync
 ## Quick Start
 
 ```python
-from cascade import GraphStorage
-from cascade import GraphStorage, add_node, get_task, finish_task
+from cascade import CascadeClient, Contract
 
-storage = GraphStorage()
+cascade = CascadeClient()
 
 # Build a task graph — split horizontally for parallelism
-add_node(storage, {"node_id": "analyze"})
-add_node(storage, {
-    "node_id": "design",
-    "dependencies": ["analyze"],
-    "expectations": [{
-        "node_id": "analyze",
-        "expectation": "Feature requirements and constraints",
-        "promise": "Deliver prioritized feature list",
-    }],
+cascade.add("analyze")
+cascade.add("design", deps={
+    "analyze": Contract("Feature requirements and constraints", "Deliver prioritized feature list"),
 })
 
 # Agent claims a task — critical path first
-result = get_task(storage, {"agent_id": "agent-001"})
+task = cascade.claim("agent-001")
 
 # Complete with context that flows to downstream agents
-finish_task(storage, {
-    "task_id": "analyze",
-    "success": True,
-    "summary": "Requirements: JWT auth + REST API",
-    "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
-})
+cascade.complete("analyze",
+    summary="Requirements: JWT auth + REST API",
+    critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
+)
 ```
 
 When `agent-002` claims `design`, it sees:
@@ -105,11 +96,12 @@ types → core → context → view → operations → tools
 | `events` | Append-only event log (14 event types) |
 | `operations` | Compound mutations: Split, Remove, Rework |
 | `storage` | JSON persistence + file locking + token store |
-| `tools` | 12 LLM-facing functions — the serialization boundary |
+| `tools` | 12 LLM-facing functions — the dict-based serialization boundary |
+| `client` | `CascadeClient` — typed Python API wrapping tools with IDE support |
 
 ## Tools
 
-`(GraphStorage, dict) → dict` — framework-agnostic.
+The typed Python API is `CascadeClient`. The underlying tool layer uses `(GraphStorage, dict) → dict` signatures for CLI and JSON boundaries.
 
 | Category | Tools |
 |----------|-------|

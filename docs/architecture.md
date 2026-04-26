@@ -18,6 +18,7 @@ graph LR
     context --> view
     view --> operations
     operations --> tools
+    tools --> client
 
     core --> storage
     storage --> events
@@ -32,7 +33,8 @@ graph LR
 | `events` | Append-only event log |
 | `operations` | Compound mutations: Split, Remove, Rework |
 | `storage` | JSON persistence + file locking + token store |
-| `tools` | 12 LLM-facing functions -- the serialization boundary |
+| `tools` | 12 LLM-facing functions -- the dict-based serialization boundary |
+| `client` | `CascadeClient` -- typed Python API wrapping tools with IDE support |
 
 ## Node State Machine
 

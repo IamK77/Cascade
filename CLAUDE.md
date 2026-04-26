@@ -2,6 +2,12 @@
 
 DAG-based multi-agent task scheduling framework — an agent factory with dynamic DAG control.
 
+Two APIs:
+- **`CascadeClient`** — typed Python API with IDE support (`from cascade import CascadeClient, Contract`)
+- **CLI** — shell/agent interface (`cascade add-node`, `cascade get-task`, etc.)
+
+The underlying `(GraphStorage, dict) -> dict` tool layer is the internal serialization boundary used by both.
+
 ## Commands
 
 ```bash
@@ -12,7 +18,7 @@ uv sync                     # Install dependencies
 ## Architecture
 
 ```
-types → core → context → view → operations → tools
+types → core → context → view → operations → tools → client
 ```
 
 Module dependencies form a verified DAG — no circular imports.
@@ -60,4 +66,5 @@ Two implementations of the same semantic — task cancellation:
 - `src/cascade/events.py` — event store (14 event types)
 - `src/cascade/operations/` — Split, Remove, Rework
 - `src/cascade/storage/` — JSON persistence + file locking + token store
-- `src/tools/` — LLM-facing tool functions (12 tools)
+- `src/cascade/client.py` — `CascadeClient` typed Python API (wraps tools)
+- `src/tools/` — LLM-facing tool functions (12 tools, dict-based internal layer)
