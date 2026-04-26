@@ -42,7 +42,7 @@ pipx install cascade-auto
 uv tool install cascade-auto
 ```
 
-Verify: !`command -v cascade >/dev/null 2>&1 && echo "✅ cascade CLI available" || echo "❌ Not installed — run: pipx install cascade-auto"`
+!`command -v cascade >/dev/null 2>&1 && cascade --help 2>&1 || echo "❌ cascade not installed — run: pipx install cascade-auto"`
 
 ## Commands
 
