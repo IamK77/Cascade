@@ -7,32 +7,20 @@ argument-hint: [command] [options]
 
 # Cascade - Multi-Agent Task Coordination
 
-DAG-based task scheduling framework for coordinating work between multiple LLM agents.
+An agent factory with dynamic DAG scheduling for coordinating work between multiple agents.
 
 ## What Cascade Is
 
-Cascade is an **agent factory with dynamic DAG scheduling**. The core pattern:
-
 1. **Orchestrator** (main agent) builds and dynamically adjusts a task DAG
-2. **Stateless workers** (sub-agents) claim tasks from the pipeline, execute them, deliver output, and exit
+2. **Stateless workers** (sub-agents) claim tasks, execute, deliver output, and exit
 3. **Context flows** through the DAG — each worker sees upstream output when claiming a task
-4. **Orchestrator monitors and adapts** — splitting tasks, triggering rework, adding dependencies, removing tasks based on runtime feedback
+4. **Orchestrator monitors and adapts** — splitting, reworking, refining, removing tasks based on runtime feedback
 
-### Key Mental Model
-
-The orchestrator is NOT a static planner. It:
-- Monitors agent output as tasks complete
-- Splits tasks that are too large (`split_node`)
-- Triggers rework when output is wrong (`rework`)
-- Adds dependencies discovered at runtime (`refine_node`)
-- Removes tasks that become unnecessary (`remove_node`)
-- Adjusts task scope mid-flight (`edit_node`)
-
-Workers are stateless — they don't know the full DAG. They see only their upstream context and downstream promises.
+The orchestrator is NOT a static planner. The initial DAG is a starting hypothesis — adapt it as agents deliver output.
 
 ### Task Splitting for Parallelism
 
-**Maximize horizontal splitting.** Instead of a chain A → B → C, prefer splitting into parallel tasks wherever possible:
+**Maximize horizontal splitting.** Prefer parallel over serial:
 
 ```
      A
@@ -42,43 +30,18 @@ Workers are stateless — they don't know the full DAG. They see only their upst
      C
 ```
 
-More parallelism = faster completion. Split aggressively; merge at sync points.
-
-## Two Ways to Use
-
-### CLI (for terminal / independent processes)
+## Installation
 
 ```bash
-cascade add-node --id analyze
-cascade get-task --agent agent-001
-cascade finish-task --task analyze --success --summary "Done"
+# Install as CLI tool
+pipx install cascade-auto
+# or
+uv tool install cascade-auto
 ```
 
-Requires installation: `cd /path/to/Cascade && uv tool install .`
+Verify: !`command -v cascade >/dev/null 2>&1 && echo "✅ cascade CLI available" || echo "❌ Not installed — run: pipx install cascade-auto"`
 
-Check: !`command -v cascade >/dev/null 2>&1 && echo "✅ cascade CLI available" || echo "❌ Not installed — use Python API instead"`
-
-### Python API (for subagents / programmatic use)
-
-```python
-from cascade import GraphStorage, add_node, get_task, finish_task
-
-storage = GraphStorage()
-add_node(storage, {"node_id": "analyze"})
-get_task(storage, {"agent_id": "agent-001"})
-finish_task(storage, {"task_id": "analyze", "success": True, "summary": "Done"})
-```
-
-Works from any Python environment with `uv run` — no installation needed.
-
-### Which to use?
-
-- **CLI**: when running as a standalone process or from shell scripts
-- **Python**: when running as a subagent (Agent tool), or when CLI is not installed
-
-Both use the same underlying tools and share the same `.cascade/` state.
-
-## Quick Reference
+## Commands
 
 | Command | Description | Details |
 |---------|-------------|---------|
@@ -100,32 +63,40 @@ Both use the same underlying tools and share the same `.cascade/` state.
 ```bash
 # Create task graph (independent roots allowed)
 cascade add-node --id analyze
-cascade add-node --id design --deps analyze --expectations '[{"node_id": "analyze", "expectation": "Spec", "promise": "Design doc"}]'
+cascade add-node --id design --deps analyze \
+  --expectations '[{"node_id": "analyze", "expectation": "Spec", "promise": "Design doc"}]'
 
-# Work through tasks (with optional timeout)
+# Claim and complete tasks
 cascade get-task --agent agent-001 --timeout 3600
 cascade finish-task --task analyze --success \
   --summary "Requirements gathered" \
   --critical '{"tech": "Next.js"}'
 
-# Request rework when upstream is wrong
+# Dynamic adjustments
+cascade split-node --parent implement --children impl-auth,impl-api --reason "Too large"
+cascade refine-node --node impl-api --dep design-schema \
+  --expectation "DB schema" --promise "Schema migrations" --reason "Hidden dependency"
 cascade rework --source analyze --corrective analyze-v2 \
   --reason "Missing OAuth requirements" --agent agent-001
+cascade remove-node --node deprecated-task --reason "No longer needed"
+cascade edit-node --node impl-auth --summary "Scope reduced" --reason "Only OAuth needed"
 
-# Check progress
+# Monitor progress
 cascade list-nodes --state READY
 cascade history --summary
+cascade check-task --task analyze
 ```
 
 ## Core Concepts
 
 - **Node States**: PENDING → READY → ACTIVE → COMPLETED/FAILED/CANCELLED
-  - ACTIVE → READY (release), any non-terminal → FAILED (cascade failure)
-- **Readiness**: Computed from graph structure, never cached. A node is READY when all dependencies are COMPLETED.
-- **Context Flow**: summary (text, 2 hops), critical (KV, infinite), artifacts (file, infinite)
-- **Contracts**: Expectation/promise on edges — your output IS your fulfilled promise
-- **Critical Path**: Ready nodes are prioritized by downstream depth (most unblocking first)
-- **Event Log**: Every action recorded in append-only events.jsonl
+- **Readiness**: A node is READY when all dependencies are COMPLETED (computed, never cached)
+- **Contracts**: Every edge carries `expectation` (what consumer needs) and `promise` (what producer delivers)
+- **Context**: `summary` (text, 2 hops), `critical` (KV, infinite), `artifacts` (file, infinite)
+- **Upstream View**: When claiming a task, each ancestor's output is a separate entry with provenance (node_id, distance, path)
+- **Critical Path**: READY tasks are prioritized by downstream depth (most unblocking first)
+- **ACTIVE Protection**: Cannot remove/split nodes with active agents — release first
+- **Event Log**: Every mutation recorded in events.jsonl with optional `reason`
 
 See [concepts.md](concepts.md) for detailed explanations.
 
@@ -148,4 +119,4 @@ See [examples.md](examples.md) for end-to-end workflows including rework.
 3. **Forward-only feedback** — Rework creates new nodes, never reverse edges
 4. **Independent groups allowed** — Multiple disconnected subgraphs are fine
 5. **Maximize parallelism** — Split tasks horizontally for higher concurrency
-6. **Orchestrator adapts** — Monitor output and dynamically adjust the DAG; don't treat the initial plan as fixed
+6. **Orchestrator adapts** — Monitor output and dynamically adjust the DAG
