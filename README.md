@@ -20,6 +20,8 @@ An agent factory with dynamic DAG scheduling. Orchestrators build and adapt task
 
 ## Installation
 
+> **Requires Python 3.11+ on macOS or Linux.** Windows is not supported (file locking uses `fcntl`).
+
 ```bash
 pip install cascade-auto
 ```
