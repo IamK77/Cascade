@@ -145,6 +145,66 @@ The orchestrator (main agent using Cascade) is a **dynamic controller**, not a s
 5. Repeat until all tasks COMPLETED
 ```
 
+### Parallel Execution with Sub-Agents
+
+Use the Agent tool to run multiple workers simultaneously. Each sub-agent claims one task, does the work, and exits.
+
+**Step 1: Build DAG and complete the analysis task yourself**
+
+```bash
+cascade add-node --id analyze
+cascade get-task --agent orchestrator
+# Do the analysis work...
+cascade finish-task --task analyze --success \
+  --summary "Spec: 4 modules..." \
+  --critical '{"modules": ["auth", "users", "posts", "search"]}'
+```
+
+**Step 2: Create parallel tasks depending on analyze**
+
+```bash
+cascade add-node --id impl-auth --deps analyze --expectations '[...]'
+cascade add-node --id impl-users --deps analyze --expectations '[...]'
+cascade add-node --id impl-posts --deps analyze --expectations '[...]'
+cascade add-node --id impl-search --deps analyze --expectations '[...]'
+```
+
+**Step 3: Launch sub-agents in parallel (single message, multiple Agent calls)**
+
+```
+Agent({
+  prompt: "You are a worker. Run: cascade get-task --agent worker-1 --task impl-auth
+           Read the upstream context. Do the work. Then:
+           cascade finish-task --task impl-auth --success --summary '...' --critical '{...}'"
+})
+Agent({
+  prompt: "You are a worker. Run: cascade get-task --agent worker-2 --task impl-users ..."
+})
+Agent({
+  prompt: "You are a worker. Run: cascade get-task --agent worker-3 --task impl-posts ..."
+})
+Agent({
+  prompt: "You are a worker. Run: cascade get-task --agent worker-4 --task impl-search ..."
+})
+```
+
+All 4 agents run concurrently. When they complete, check progress:
+
+```bash
+cascade list-nodes
+cascade history --summary
+```
+
+**Step 4: Continue with next wave**
+
+Repeat Step 3 for newly READY tasks until all tasks are COMPLETED.
+
+**Key rules for sub-agent prompts:**
+- Tell the worker its exact task ID — don't let it browse for tasks
+- Tell it to read upstream context from `cascade get-task` output
+- Tell it to call `cascade finish-task` with summary + critical when done
+- Keep the prompt focused — workers should NOT explore the workspace
+
 ### When to Use Each DAG Operation
 
 | Signal | Operation | Example |

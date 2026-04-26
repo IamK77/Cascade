@@ -11,12 +11,15 @@ An agent factory with dynamic DAG scheduling for coordinating work between multi
 
 ## What Cascade Is
 
-1. **Orchestrator** (main agent) builds and dynamically adjusts a task DAG
-2. **Stateless workers** (sub-agents) claim tasks, execute, deliver output, and exit
-3. **Context flows** through the DAG — each worker sees upstream output when claiming a task
-4. **Orchestrator monitors and adapts** — splitting, reworking, refining, removing tasks based on runtime feedback
+Cascade is an **agent factory with dynamic DAG scheduling**. Use the Agent tool to run workers in parallel.
 
-The orchestrator is NOT a static planner. The initial DAG is a starting hypothesis — adapt it as agents deliver output.
+1. **You are the orchestrator** — build a task DAG, complete the root analysis yourself
+2. **Spawn sub-agents for parallel tasks** — multiple Agent() calls in one message = concurrent execution
+3. **Each sub-agent claims one task** via `cascade get-task`, does the work, calls `cascade finish-task`
+4. **Context flows automatically** — workers see upstream output without extra wiring
+5. **You monitor and adapt** — split, rework, refine, remove based on worker output
+
+The initial DAG is a hypothesis. Adapt it as agents deliver output.
 
 ### Task Splitting for Parallelism
 
