@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Get Task Tool."""
+"""Get Task Tool — thin wrapper delegating to CascadeClient."""
 
-import time
 from typing import Any
 
-from cascade.core.state import NodeState
+from cascade.client import CascadeClient
 from cascade.storage.graph_storage import GraphStorage
-from cascade.view import get_node_view
 
 
 def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
@@ -31,12 +29,12 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             - agent_id (str, required): ID of the agent requesting work
             - task_id (str, optional): Specific task to get
             - timeout (float, optional): Timeout in seconds for this claim.
-              If the agent doesn't finish within this time, the task can
-              be auto-released by check_timeouts.
+            - cancel_notifier (CancelNotifier, optional): Push notification on cancellation.
     """
     agent_id = params.get("agent_id")
     task_id = params.get("task_id")
     timeout = params.get("timeout")
+    cancel_notifier = params.get("cancel_notifier")
 
     if not agent_id:
         return {
@@ -45,125 +43,13 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
             "data": {},
         }
 
-    try:
-        with storage.lock():
-            from cascade.core.cascade import Cascade
+    client = CascadeClient.__new__(CascadeClient)
+    client._storage = storage
 
-            cascade = storage.load() or Cascade()
-
-            existing_node = cascade.find_agent_active_task(agent_id)
-            if existing_node:
-                task_info = get_node_view(cascade, existing_node.id)
-                return {
-                    "success": True,
-                    "message": (
-                        f"You already have an active task: {existing_node.id}. "
-                        f"Use finish_task() to complete it before getting a new task."
-                    ),
-                    "data": {
-                        "task_id": existing_node.id,
-                        "state": "ACTIVE",
-                        "task_info": task_info,
-                        "reminder": True,
-                        "blocked_reason": "already_has_active_task",
-                    },
-                }
-
-            if task_id:
-                if task_id not in cascade.nodes:
-                    return {"success": False, "message": f"Task {task_id} not found", "data": {}}
-
-                node = cascade.nodes[task_id]
-
-                if node.agent_id and node.agent_id != agent_id and node.state == NodeState.ACTIVE:
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} is already being executed by agent: {node.agent_id}",
-                        "data": {"state": "ACTIVE", "assigned_to": node.agent_id},
-                    }
-
-                if node.state == NodeState.ACTIVE:
-                    node.agent_id = agent_id
-                    task_info = get_node_view(cascade, task_id)
-                    storage.save(cascade)
-                    return {
-                        "success": True,
-                        "message": f"Task {task_id} is already active",
-                        "data": {"task_id": task_id, "state": "ACTIVE", "task_info": task_info},
-                    }
-
-                if node.state.is_terminal():
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} is in terminal state: {node.state.name}",
-                        "data": {"state": node.state.name},
-                    }
-
-                if node.state == NodeState.PENDING:
-                    pending = cascade.pending_dependency_count(task_id)
-                    return {
-                        "success": False,
-                        "message": f"Task {task_id} is not ready (dependencies not met, pending={pending})",
-                        "data": {"state": "PENDING", "pending_dependencies": pending},
-                    }
-
-                node.update_state(NodeState.ACTIVE)
-                node.agent_id = agent_id
-                node.claimed_at = time.time()
-                if timeout is not None:
-                    node.timeout = float(timeout)
-
-            else:
-                ready_nodes = cascade.get_ready_nodes()
-
-                if not ready_nodes:
-                    active_count = sum(
-                        1 for n in cascade.nodes.values() if n.state == NodeState.ACTIVE
-                    )
-                    pending_count = sum(
-                        1 for n in cascade.nodes.values() if n.state == NodeState.PENDING
-                    )
-
-                    if active_count > 0:
-                        return {
-                            "success": False,
-                            "message": f"No available tasks. {active_count} task(s) are executed, {pending_count} pending.",
-                            "data": {"active": active_count, "pending": pending_count},
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "message": f"No available tasks. All {pending_count} tasks are pending (dependencies not met).",
-                            "data": {"pending": pending_count},
-                        }
-
-                node = ready_nodes[0]
-                task_id = node.id
-                node.update_state(NodeState.ACTIVE)
-                node.agent_id = agent_id
-                node.claimed_at = time.time()
-                if timeout is not None:
-                    node.timeout = float(timeout)
-
-            task_info = get_node_view(cascade, task_id)
-            storage.save(cascade)
-            storage.tokens.create(
-                task_id, agent_id, node.claimed_at, notifier=params.get("cancel_notifier")
-            )
-            from cascade.events import EventType
-
-            storage.events.emit(EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id)
-
-            return {
-                "success": True,
-                "message": f"Task {task_id} assigned (state: ACTIVE)",
-                "data": {
-                    "task_id": task_id,
-                    "state": "ACTIVE",
-                    "task_info": task_info,
-                    "assigned_to": agent_id,
-                },
-            }
-
-    except Exception as e:
-        return {"success": False, "message": f"Operation failed: {e}", "data": {}}
+    r = client._claim_inner(
+        agent_id,
+        task_id,
+        timeout=timeout,
+        cancel_notifier=cancel_notifier,
+    )
+    return {"success": r.success, "message": r.message, "data": r.data}

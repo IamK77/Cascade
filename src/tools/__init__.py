@@ -14,11 +14,10 @@
 
 """LLM Tools for Cascade Scheduler.
 
-Framework-agnostic tool functions for LLM agents. Each tool:
+Thin wrappers that delegate to CascadeClient. Each tool:
 - Takes (GraphStorage, dict) and returns dict (the LLM serialization boundary)
-- Handles file locking and persistence internally
-- Either calls Cascade primitives directly (simple ops) or
-  delegates to Operations (compound ops like split/remove)
+- Parses dict params, creates a CascadeClient, and calls the typed method
+- Converts Result back to dict
 
 Tool Categories:
     1. Structure: add_node, remove_node, split_node, refine_node, edit_node

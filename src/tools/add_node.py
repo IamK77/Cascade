@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Add Node Tool."""
+"""Add Node Tool — thin wrapper delegating to CascadeClient."""
 
 from typing import Any
 
-from cascade.core.cascade import Cascade
-from cascade.core.node import Node
-from cascade.core.state import NodeState
+from cascade.client import CascadeClient
 from cascade.storage.graph_storage import GraphStorage
+from cascade.types import Contract
 
 
 def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
@@ -45,7 +44,7 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     dependents = params.get("dependents", [])
     expectations = params.get("expectations", [])
 
-    # Build expectations map
+    # Build expectations map and validate
     expectations_map: dict[str, dict[str, str]] = {}
     for exp in expectations:
         exp_node_id = exp.get("node_id")
@@ -88,77 +87,29 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
                 "data": {"missing_contract_for": dep_id},
             }
 
-    try:
-        with storage.lock():
-            cascade = storage.load() or Cascade()
-
-            if node_id in cascade.nodes:
-                return {"success": False, "message": f"Node {node_id} already exists", "data": {}}
-
-            for dep_id in dependencies:
-                if dep_id not in cascade.nodes:
-                    return {
-                        "success": False,
-                        "message": f"Dependency {dep_id} not found. Create it first.",
-                        "data": {},
-                    }
-            for dep_id in dependents:
-                if dep_id not in cascade.nodes:
-                    return {
-                        "success": False,
-                        "message": f"Dependent {dep_id} not found. Create it first.",
-                        "data": {},
-                    }
-
-            # Compute initial state: READY if no deps or all deps completed, else PENDING
-            initial_state = NodeState.READY
-            for dep_id in dependencies:
-                if dep_id in cascade.nodes and cascade.nodes[dep_id].state != NodeState.COMPLETED:
-                    initial_state = NodeState.PENDING
-                    break
-
-            node = Node(id=node_id, state=initial_state)
-            cascade.add_node(node)
-            affected_nodes = [node_id]
-
-            for dep_id in dependencies:
-                exp_info = expectations_map[dep_id]
-                cascade.add_edge(
-                    dep_id,
-                    node_id,
-                    expectation=exp_info["expectation"],
-                    promise=exp_info["promise"],
-                )
-                affected_nodes.append(dep_id)
-
-            for dep_id in dependents:
-                exp_info = expectations_map[dep_id]
-                cascade.add_edge(
-                    node_id,
-                    dep_id,
-                    expectation=exp_info["expectation"],
-                    promise=exp_info["promise"],
-                )
-                affected_nodes.append(dep_id)
-
-            storage.save(cascade)
-            from cascade.events import EventType
-
-            storage.events.emit(
-                EventType.NODE_ADDED,
-                node_id=node_id,
-                dependencies=dependencies,
-                dependents=dependents,
+    # Convert to dict[str, Contract] for CascadeClient
+    deps: dict[str, Contract] | None = None
+    if dependencies:
+        deps = {
+            dep_id: Contract(
+                expectation=expectations_map[dep_id]["expectation"],
+                promise=expectations_map[dep_id]["promise"],
             )
-            return {
-                "success": True,
-                "message": f"Node {node_id} added successfully",
-                "data": {
-                    "node_id": node_id,
-                    "state": initial_state.name,
-                    "affected_nodes": list(set(affected_nodes)),
-                },
-            }
+            for dep_id in dependencies
+        }
 
-    except Exception as e:
-        return {"success": False, "message": f"Operation failed: {e}", "data": {}}
+    deps_dependents: dict[str, Contract] | None = None
+    if dependents:
+        deps_dependents = {
+            dep_id: Contract(
+                expectation=expectations_map[dep_id]["expectation"],
+                promise=expectations_map[dep_id]["promise"],
+            )
+            for dep_id in dependents
+        }
+
+    client = CascadeClient.__new__(CascadeClient)
+    client._storage = storage
+
+    r = client.add(node_id, deps=deps, dependents=deps_dependents)
+    return {"success": r.success, "message": r.message, "data": r.data}

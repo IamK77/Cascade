@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Refine Node Tool."""
+"""Refine Node Tool — thin wrapper delegating to CascadeClient."""
 
 from typing import Any
 
+from cascade.client import CascadeClient
 from cascade.storage.graph_storage import GraphStorage
 
 
@@ -29,6 +30,7 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             - dependency_id (str, required)
             - expectation (str, required)
             - promise (str, required)
+            - reason (str, optional): Why
     """
     if "node_id" not in params:
         return {"success": False, "message": "Missing required parameter: node_id", "data": {}}
@@ -39,8 +41,6 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
             "data": {},
         }
 
-    node_id = params["node_id"]
-    dependency_id = params["dependency_id"]
     expectation = params.get("expectation")
     promise = params.get("promise")
 
@@ -49,57 +49,14 @@ def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     if not promise or not promise.strip():
         return {"success": False, "message": "Missing required parameter: promise", "data": {}}
 
-    try:
-        with storage.lock():
-            from cascade.core.cascade import Cascade
+    client = CascadeClient.__new__(CascadeClient)
+    client._storage = storage
 
-            cascade = storage.load() or Cascade()
-
-            if node_id not in cascade.nodes:
-                return {"success": False, "message": f"Node {node_id} not found", "data": {}}
-            if dependency_id not in cascade.nodes:
-                return {
-                    "success": False,
-                    "message": f"Dependency {dependency_id} not found. Create it first with add_node.",
-                    "data": {},
-                }
-
-            if cascade.has_dependency(node_id, dependency_id):
-                return {
-                    "success": False,
-                    "message": f"Node {node_id} already depends on {dependency_id}",
-                    "data": {},
-                }
-
-            if cascade._has_path(node_id, dependency_id):
-                return {
-                    "success": False,
-                    "message": f"Adding dependency {dependency_id} to {node_id} would create a cycle",
-                    "data": {},
-                }
-
-            cascade.add_edge(dependency_id, node_id, expectation=expectation, promise=promise)
-
-            storage.save(cascade)
-            from cascade.events import EventType
-
-            storage.events.emit(
-                EventType.NODE_REFINED,
-                node_id=node_id,
-                dependency_id=dependency_id,
-                expectation=expectation,
-                promise=promise,
-                reason=params.get("reason", ""),
-            )
-            return {
-                "success": True,
-                "message": f"Node {node_id} now depends on {dependency_id}",
-                "data": {
-                    "node_id": node_id,
-                    "dependency_id": dependency_id,
-                    "affected_nodes": [node_id, dependency_id],
-                },
-            }
-
-    except Exception as e:
-        return {"success": False, "message": f"Operation failed: {e}", "data": {}}
+    r = client.refine(
+        params["node_id"],
+        params["dependency_id"],
+        expectation,
+        promise,
+        reason=params.get("reason", ""),
+    )
+    return {"success": r.success, "message": r.message, "data": r.data}

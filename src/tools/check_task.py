@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Check Task Tool — pull-based cancellation interface."""
+"""Check Task Tool — thin wrapper delegating to CascadeClient."""
 
 from typing import Any
 
+from cascade.client import CascadeClient
 from cascade.storage.graph_storage import GraphStorage
 
 
 def check_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     """Check whether a claimed task is still valid.
-
-    This is the pull-based cancellation interface. The agent framework
-    (not the agent itself) calls this to verify a task claim is still
-    active before continuing work.
 
     Args:
         storage: GraphStorage instance
@@ -35,23 +32,8 @@ def check_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     if not task_id:
         return {"success": False, "message": "Missing required parameter: task_id", "data": {}}
 
-    token = storage.tokens.check(task_id)
-    if token is None:
-        return {
-            "success": True,
-            "message": f"No active claim for task {task_id}",
-            "data": {"task_id": task_id, "valid": False, "reason": "no_token"},
-        }
+    client = CascadeClient.__new__(CascadeClient)
+    client._storage = storage
 
-    return {
-        "success": True,
-        "message": f"Task {task_id}: {'valid' if token.valid else 'invalidated'}",
-        "data": {
-            "task_id": token.node_id,
-            "agent_id": token.agent_id,
-            "valid": token.valid,
-            "claimed_at": token.claimed_at,
-            "reason": token.reason,
-            "invalidated_at": token.invalidated_at,
-        },
-    }
+    r = client.check(task_id)
+    return {"success": r.success, "message": r.message, "data": r.data}

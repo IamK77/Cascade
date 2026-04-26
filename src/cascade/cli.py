@@ -14,8 +14,8 @@
 
 """Cascade command-line interface.
 
-Provides CLI access to all 11 tools. Output is JSON to stdout,
-exit code 0 on success, 1 on failure.
+Provides CLI access to all 11 tools via CascadeClient.
+Output is JSON to stdout, exit code 0 on success, 1 on failure.
 """
 
 import argparse
@@ -23,12 +23,13 @@ import json
 import sys
 from typing import Any
 
-from cascade.storage.graph_storage import GraphStorage
-from tools import execute_tool
+from cascade.client import CascadeClient, Result
+from cascade.types import Contract
 
 
-def get_storage(path: str = ".cascade") -> GraphStorage:
-    return GraphStorage(path)
+def _result_to_dict(r: Result) -> dict[str, Any]:
+    """Convert a Result to a dict for JSON output."""
+    return {"success": r.success, "message": r.message, "data": r.data}
 
 
 def output(result: dict[str, Any]) -> None:
@@ -42,146 +43,221 @@ def output(result: dict[str, Any]) -> None:
 
 
 def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
-    deps = [d.strip() for d in (args.deps or "").split(",") if d.strip()]
-    dependents = [d.strip() for d in (args.dependents or "").split(",") if d.strip()]
-    params: dict[str, Any] = {"node_id": args.id, "dependencies": deps, "dependents": dependents}
+    client = CascadeClient(args.storage)
+    dep_ids = [d.strip() for d in (args.deps or "").split(",") if d.strip()]
+    dependent_ids = [d.strip() for d in (args.dependents or "").split(",") if d.strip()]
+
+    # Parse expectations JSON into Contract dicts
+    expectations_map: dict[str, dict[str, str]] = {}
     if args.expectations:
         try:
-            params["expectations"] = json.loads(args.expectations)
+            expectations_list = json.loads(args.expectations)
         except json.JSONDecodeError:
             return {"success": False, "message": "Invalid JSON for --expectations"}
-    return execute_tool(get_storage(args.storage), "add_node", params)
+        for exp in expectations_list:
+            exp_node_id = exp.get("node_id")
+            expectation = exp.get("expectation")
+            promise = exp.get("promise")
+            if exp_node_id:
+                if not expectation or not expectation.strip():
+                    return {
+                        "success": False,
+                        "message": f"expectation is required for node '{exp_node_id}' in expectations",
+                        "data": {},
+                    }
+                if not promise or not promise.strip():
+                    return {
+                        "success": False,
+                        "message": f"promise is required for node '{exp_node_id}' in expectations",
+                        "data": {},
+                    }
+                expectations_map[exp_node_id] = {"expectation": expectation, "promise": promise}
+
+    # Validate contracts exist for all edges
+    for dep_id in dep_ids:
+        if dep_id not in expectations_map:
+            return {
+                "success": False,
+                "message": (
+                    f"Missing contract for dependency '{dep_id}'. "
+                    f"Each dependency must have expectation and promise in 'expectations' parameter."
+                ),
+                "data": {"missing_contract_for": dep_id},
+            }
+    for dep_id in dependent_ids:
+        if dep_id not in expectations_map:
+            return {
+                "success": False,
+                "message": (
+                    f"Missing contract for dependent '{dep_id}'. "
+                    f"Each dependent must have expectation and promise in 'expectations' parameter."
+                ),
+                "data": {"missing_contract_for": dep_id},
+            }
+
+    deps = {
+        dep_id: Contract(
+            expectation=expectations_map[dep_id]["expectation"],
+            promise=expectations_map[dep_id]["promise"],
+        )
+        for dep_id in dep_ids
+    } or None
+
+    dependents = {
+        dep_id: Contract(
+            expectation=expectations_map[dep_id]["expectation"],
+            promise=expectations_map[dep_id]["promise"],
+        )
+        for dep_id in dependent_ids
+    } or None
+
+    r = client.add(args.id, deps=deps, dependents=dependents)
+    return _result_to_dict(r)
 
 
 def cmd_get_task(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {"agent_id": args.agent}
-    if args.task:
-        params["task_id"] = args.task
-    if args.timeout:
-        params["timeout"] = args.timeout
-    return execute_tool(get_storage(args.storage), "get_task", params)
+    client = CascadeClient(args.storage)
+    r = client._claim_inner(
+        args.agent,
+        args.task if hasattr(args, "task") and args.task else None,
+        timeout=args.timeout if hasattr(args, "timeout") and args.timeout else None,
+    )
+    return _result_to_dict(r)
 
 
 def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {"task_id": args.task}
+    client = CascadeClient(args.storage)
+
     if args.success:
-        params["success"] = True
-        if args.summary:
-            params["summary"] = args.summary
+        critical = None
         if args.critical:
             try:
-                params["critical"] = json.loads(args.critical)
+                critical = json.loads(args.critical)
             except json.JSONDecodeError:
                 return {"success": False, "message": "Invalid JSON for --critical"}
-        if args.artifacts:
-            params["artifacts"] = args.artifacts
+        r = client.complete(
+            args.task,
+            summary=args.summary or "",
+            critical=critical,
+            artifacts=args.artifacts or "",
+        )
     elif args.fail:
-        params["success"] = False
-        if args.reason:
-            params["summary"] = args.reason
-        if args.cascade:
-            params["cascade"] = True
+        r = client.fail(
+            args.task,
+            reason=args.reason or "",
+            cascade=args.cascade,
+        )
     elif args.release:
-        params["release"] = True
-        if args.reason:
-            params["summary"] = args.reason
-    return execute_tool(get_storage(args.storage), "finish_task", params)
+        r = client.release(args.task, reason=args.reason or "")
+    else:
+        # Default to success if no flag specified
+        r = client.complete(args.task)
+
+    return _result_to_dict(r)
 
 
 def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {}
-    if args.state:
-        params["state_filter"] = args.state
-    if args.pending_only:
-        params["include_pending_only"] = True
-    return execute_tool(get_storage(args.storage), "list_nodes", params)
+    client = CascadeClient(args.storage)
+    r = client._nodes_inner(
+        state_filter=args.state if hasattr(args, "state") and args.state else None,
+        include_pending_only=args.pending_only if hasattr(args, "pending_only") else False,
+    )
+    return _result_to_dict(r)
 
 
 def cmd_split_node(args: argparse.Namespace) -> dict[str, Any]:
+    client = CascadeClient(args.storage)
     children = [c.strip() for c in args.children.split(",") if c.strip()]
-    params: dict[str, Any] = {
-        "parent_id": args.parent,
-        "new_nodes": [{"node_id": cid} for cid in children],
-    }
-    if args.reason:
-        params["reason"] = args.reason
-    return execute_tool(get_storage(args.storage), "split_node", params)
+    r = client.split(
+        args.parent,
+        children,
+        reason=args.reason or "",
+    )
+    return _result_to_dict(r)
 
 
 def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {"node_id": args.node, "dependency_id": args.dep}
-    if args.expectation:
-        params["expectation"] = args.expectation
-    if args.promise:
-        params["promise"] = args.promise
-    if args.reason:
-        params["reason"] = args.reason
-    return execute_tool(get_storage(args.storage), "refine_node", params)
+    client = CascadeClient(args.storage)
+    r = client.refine(
+        args.node,
+        args.dep,
+        args.expectation or "",
+        args.promise or "",
+        reason=args.reason or "",
+    )
+    return _result_to_dict(r)
 
 
 def cmd_remove_node(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {"node_id": args.node, "cascade": args.cascade}
-    if args.reason:
-        params["reason"] = args.reason
-    return execute_tool(get_storage(args.storage), "remove_node", params)
+    client = CascadeClient(args.storage)
+    r = client.remove(
+        args.node,
+        cascade=args.cascade,
+        reason=args.reason or "",
+    )
+    return _result_to_dict(r)
 
 
 def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {"node_id": args.node}
-    if args.state:
-        params["state"] = args.state
-    if args.summary:
-        params["summary"] = args.summary
+    client = CascadeClient(args.storage)
+    critical = None
     if args.critical:
         try:
-            params["critical"] = json.loads(args.critical)
+            critical = json.loads(args.critical)
         except json.JSONDecodeError:
             return {"success": False, "message": "Invalid JSON for --critical"}
-    if args.artifacts:
-        params["artifacts"] = args.artifacts
-    if args.context_merge:
-        params["context_merge"] = args.context_merge
-    if args.reason:
-        params["reason"] = args.reason
-    return execute_tool(get_storage(args.storage), "edit_node", params)
+    r = client.edit(
+        args.node,
+        state=args.state or "",
+        summary=args.summary or "",
+        critical=critical,
+        artifacts=args.artifacts or "",
+        context_merge=args.context_merge or "merge",
+        reason=args.reason or "",
+    )
+    return _result_to_dict(r)
 
 
 def cmd_rework(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {
-        "source_node_id": args.source,
-        "corrective_node_id": args.corrective,
-        "reason": args.reason,
-        "agent_id": args.agent,
-        "source_expectation": args.source_expectation,
-        "source_promise": args.source_promise,
-        "corrective_expectation": args.corrective_expectation,
-        "corrective_promise": args.corrective_promise,
-    }
-    return execute_tool(get_storage(args.storage), "rework", params)
+    client = CascadeClient(args.storage)
+    r = client.rework(
+        args.source,
+        args.corrective,
+        args.reason,
+        args.agent,
+        source_expectation=args.source_expectation,
+        source_promise=args.source_promise,
+        corrective_expectation=args.corrective_expectation,
+        corrective_promise=args.corrective_promise,
+    )
+    return _result_to_dict(r)
 
 
 def cmd_check_task(args: argparse.Namespace) -> dict[str, Any]:
-    return execute_tool(get_storage(args.storage), "check_task", {"task_id": args.task})
+    client = CascadeClient(args.storage)
+    r = client.check(args.task)
+    return _result_to_dict(r)
 
 
 def cmd_check_timeouts(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {}
-    if args.default_timeout:
-        params["default_timeout"] = args.default_timeout
-    return execute_tool(get_storage(args.storage), "check_timeouts", params)
+    client = CascadeClient(args.storage)
+    r = client.check_timeouts(
+        default_timeout=args.default_timeout
+        if hasattr(args, "default_timeout") and args.default_timeout
+        else None,
+    )
+    return _result_to_dict(r)
 
 
 def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
-    params: dict[str, Any] = {}
-    if args.node:
-        params["node_id"] = args.node
-    if args.type:
-        params["event_type"] = args.type
-    if args.last:
-        params["last_n"] = args.last
-    if args.summary:
-        params["summary"] = True
-    return execute_tool(get_storage(args.storage), "history", params)
+    client = CascadeClient(args.storage)
+    r = client.history(
+        node_id=args.node or "",
+        event_type=args.type or "",
+        last_n=args.last or 0,
+        summary=args.summary if hasattr(args, "summary") else False,
+    )
+    return _result_to_dict(r)
 
 
 # ---------------------------------------------------------------------------

@@ -12,13 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Split Node Tool."""
+"""Split Node Tool — thin wrapper delegating to CascadeClient."""
 
 from typing import Any
 
-from cascade.core.node import Node
-from cascade.core.state import NodeState
-from cascade.operations.split import SplitOperation
+from cascade.client import CascadeClient
 from cascade.storage.graph_storage import GraphStorage
 
 
@@ -30,74 +28,31 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         params: Dictionary containing:
             - parent_id (str, required)
             - new_nodes (list[dict], required): Each dict has node_id
+            - reason (str, optional): Why
     """
     if "parent_id" not in params:
         return {"success": False, "message": "Missing required parameter: parent_id", "data": {}}
     if "new_nodes" not in params:
         return {"success": False, "message": "Missing required parameter: new_nodes", "data": {}}
 
-    parent_id = params["parent_id"]
     new_nodes_data = params["new_nodes"]
 
     if not isinstance(new_nodes_data, list) or len(new_nodes_data) == 0:
         return {"success": False, "message": "new_nodes must be a non-empty list", "data": {}}
 
-    try:
-        with storage.lock():
-            from cascade.core.cascade import Cascade
-
-            cascade = storage.load() or Cascade()
-
-            if parent_id not in cascade.nodes:
-                return {
-                    "success": False,
-                    "message": f"Parent node {parent_id} not found",
-                    "data": {},
-                }
-
-            parent = cascade.nodes[parent_id]
-            if parent.state == NodeState.ACTIVE:
-                return {
-                    "success": False,
-                    "message": f"Cannot split ACTIVE node {parent_id} (agent: {parent.agent_id}). "
-                    f"Use finish_task with release=true first.",
-                    "data": {"state": "ACTIVE", "agent_id": parent.agent_id},
-                }
-
-            parent_state = parent.state
-
-            new_nodes = []
-            for node_data in new_nodes_data:
-                if "node_id" not in node_data:
-                    return {
-                        "success": False,
-                        "message": "Each new node must have a node_id",
-                        "data": {},
-                    }
-                new_nodes.append(Node(id=node_data["node_id"], state=parent_state))
-
-            operation = SplitOperation(cascade)
-            result = operation.execute(parent_id=parent_id, new_nodes=new_nodes)
-
-            storage.save(cascade)
-            if result.success:
-                from cascade.events import EventType
-
-                storage.events.emit(
-                    EventType.NODE_SPLIT,
-                    node_id=parent_id,
-                    new_node_ids=result.data.new_node_ids if result.data else [],
-                    reason=params.get("reason", ""),
-                )
+    # Validate each node has a node_id and extract IDs
+    into: list[str] = []
+    for node_data in new_nodes_data:
+        if "node_id" not in node_data:
             return {
-                "success": result.success,
-                "message": result.message,
-                "data": {
-                    "parent_id": result.data.parent_id if result.data else None,
-                    "new_node_ids": result.data.new_node_ids if result.data else [],
-                    "affected_nodes": result.affected_nodes,
-                },
+                "success": False,
+                "message": "Each new node must have a node_id",
+                "data": {},
             }
+        into.append(node_data["node_id"])
 
-    except Exception as e:
-        return {"success": False, "message": f"Operation failed: {e}", "data": {}}
+    client = CascadeClient.__new__(CascadeClient)
+    client._storage = storage
+
+    r = client.split(params["parent_id"], into, reason=params.get("reason", ""))
+    return {"success": r.success, "message": r.message, "data": r.data}
