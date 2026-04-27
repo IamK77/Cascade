@@ -53,9 +53,13 @@ Three channels — **use all three**, they serve different purposes:
 
 | Channel | Propagation | What to put | Example |
 |---------|-------------|-------------|---------|
-| `summary` | 2 hops | Text: what was accomplished | `"Designed 5 REST endpoints with JWT auth"` |
-| `critical` | Indefinite | Structured KV that downstream tasks need to make decisions | `{"endpoints": ["/users", "/auth"], "db": "PostgreSQL"}` |
-| `artifacts` | Indefinite | Full documents, specs, code — the complete deliverable | `"# API Spec\n## POST /auth/login\n..."` |
+| `summary` | **2 hops only** | Text: what was accomplished | `"Designed 5 REST endpoints with JWT auth"` |
+| `critical` | **All descendants** | Structured KV that downstream tasks need to make decisions | `{"endpoints": ["/users", "/auth"], "db": "PostgreSQL"}` |
+| `artifacts` | **All descendants** | Full documents, specs, code — the complete deliverable | `"# API Spec\n## POST /auth/login\n..."` |
+
+**Only `summary` has a distance limit.** Both `critical` and `artifacts` propagate to every descendant regardless of depth. If you put interface definitions in `critical` at the analyze node, a worker 3 hops away still sees them.
+
+**Verify what workers see:** Run `cascade get-task --agent test --task <id>` to preview the briefing a worker receives. If critical data is missing, it was never written upstream — not lost in propagation.
 
 **Why this matters for agent speed:** Workers get context from `cascade get-task`, not from the Agent prompt. If the orchestrator puts detailed specs in `critical` and `artifacts`, workers start fast (minimal prompt) and get full context from Cascade. If the orchestrator copies context into the Agent prompt instead, startup is slower and Cascade's context system is bypassed.
 
@@ -71,7 +75,7 @@ auth (upstream)
 api (downstream)
 ```
 
-Promise describes what the UPSTREAM delivers, not what the downstream produces. The framework warns on duplicate promises.
+**Promise describes what the UPSTREAM delivers, not what the downstream produces.** Common mistake: writing the promise from the downstream's perspective ("Will provide CLI wiring" on an edge TO the CLI node). The promise should describe what the edge's source node delivers ("Provide project CRUD functions"). The framework warns on duplicate promises.
 
 ## Rework
 
@@ -97,23 +101,35 @@ cascade finish-task --task X --fail --cascade
 
 ## Orchestrator Guide
 
-You are a **dynamic controller**. The initial DAG is a hypothesis.
+You are a **dynamic controller**, not a worker. You never claim or execute tasks. Your job is to build the DAG, dispatch workers, monitor progress, and adapt the plan.
+
+### Rules
+
+1. **Never claim tasks** — all execution is done by sub-agent workers
+2. **Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about what information flows, not code imports
+3. **Promise = what the upstream delivers** — not what the downstream does
 
 ### Loop
 
-1. **Analyze first** — create a root task, claim it yourself, complete it with a detailed spec:
+1. **Create analyze node** — spawn a worker to analyze the problem and produce a detailed spec:
    - `summary`: overview of what was accomplished (propagates 2 hops)
    - `critical`: structured data downstream workers need (file paths, function lists, tech choices)
    - `artifacts`: full specification document
-2. **Split horizontally** — create N parallel tasks depending on analyze. Every independent module = separate task. More tasks = more parallelism.
-3. **Launch sub-agents** — multiple Agent() calls in a single message = concurrent execution.
-4. **Monitor and evolve** — when workers complete, read their output. The DAG is a living plan:
+2. **Wait for analyze** — read the completed context to understand the problem space
+3. **Build the DAG** — create N parallel tasks based on analyze output. Every independent module = separate task. More tasks = more parallelism
+4. **Launch workers** — multiple Agent() calls in a single message = concurrent execution
+5. **Review each completion** — when a worker finishes, check before moving on:
+   - Did the worker fulfill its promises? Compare delivered context against its downstream promises
+   - Is the task granularity right? A worker taking 3x longer than peers may need `split-node` next time
+   - Did the worker report a hidden dependency or spec gap? → `refine-node` or `rework`
+6. **Adapt the DAG** — the DAG is a living plan:
    - Worker reveals the task is too big → `split-node`
    - Worker output shows the spec was wrong → `rework`
    - Worker discovers a hidden dependency → `refine-node`
    - A task turns out unnecessary → `remove-node`
-5. **Next wave** — launch workers for newly READY tasks.
-6. **Repeat** until all COMPLETED.
+   - Tests could run in parallel → split test node into per-module test nodes
+7. **Next wave** — launch workers for newly READY tasks
+8. **Repeat** until all COMPLETED
 
 The DAG evolves with your understanding. Early waves produce output that informs later planning — don't try to design the perfect DAG upfront.
 
