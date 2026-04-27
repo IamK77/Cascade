@@ -23,6 +23,7 @@ import json
 import sys
 from typing import Any
 
+from cascade import __version__
 from cascade.client import CascadeClient, Result
 from cascade.types import Contract
 
@@ -270,6 +271,7 @@ def main() -> None:
         prog="cascade",
         description="Cascade — multi-agent task coordination via DAG",
     )
+    parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--storage", "-s", default=".cascade", help="Storage directory")
     sub = parser.add_subparsers(dest="command", help="Commands")
 
