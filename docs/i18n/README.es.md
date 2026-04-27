@@ -22,38 +22,44 @@ Una fábrica de agentes con planificación dinámica de DAG. Los orquestadores c
 ## Instalación
 
 ```bash
+# Como herramienta CLI
+pipx install cascade-auto
+# o
+uv tool install cascade-auto
+
+# Como biblioteca Python
 pip install cascade-auto
+```
+
+Para desarrollo:
+
+```bash
+git clone https://github.com/autoseek-ai/Cascade.git
+cd Cascade
+uv sync
 ```
 
 ## Inicio Rápido
 
 ```python
-from cascade import GraphStorage, add_node, get_task, finish_task
+from cascade import CascadeClient, Contract
 
-storage = GraphStorage(".cascade")
+cascade = CascadeClient()
 
 # Construir un grafo de tareas — dividir horizontalmente para paralelismo
-add_node(storage, {"node_id": "analyze"})
-add_node(storage, {
-    "node_id": "design",
-    "dependencies": ["analyze"],
-    "expectations": [{
-        "node_id": "analyze",
-        "expectation": "Feature requirements and constraints",
-        "promise": "Deliver prioritized feature list",
-    }],
+cascade.add("analyze")
+cascade.add("design", deps={
+    "analyze": Contract("Feature requirements and constraints", "Deliver prioritized feature list"),
 })
 
 # El agente reclama una tarea — ruta crítica primero
-result = get_task(storage, {"agent_id": "agent-001"})
+task = cascade.claim("agent-001")
 
 # Completar con contexto que fluye a los agentes downstream
-finish_task(storage, {
-    "task_id": "analyze",
-    "success": True,
-    "summary": "Requirements: JWT auth + REST API",
-    "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
-})
+cascade.complete("analyze",
+    summary="Requirements: JWT auth + REST API",
+    critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
+)
 ```
 
 Cuando `agent-002` reclama `design`, ve:
@@ -92,10 +98,11 @@ types → core → context → view → operations → tools
 | `operations` | Mutaciones compuestas: Split, Remove, Rework |
 | `storage` | Persistencia JSON + bloqueo de archivos + almacén de tokens |
 | `tools` | 12 funciones para LLM — la frontera de serialización |
+| `client` | `CascadeClient` — API Python tipada con soporte IDE que envuelve tools |
 
 ## Herramientas
 
-`(GraphStorage, dict) → dict` — agnóstico al framework.
+La API Python tipada es `CascadeClient`. La capa de herramientas subyacente usa firmas `(GraphStorage, dict) → dict` para los límites CLI y JSON.
 
 | Categoría | Herramientas |
 |-----------|-------------|
@@ -139,7 +146,9 @@ uv run ruff check src tests  # lint
 ## Documentación
 
 - [Guía](../guide.md) — recorrido completo
+- [Arquitectura](../architecture.md) — diseño del sistema, máquina de estados, diagramas Mermaid
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — guías de desarrollo
+- [SECURITY.md](../../SECURITY.md) — reporte de vulnerabilidades y modelo de seguridad
 
 ## Licencia
 

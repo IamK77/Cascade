@@ -21,70 +21,58 @@ uv sync
 Every workflow starts with a DAG. Nodes are tasks, edges are dependencies with contracts.
 
 ```python
-from cascade import GraphStorage, add_node
+from cascade import CascadeClient, Contract
 
-
-storage = GraphStorage(".cascade")
+cascade = CascadeClient()
 
 # Root task — no dependencies, starts as READY
-add_node(storage, {"node_id": "analyze"})
+cascade.add("analyze")
 
 # Dependent task — needs a contract on the edge
-add_node(storage, {
-    "node_id": "design",
-    "dependencies": ["analyze"],
-    "expectations": [{
-        "node_id": "analyze",
-        "expectation": "Feature requirements and constraints",
-        "promise": "Deliver prioritized feature list",
-    }],
+cascade.add("design", deps={
+    "analyze": Contract(
+        "Feature requirements and constraints",
+        "Deliver prioritized feature list",
+    ),
 })
 
 # Chain continues
-add_node(storage, {
-    "node_id": "implement",
-    "dependencies": ["design"],
-    "expectations": [{
-        "node_id": "design",
-        "expectation": "API specification with endpoints",
-        "promise": "Deliver endpoint designs",
-    }],
+cascade.add("implement", deps={
+    "design": Contract(
+        "API specification with endpoints",
+        "Deliver endpoint designs",
+    ),
 })
 ```
 
 **Maximize parallelism** — split horizontally wherever possible:
 
 ```python
-add_node(storage, {"node_id": "fix_frontend_bugs"})
-add_node(storage, {"node_id": "refactor_backend"})
+cascade.add("fix_frontend_bugs")
+cascade.add("refactor_backend")
 # Independent tasks run in parallel — no connection needed
 ```
 
 ## 3. Claim and Complete Tasks
 
 ```python
-from cascade import get_task, finish_task
-
 # Agent claims the highest-priority READY task (critical path first)
-result = get_task(storage, {"agent_id": "agent-001"})
-task_info = result["data"]["task_info"]
+task = cascade.claim("agent-001")
 
-# task_info contains:
-# - upstream: each ancestor with contract + delivered context
-# - promises: what you owe to downstream
-# - visible_nodes: preview of downstream topology
+# task contains:
+# - task.upstream: each ancestor with contract + delivered context
+# - task.promises: what you owe to downstream
+# - task.id: the claimed task's node ID
 
 # Complete with output that flows downstream
-finish_task(storage, {
-    "task_id": "analyze",
-    "success": True,
-    "summary": "Requirements: JWT auth + REST API for users and posts",
-    "critical": {
+cascade.complete("analyze",
+    summary="Requirements: JWT auth + REST API for users and posts",
+    critical={
         "auth_type": "JWT",
         "endpoints": ["/users", "/posts"],
         "database": "PostgreSQL",
     },
-})
+)
 ```
 
 ### Upstream View
@@ -140,47 +128,39 @@ The initial DAG is a starting hypothesis. The orchestrator monitors and adapts.
 ### Split — break a big task into smaller ones
 
 ```python
-from cascade import split_node
-
 # ACTIVE nodes must be released first
-split_node(storage, {
-    "parent_id": "implement",
-    "new_nodes": [{"node_id": "impl_auth"}, {"node_id": "impl_api"}],
-    "reason": "Task too large for one agent",
-})
+cascade.split("implement",
+    children=["impl_auth", "impl_api"],
+    reason="Task too large for one agent",
+)
 # implement removed, new nodes inherit its dependencies and dependents
 ```
 
 ### Refine — add a missing dependency
 
 ```python
-from cascade import refine_node
-
-refine_node(storage, {
-    "node_id": "impl_api",
-    "dependency_id": "design_schema",
-    "expectation": "Database schema for CRUD operations",
-    "promise": "PostgreSQL schema with migrations",
-    "reason": "Discovered hidden dependency during implementation",
-})
+cascade.refine("impl_api",
+    dep="design_schema",
+    expectation="Database schema for CRUD operations",
+    promise="PostgreSQL schema with migrations",
+    reason="Discovered hidden dependency during implementation",
+)
 # impl_api goes PENDING if design_schema isn't completed yet
 ```
 
 ### Rework — upstream output was wrong
 
 ```python
-from cascade import rework
-
-rework(storage, {
-    "source_node_id": "analyze",
-    "corrective_node_id": "analyze_oauth",
-    "reason": "Missing OAuth2 requirements for Google/GitHub login",
-    "agent_id": "agent-002",
-    "source_expectation": "Original analysis to review",
-    "source_promise": "First analysis output",
-    "corrective_expectation": "Revised requirements with OAuth2",
-    "corrective_promise": "Updated auth requirements",
-})
+cascade.rework(
+    source="analyze",
+    corrective="analyze_oauth",
+    reason="Missing OAuth2 requirements for Google/GitHub login",
+    agent_id="agent-002",
+    source_expectation="Original analysis to review",
+    source_promise="First analysis output",
+    corrective_expectation="Revised requirements with OAuth2",
+    corrective_promise="Updated auth requirements",
+)
 # Graph grows forward — no reverse edges
 # Agent's task goes PENDING until corrective work completes
 ```
@@ -188,82 +168,61 @@ rework(storage, {
 ### Remove — cancel unnecessary tasks
 
 ```python
-from cascade import remove_node
-
 # ACTIVE nodes cannot be removed — release first
-remove_node(storage, {
-    "node_id": "deprecated_module",
-    "cascade": True,          # also remove all dependents
-    "reason": "No longer needed after architecture change",
-})
+cascade.remove("deprecated_module",
+    cascade=True,
+    reason="No longer needed after architecture change",
+)
 ```
 
 All mutation tools support `reason` — recorded in the event log for audit.
 
 ## 5. Cancellation
 
-Two implementations of the same semantic:
-
-### Cross-process (file-based)
+### Cross-process (file-based) — the common pattern
 
 ```python
-from cascade import check_task
-
 # Pull: check if a task claim is still valid
-result = check_task(storage, {"task_id": "analyze"})
+result = cascade.check("analyze")
 # {"valid": true, "agent_id": "agent-001", ...}
 ```
 
-### In-process (memory-based)
+When a task is released, reworked, or timed out, `cascade.check()` reflects the new state. Agents should poll periodically during long-running work.
+
+### In-process (memory-based) — advanced
+
+For direct framework embedding, `CancellationToken` provides instant push notifications within a single process:
 
 ```python
 from cascade.context.cancellation import CancellationToken
 
 token = CancellationToken()
-get_task(storage, {
-    "agent_id": "agent-001",
-    "task_id": "analyze",
-    "cancel_notifier": token,  # CancellationToken IS a CancelNotifier
-})
-
-# In another coroutine/thread — when task is released/reworked/timed out:
-# token.is_cancelled becomes True, registered callbacks fire instantly
+# Pass token when claiming via the lower-level tool API
+# token.is_cancelled becomes True when task is invalidated
+# Registered callbacks fire instantly
 ```
 
-### Push notifications
-
-```python
-from cascade.storage.token_store import FileNotifier
-
-get_task(storage, {
-    "agent_id": "agent-001",
-    "task_id": "analyze",
-    "cancel_notifier": FileNotifier("/tmp/agent-001.cancel"),
-})
-# When task is invalidated, framework writes to that file
-# Implement CancelNotifier protocol for webhook, Redis, etc.
-```
+Implement the `CancelNotifier` protocol for custom push mechanisms (webhook, Redis, etc.).
 
 ## 6. Multi-Agent Coordination
 
 Multiple agents share the same `.cascade/` directory. File locking ensures consistency.
 
 ```python
-# Terminal 1                          # Terminal 2
-get_task(s, {"agent_id": "agent-1"})  get_task(s, {"agent_id": "agent-2"})
-# → claims analyze                    # → claims design (if ready)
+# Agent 1                              # Agent 2
+cascade.claim("agent-1")               cascade.claim("agent-2")
+# → claims analyze                     # → claims design (if ready)
 ```
 
-- **One task per agent** — `get_task` with an active task returns a reminder
+- **One task per agent** — `claim` with an active task returns a reminder
 - **Critical path priority** — longest downstream chain is scheduled first
 - **ACTIVE protection** — cannot remove/split a node with an active agent
 - **Timeouts** — auto-release stalled tasks:
 
 ```python
-get_task(storage, {"agent_id": "agent-1", "timeout": 3600})  # 1 hour
+cascade.claim("agent-1", task_id="analyze", timeout=3600)  # 1 hour
 
-from cascade import check_timeouts
-check_timeouts(storage, {"default_timeout": 1800})  # release stalled > 30min
+cascade.check_timeouts(default_timeout=1800)  # release stalled > 30min
 ```
 
 ## 7. Monitoring
@@ -271,44 +230,48 @@ check_timeouts(storage, {"default_timeout": 1800})  # release stalled > 30min
 ### List tasks
 
 ```python
-from cascade import list_nodes
-list_nodes(storage, {})                          # all
-list_nodes(storage, {"state_filter": "READY"})   # only ready
+cascade.nodes()                       # all
+cascade.nodes(state="READY")          # only ready
 ```
 
 ### Event history
 
 ```python
-from cascade import history
-history(storage, {"summary": True})              # counts by type
-history(storage, {"node_id": "analyze"})         # one node's events
-history(storage, {"last_n": 10})                 # last 10
+cascade.history(summary=True)         # counts by type
+cascade.history(node_id="analyze")    # one node's events
+cascade.history(last_n=10)            # last 10
 ```
 
 ## 8. Error Recovery
 
 ```python
 # Release — give up temporarily, task returns to READY
-finish_task(storage, {"task_id": "build", "release": True, "summary": "Blocked"})
+cascade.release("build", reason="Blocked on external dependency")
 
 # Fail — task cannot be completed, downstream stays PENDING
-finish_task(storage, {"task_id": "deploy", "success": False, "summary": "Error"})
+cascade.fail("deploy", reason="Deployment target unavailable")
 
 # Cascade fail — abort entire downstream chain
-finish_task(storage, {"task_id": "core", "success": False, "cascade": True})
+cascade.fail("core", cascade=True, reason="Critical failure in core module")
 ```
 
 ## 9. Framework Integration
 
-Tools are `(GraphStorage, dict) → dict`. Wrap for any framework:
+`CascadeClient` is the primary API for all Cascade operations. For LLM framework integration (Anthropic tool_use, OpenAI function calling, etc.), the underlying `(GraphStorage, dict) -> dict` tool layer provides a dict-based serialization boundary:
 
 ```python
-from cascade import GraphStorage, add_node
-from cascade import get_task, finish_task
+from cascade import CascadeClient, Contract
+
+# Primary API — use this for application code
+cascade = CascadeClient()
+cascade.add("analyze")
+task = cascade.claim("agent-001")
+
+# Lower-level tool layer — for framework integration
+from cascade import GraphStorage, get_task
 
 storage = GraphStorage(".cascade")
 
-# Anthropic tool_use example
 tools = [{
     "name": "claim_task",
     "input_schema": {

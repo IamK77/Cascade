@@ -1,249 +1,150 @@
-# Core Concepts
+# Concepts
 
 ## Node States
 
-```
-PENDING → READY → ACTIVE → COMPLETED
-                    ↓  ↑       
-                    ↓ release   
-                    ↓  ↑       
-                    → READY     
-                    ↓
-                    → FAILED
-                    ↓
-                    → CANCELLED
-
-Any non-terminal → FAILED (cascade failure)
-Any non-terminal → CANCELLED (cascade cancel)
-```
-
 | State | Meaning |
 |-------|---------|
-| PENDING | Has uncompleted dependencies, must wait |
+| PENDING | Has uncompleted dependencies |
 | READY | All dependencies completed, can be claimed |
 | ACTIVE | Being worked on by an agent |
 | COMPLETED | Successfully finished |
 | FAILED | Failed (possibly cascaded from upstream) |
 | CANCELLED | Cancelled (possibly cascaded from upstream) |
 
-### Readiness is Computed, Not Stored
+Readiness is computed from the graph, never cached. A node is READY when all its dependencies are COMPLETED.
 
-There is no `in_degree` field on nodes. Readiness is **derived from the graph**:
+## Context System
 
-```
-A node is READY when:
-  count(dependencies where state ≠ COMPLETED) == 0
-```
+When a worker claims a task via `cascade get-task`, it receives an **upstream** list — each ancestor's output as a separate entry:
 
-This means:
-- You never need to manually track dependency counts
-- Readiness is always consistent, even after split/refine/rework
-- The system recomputes readiness whenever edges change
-
-## Context Propagation
-
-Context flows **downstream** from COMPLETED tasks. Each upstream contribution is kept separate and attributed by the promise on the connecting edge.
-
-| Channel | Propagation | At Fan-In |
-|---------|-------------|-----------|
-| `critical` | Indefinitely (all descendants) | Separate per source |
-| `summary` | 2 hops (children + grandchildren) | Separate per source |
-| `artifacts` | Indefinitely (file reference) | Separate per source |
-
-```
-┌─────────────────────┐
-│ Task: analyze       │
-│ State: COMPLETED    │
-│ summary: "..."      │──────────┐
-│ critical: {k1: v1}  │          │ attributed by
-│ artifacts: "..."    │          │ edge promise
-└─────────────────────┘          │
-                                 ↓
-                    ┌──────────────────────────┐
-                    │ Task: design             │
-                    │ State: ACTIVE            │
-                    │ context: [               │
-                    │   {promise: "...",        │
-                    │    summary: "...",        │
-                    │    critical: {k1: v1}}    │
-                    │ ]                        │
-                    └──────────────────────────┘
+```json
+{
+  "upstream": [
+    {
+      "node_id": "analyze",
+      "state": "COMPLETED",
+      "distance": 1,
+      "path": ["analyze"],
+      "expectation": "Need tech stack decisions",
+      "promise": "Deliver requirements spec",
+      "delivered": {
+        "summary": "JWT auth + REST API",
+        "critical": {"auth": "JWT", "db": "PostgreSQL"}
+      }
+    },
+    {
+      "node_id": "root",
+      "state": "COMPLETED",
+      "distance": 2,
+      "path": ["root", "analyze"],
+      "delivered": {
+        "critical": {"project": "e-commerce"}
+      }
+    }
+  ]
+}
 ```
 
-### Your Output IS Your Fulfilled Promise
+- **distance 1** (direct parents): includes expectation/promise from the edge contract
+- **distance 2+** (ancestors): includes path for provenance, no contract
+- Fan-in: each source is separate — no key overwrite
 
-When you `finish-task --success`, your `summary`, `critical`, and `artifacts` become the context that downstream agents receive — tagged with your edge promise. This is how you fulfill the contract.
+Three channels — **use all three**, they serve different purposes:
 
-## Contracts on Edges
+| Channel | Propagation | What to put | Example |
+|---------|-------------|-------------|---------|
+| `summary` | 2 hops | Text: what was accomplished | `"Designed 5 REST endpoints with JWT auth"` |
+| `critical` | Indefinite | Structured KV that downstream tasks need to make decisions | `{"endpoints": ["/users", "/auth"], "db": "PostgreSQL"}` |
+| `artifacts` | Indefinite | Full documents, specs, code — the complete deliverable | `"# API Spec\n## POST /auth/login\n..."` |
 
-Every edge carries a contract with two fields:
+**Why this matters for agent speed:** Workers get context from `cascade get-task`, not from the Agent prompt. If the orchestrator puts detailed specs in `critical` and `artifacts`, workers start fast (minimal prompt) and get full context from Cascade. If the orchestrator copies context into the Agent prompt instead, startup is slower and Cascade's context system is bypassed.
 
-- **expectation**: what the **downstream node** needs from this upstream — written from the consumer's perspective
-- **promise**: what the **upstream node** commits to deliver — written from the producer's perspective
+## Contracts
 
-```
-     auth (upstream)
-       │
-       │  promise: "Provide JWT tokens and user session"     ← auth's commitment
-       │  expectation: "Need auth tokens for API calls"      ← api's requirement
-       ↓
-     api (downstream)
-```
-
-**Common mistake**: writing promise as the downstream's output ("Provide API endpoints"). Promise describes what the UPSTREAM delivers, not what the downstream will produce. The framework warns if multiple edges to the same node have identical promises — that usually means they were written from the wrong perspective.
-
-Different downstream nodes can have **different contracts** with the same upstream:
+Every edge carries `expectation` (what consumer needs) and `promise` (what producer delivers).
 
 ```
-     auth ──→ api         expectation: "Auth tokens"       promise: "JWT + refresh token"
-     auth ──→ websocket   expectation: "Session ID"        promise: "Session cookie"
+auth (upstream)
+  │  promise: "Provide JWT tokens"        ← auth's commitment
+  │  expectation: "Need auth for API"     ← api's requirement
+  ↓
+api (downstream)
 ```
 
-## Rework (Forward-Only Feedback)
+Promise describes what the UPSTREAM delivers, not what the downstream produces. The framework warns on duplicate promises.
 
-When an agent discovers upstream output is wrong, it doesn't "go back" — it **derives a corrective node** that grows the graph forward:
+## Rework
+
+Forward-only: create a corrective node, never reverse edges.
 
 ```
 Before:  A(COMPLETED) → B(ACTIVE, discovers problem)
-
-After:   A(COMPLETED) → A'(READY, corrective task) → B(PENDING, waits)
-         A(COMPLETED) → B(PENDING, waits for A')
+After:   A(COMPLETED) → A'(READY) → B(PENDING, waits for A')
 ```
 
-A' depends on A (sees original output), B depends on A' (waits for correction). The contract on A'→B describes what needs to be different. No reverse edges, no cycles.
-
-## Critical Path Scheduling
-
-When multiple tasks are READY, Cascade prioritizes by **downstream depth** — the task that unblocks the most downstream work is scheduled first. This is computed via topological-order dynamic programming.
-
-## Event Sourcing
-
-Every action is recorded in `.cascade/events.jsonl`:
-- `node_added`, `task_claimed`, `task_completed`, `task_failed`
-- `task_released`, `task_timed_out`, `rework_requested`
-
-Query with `cascade history --summary` or `cascade history --node <id>`.
-
-## Independent Task Groups
-
-Multiple disconnected subgraphs are allowed. You can have parallel independent workflows in the same Cascade instance.
-
-## Orchestrator Behavior Guide
-
-The orchestrator (main agent using Cascade) is a **dynamic controller**, not a static planner. The initial DAG is a starting hypothesis.
-
-### Orchestrator Loop
-
-```
-1. Build initial DAG — split tasks horizontally for maximum parallelism
-2. Launch workers on READY tasks (via Agent tool)
-3. When a worker completes:
-   a. Read its output (summary, critical, artifacts)
-   b. Decide: is the DAG still correct?
-   c. If not → adjust (split, rework, refine, remove, edit)
-4. Launch next wave of workers on newly READY tasks
-5. Repeat until all tasks COMPLETED
-```
-
-### Parallel Execution with Sub-Agents
-
-Use the Agent tool to run multiple workers simultaneously. Each sub-agent claims one task, does the work, and exits.
-
-**Step 1: Build DAG and complete the analysis task yourself**
+## Error Recovery
 
 ```bash
-cascade add-node --id analyze
-cascade get-task --agent orchestrator
-# Do the analysis work...
-cascade finish-task --task analyze --success \
-  --summary "Spec: 4 modules..." \
-  --critical '{"modules": ["auth", "users", "posts", "search"]}'
+# Release — give up temporarily, task returns to READY
+cascade finish-task --task X --release --reason "Blocked on external"
+
+# Fail — task cannot be completed
+cascade finish-task --task X --fail --reason "Error"
+
+# Cascade fail — abort entire downstream chain
+cascade finish-task --task X --fail --cascade
 ```
 
-**Step 2: Create parallel tasks depending on analyze**
+## Orchestrator Guide
 
-```bash
-cascade add-node --id impl-auth --deps analyze --expectations '[...]'
-cascade add-node --id impl-users --deps analyze --expectations '[...]'
-cascade add-node --id impl-posts --deps analyze --expectations '[...]'
-cascade add-node --id impl-search --deps analyze --expectations '[...]'
+You are a **dynamic controller**. The initial DAG is a hypothesis.
+
+### Loop
+
+1. **Analyze first** — create a root task, claim it yourself, complete it with a detailed spec:
+   - `summary`: overview of what was accomplished (propagates 2 hops)
+   - `critical`: structured data downstream workers need (file paths, function lists, tech choices)
+   - `artifacts`: full specification document
+2. **Split horizontally** — create N parallel tasks depending on analyze. Every independent module = separate task. More tasks = more parallelism.
+3. **Launch sub-agents** — multiple Agent() calls in a single message = concurrent execution.
+4. **Monitor and evolve** — when workers complete, read their output. The DAG is a living plan:
+   - Worker reveals the task is too big → `split-node`
+   - Worker output shows the spec was wrong → `rework`
+   - Worker discovers a hidden dependency → `refine-node`
+   - A task turns out unnecessary → `remove-node`
+5. **Next wave** — launch workers for newly READY tasks.
+6. **Repeat** until all COMPLETED.
+
+The DAG evolves with your understanding. Early waves produce output that informs later planning — don't try to design the perfect DAG upfront.
+
+### Sub-Agent Prompts
+
+All specs live in critical/artifacts from the analyze phase. Workers get everything from `cascade get-task`. Do NOT duplicate spec in the prompt.
+
 ```
-
-**Step 3: Launch sub-agents in parallel (single message, multiple Agent calls)**
-
-```
+# RIGHT — zero-spec prompt, context flows through cascade
 Agent({
-  prompt: "You are a worker. Run: cascade get-task --agent worker-1 --task impl-auth
-           Read the upstream context. Do the work. Then:
-           cascade finish-task --task impl-auth --success --summary '...' --critical '{...}'"
+  prompt: "cascade get-task --agent worker-1 --task impl-auth
+           Read the upstream context. Do the work.
+           cascade finish-task --task impl-auth --success --summary '...' --critical '{...}' --artifacts '...'"
 })
+
+# WRONG — duplicating spec in prompt
 Agent({
-  prompt: "You are a worker. Run: cascade get-task --agent worker-2 --task impl-users ..."
-})
-Agent({
-  prompt: "You are a worker. Run: cascade get-task --agent worker-3 --task impl-posts ..."
-})
-Agent({
-  prompt: "You are a worker. Run: cascade get-task --agent worker-4 --task impl-search ..."
+  prompt: "Implement auth module: JWT tokens, refresh flow, password hashing...
+           Write to src/auth.py with type hints..."
 })
 ```
 
-All 4 agents run concurrently. When they complete, check progress:
+Why: spec in prompt = written N times, slower startup, stale if DAG changes. Spec in cascade = written once, flows automatically.
 
-```bash
-cascade list-nodes
-cascade history --summary
-```
+### When to Adjust
 
-**Step 4: Continue with next wave**
-
-Repeat Step 3 for newly READY tasks until all tasks are COMPLETED.
-
-**Key rules for sub-agent prompts:**
-- **Keep prompts minimal** — only task ID + basic instructions. Do NOT copy context into the prompt.
-- All context flows through Cascade: `cascade get-task` returns upstream deliveries, contracts, and promises.
-- Putting context in the Agent prompt bypasses Cascade's context system AND makes agent startup slower.
-- Tell the worker to call `cascade finish-task` with summary + critical when done.
-- Workers should NOT explore the workspace — everything they need is in the get-task output.
-
-### When to Use Each DAG Operation
-
-| Signal | Operation | Example |
-|--------|-----------|---------|
-| Worker reports task is too large | `split_node` | "This module has 3 independent parts" |
-| Worker output contradicts upstream | `rework` | "The API spec is missing auth endpoints" |
-| Implementation reveals hidden dependency | `refine_node` | "Frontend needs the DB schema first" |
-| Task becomes unnecessary | `remove_node` | "We don't need a separate config module" |
-| Task scope needs adjustment | `edit_node` | "Only implement the core, skip CLI" |
-| Worker stalls | `check_timeouts` | Agent exceeds timeout → task released |
-
-### Maximizing Parallelism
-
-**Default to wide, not deep.** Prefer:
-
-```
-     A
-   / | \
-  B  C  D     ← 3 parallel workers
-   \ | /
-     E
-```
-
-Over:
-
-```
-  A → B → C → D → E     ← serial, slow
-```
-
-Split aggressively at the planning stage. If a task has 3 independent subtasks, split immediately — don't wait for an agent to discover this.
-
-### Context Discipline
-
-Each worker should output:
-- **summary**: One sentence — what was accomplished
-- **critical**: Structured KV — decisions, configs, endpoints, counts that downstream needs
-- **artifacts**: Full content — code, specs, detailed docs
-
-The orchestrator should verify that critical data flows correctly through the DAG. If a downstream worker is missing data it needs, either:
-- The upstream worker forgot to include it → `rework`
-- A dependency edge is missing → `refine_node`
+| Signal | Operation |
+|--------|-----------|
+| Task too large | `split-node` |
+| Upstream output wrong | `rework` |
+| Hidden dependency | `refine-node` |
+| Task unnecessary | `remove-node` |
+| Scope change | `edit-node` |
+| Agent stalled | `check-timeouts` |

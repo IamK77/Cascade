@@ -1,7 +1,7 @@
 # Cascade
 
 [![CI](https://github.com/autoseek/cascade/actions/workflows/ci.yml/badge.svg)](https://github.com/autoseek/cascade/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](../../LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
 [English](../../README.md) | [中文](README.zh-CN.md) | **日本語** | [Español](README.es.md)
@@ -22,38 +22,44 @@
 ## インストール
 
 ```bash
+# CLIツールとして
+pipx install cascade-auto
+# または
+uv tool install cascade-auto
+
+# Pythonライブラリとして
 pip install cascade-auto
+```
+
+開発用：
+
+```bash
+git clone https://github.com/autoseek-ai/Cascade.git
+cd Cascade
+uv sync
 ```
 
 ## クイックスタート
 
 ```python
-from cascade import GraphStorage, add_node, get_task, finish_task
+from cascade import CascadeClient, Contract
 
-storage = GraphStorage(".cascade")
+cascade = CascadeClient()
 
 # タスクグラフを構築 — 並列化のために水平分割
-add_node(storage, {"node_id": "analyze"})
-add_node(storage, {
-    "node_id": "design",
-    "dependencies": ["analyze"],
-    "expectations": [{
-        "node_id": "analyze",
-        "expectation": "Feature requirements and constraints",
-        "promise": "Deliver prioritized feature list",
-    }],
+cascade.add("analyze")
+cascade.add("design", deps={
+    "analyze": Contract("Feature requirements and constraints", "Deliver prioritized feature list"),
 })
 
 # エージェントがタスクを取得 — クリティカルパス優先
-result = get_task(storage, {"agent_id": "agent-001"})
+task = cascade.claim("agent-001")
 
 # 下流エージェントに伝播するコンテキスト付きでタスクを完了
-finish_task(storage, {
-    "task_id": "analyze",
-    "success": True,
-    "summary": "Requirements: JWT auth + REST API",
-    "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
-})
+cascade.complete("analyze",
+    summary="Requirements: JWT auth + REST API",
+    critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
+)
 ```
 
 `agent-002` が `design` を取得すると、以下の情報が得られます：
@@ -92,10 +98,11 @@ types → core → context → view → operations → tools
 | `operations` | 複合変更操作: Split, Remove, Rework |
 | `storage` | JSON永続化 + ファイルロック + トークンストア |
 | `tools` | 12個のLLM向け関数 — シリアライズ境界 |
+| `client` | `CascadeClient` — IDE対応の型付きPython API（toolsをラップ） |
 
 ## ツール
 
-`(GraphStorage, dict) → dict` — フレームワーク非依存。
+型付きPython APIは `CascadeClient` です。基盤となるツール層は、CLIおよびJSON境界用に `(GraphStorage, dict) → dict` シグネチャを使用します。
 
 | カテゴリ | ツール |
 |----------|-------|
@@ -138,9 +145,11 @@ uv run ruff check src tests  # lint
 
 ## ドキュメント
 
-- [ガイド](docs/guide.md) — 包括的なウォークスルー
-- [CONTRIBUTING.md](CONTRIBUTING.md) — 開発ガイドライン
+- [ガイド](../guide.md) — 包括的なウォークスルー
+- [アーキテクチャ](../architecture.md) — システム設計、状態マシン、Mermaidダイアグラム
+- [CONTRIBUTING.md](../../CONTRIBUTING.md) — 開発ガイドライン
+- [SECURITY.md](../../SECURITY.md) — 脆弱性報告とセキュリティモデル
 
 ## ライセンス
 
-Apache-2.0 — [LICENSE](LICENSE) を参照。
+Apache-2.0 — [LICENSE](../../LICENSE) を参照。

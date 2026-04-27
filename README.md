@@ -84,7 +84,7 @@ No merging, no overwriting — each upstream source is a separate entry.
 ## Architecture
 
 ```
-types → core → context → view → operations → tools
+types → core → context → view → operations → tools → client
 ```
 
 | Package | Purpose |

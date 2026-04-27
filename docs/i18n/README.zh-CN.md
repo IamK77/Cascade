@@ -22,38 +22,44 @@
 ## 安装
 
 ```bash
+# 作为 CLI 工具
+pipx install cascade-auto
+# 或
+uv tool install cascade-auto
+
+# 作为 Python 库
 pip install cascade-auto
+```
+
+开发环境：
+
+```bash
+git clone https://github.com/autoseek-ai/Cascade.git
+cd Cascade
+uv sync
 ```
 
 ## 快速开始
 
 ```python
-from cascade import GraphStorage, add_node, get_task, finish_task
+from cascade import CascadeClient, Contract
 
-storage = GraphStorage(".cascade")
+cascade = CascadeClient()
 
 # 构建任务图 — 水平拆分以实现并行
-add_node(storage, {"node_id": "analyze"})
-add_node(storage, {
-    "node_id": "design",
-    "dependencies": ["analyze"],
-    "expectations": [{
-        "node_id": "analyze",
-        "expectation": "Feature requirements and constraints",
-        "promise": "Deliver prioritized feature list",
-    }],
+cascade.add("analyze")
+cascade.add("design", deps={
+    "analyze": Contract("Feature requirements and constraints", "Deliver prioritized feature list"),
 })
 
 # 智能体认领任务 — 关键路径优先
-result = get_task(storage, {"agent_id": "agent-001"})
+task = cascade.claim("agent-001")
 
 # 完成任务并传递上下文给下游智能体
-finish_task(storage, {
-    "task_id": "analyze",
-    "success": True,
-    "summary": "Requirements: JWT auth + REST API",
-    "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
-})
+cascade.complete("analyze",
+    summary="Requirements: JWT auth + REST API",
+    critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
+)
 ```
 
 当 `agent-002` 认领 `design` 时，它看到的是：
@@ -92,10 +98,11 @@ types → core → context → view → operations → tools
 | `operations` | 复合变更操作：Split、Remove、Rework |
 | `storage` | JSON 持久化 + 文件锁 + token 存储 |
 | `tools` | 12 个面向 LLM 的函数——序列化边界 |
+| `client` | `CascadeClient` — 带 IDE 支持的类型化 Python API，封装 tools 层 |
 
 ## 工具
 
-`(GraphStorage, dict) → dict` — 与框架无关。
+类型化 Python API 是 `CascadeClient`。底层工具层使用 `(GraphStorage, dict) → dict` 签名，用于 CLI 和 JSON 边界。
 
 | 类别 | 工具 |
 |----------|-------|
@@ -139,7 +146,9 @@ uv run ruff check src tests  # lint 检查
 ## 文档
 
 - [指南](../guide.md) — 全面的使用教程
+- [架构](../architecture.md) — 系统设计、状态机、Mermaid 图表
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — 开发指南
+- [SECURITY.md](../../SECURITY.md) — 漏洞报告与安全模型
 
 ## 许可证
 
