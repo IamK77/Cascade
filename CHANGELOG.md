@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.0] - 2026-04-27
+
+### Added
+
+- Add CascadeClient as single API layer
+- Add algo-lib example task for Cascade parallel experiment
+- Cross-platform file locking via filelock
+- Include Claude Code skill in repository
+
+### Documentation
+
+- Add task-tracker example with dependency chains
+- Update all docs to CascadeClient API, bump v0.4.0
+- Emphasize minimal Agent prompts in skill guide
+- Add parallel execution guide to skill
+- Skill focuses on CLI only, add pipx/uv tool install
+- Note macOS/Linux requirement in README
+- Add check-task command doc, fix skill imports
+- Add pip install cascade-auto to all installation sections
+- Update CHANGELOG.md for v0.3.0
+
+### Fixed
+
+- Skill auto-runs cascade --help on load, sync user/project level
+- Add threading.Lock for intra-process thread safety
+- Use cascade imports instead of tools in all docs
+
+### Refactored
+
+- Migrate all tests to CascadeClient API
+- CLI + tools delegate to CascadeClient
 ## [0.3.0] - 2026-04-23
 
 ### Added
