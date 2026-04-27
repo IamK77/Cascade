@@ -19,6 +19,7 @@ This is separated from Cascade because it's presentation concern,
 not a graph primitive.
 """
 
+import json
 from collections import deque
 from typing import Any
 
@@ -79,6 +80,65 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
         result["visible_nodes"] = visible_descendants
 
     return result
+
+
+def render_briefing(view: dict[str, Any]) -> str:
+    """Render a task view as a markdown briefing.
+
+    Pure factual statements — no behavioral instructions.
+    """
+    lines: list[str] = []
+    lines.append(f"# Task: {view['id']}")
+    lines.append("")
+
+    upstream = view.get("upstream", [])
+    if upstream:
+        lines.append("## Upstream Context")
+        lines.append("")
+        for entry in upstream:
+            nid = entry["node_id"]
+            dist = entry["distance"]
+            label = "direct dependency" if dist == 1 else f"ancestor, distance {dist}"
+            lines.append(f"### {nid} ({label})")
+            lines.append("")
+
+            if entry.get("expectation"):
+                lines.append(f"- **Expects from you**: {entry['expectation']}")
+            if entry.get("promise"):
+                lines.append(f"- **Promised to deliver**: {entry['promise']}")
+
+            delivered = entry.get("delivered", {})
+            if delivered.get("summary"):
+                lines.append(f"- **Summary**: {delivered['summary']}")
+            if delivered.get("critical"):
+                lines.append("- **Critical data**:")
+                lines.append(f"  ```json")
+                lines.append(f"  {json.dumps(delivered['critical'], indent=2, ensure_ascii=False)}")
+                lines.append(f"  ```")
+            if delivered.get("artifacts"):
+                lines.append(f"- **Artifacts**: {delivered['artifacts']}")
+
+            lines.append("")
+
+    promises = view.get("promises", [])
+    if promises:
+        lines.append("## Promises to Downstream")
+        lines.append("")
+        for p in promises:
+            lines.append(f"- → **{p['to_node']}**: {p['promise']}")
+        lines.append("")
+
+    visible = view.get("visible_nodes", {})
+    if visible:
+        lines.append("## Downstream Topology")
+        lines.append("")
+        for dist_key in sorted(visible.keys()):
+            nodes = visible[dist_key]
+            for n in nodes:
+                lines.append(f"- {n['id']} ({n['state']}, distance {dist_key})")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 def _get_visible_descendants(

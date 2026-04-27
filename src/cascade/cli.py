@@ -33,9 +33,13 @@ def _result_to_dict(r: Result) -> dict[str, Any]:
     return {"success": r.success, "message": r.message, "data": r.data}
 
 
-def output(result: dict[str, Any]) -> None:
-    print(json.dumps(result, indent=2, ensure_ascii=False))
-    sys.exit(0 if result.get("success", False) else 1)
+def output(result: dict[str, Any] | str) -> None:
+    if isinstance(result, str):
+        print(result)
+        sys.exit(0)
+    else:
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        sys.exit(0 if result.get("success", False) else 1)
 
 
 # ---------------------------------------------------------------------------
@@ -116,14 +120,20 @@ def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
-def cmd_get_task(args: argparse.Namespace) -> dict[str, Any]:
+def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
     client = CascadeClient(args.storage)
     r = client._claim_inner(
         args.agent,
         args.task if hasattr(args, "task") and args.task else None,
         timeout=args.timeout if hasattr(args, "timeout") and args.timeout else None,
     )
-    return _result_to_dict(r)
+    if not r.success:
+        return _result_to_dict(r)
+
+    task_info = r.data.get("task_info", {})
+    from cascade.view import render_briefing
+
+    return render_briefing(task_info)
 
 
 def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
