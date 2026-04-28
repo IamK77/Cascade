@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.4] - 2026-04-28
+
+### Documentation
+
+- Skill audit — fix CLI mismatches, prune redundancy
+- Update CHANGELOG.md for v0.4.3
+
+### Fixed
+
+- Claim with existing active task now fails with ALREADY_HAS_ACTIVE
+
+### Miscellaneous
+
+- Bump to 0.4.4
 ## [0.4.3] - 2026-04-28
 
 ### Added
