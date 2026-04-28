@@ -43,7 +43,7 @@ from cascade.events import EventType
 from cascade.operations.remove import RemoveOperation
 from cascade.operations.rework import ReworkOperation
 from cascade.operations.split import SplitOperation
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.graph_storage import GraphStorage, LockError
 from cascade.storage.token_store import CancelNotifier
 from cascade.types import Context, Contract
 from cascade.view import get_node_view
@@ -71,6 +71,9 @@ class NodeInfo:
     id: str
     state: str
     pending_dependencies: int = 0
+    agent_id: str | None = None
+    active_seconds: float | None = None
+    stale: bool = False
 
 
 @dataclass
@@ -541,142 +544,174 @@ class CascadeClient:
         timeout: float | None = None,
         cancel_notifier: CancelNotifier | None = None,
     ) -> Result:
-        """Internal claim logic returning a Result (used by tool wrappers)."""
+        """Internal claim logic returning a Result (used by tool wrappers).
+
+        Retries on lock contention with exponential backoff (3 attempts total),
+        since concurrent get-task calls from parallel workers are a primary use case.
+        """
         if not agent_id:
             return Result(
                 success=False,
                 message="agent_id is required. Each agent can only hold ONE task at a time.",
             )
 
-        try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                existing_node = graph.find_agent_active_task(agent_id)
-                if existing_node:
-                    task_info = get_node_view(graph, existing_node.id)
-                    return Result(
-                        success=True,
-                        message=(
-                            f"You already have an active task: {existing_node.id}. "
-                            f"Use finish_task() to complete it before getting a new task."
-                        ),
-                        data={
-                            "task_id": existing_node.id,
-                            "state": "ACTIVE",
-                            "task_info": task_info,
-                            "reminder": True,
-                            "blocked_reason": "already_has_active_task",
-                        },
-                    )
-
-                if task_id:
-                    if task_id not in graph.nodes:
-                        return Result(success=False, message=f"Task {task_id} not found")
-
-                    node = graph.nodes[task_id]
-
-                    if (
-                        node.agent_id
-                        and node.agent_id != agent_id
-                        and node.state == NodeState.ACTIVE
-                    ):
-                        return Result(
-                            success=False,
-                            message=f"Task {task_id} is already being executed by agent: {node.agent_id}",
-                            data={"state": "ACTIVE", "assigned_to": node.agent_id},
-                        )
-
-                    if node.state == NodeState.ACTIVE:
-                        node.agent_id = agent_id
-                        task_info = get_node_view(graph, task_id)
-                        self._storage.save(graph)
-                        return Result(
-                            success=True,
-                            message=f"Task {task_id} is already active",
-                            data={"task_id": task_id, "state": "ACTIVE", "task_info": task_info},
-                        )
-
-                    if node.state.is_terminal():
-                        return Result(
-                            success=False,
-                            message=f"Task {task_id} is in terminal state: {node.state.name}",
-                            data={"state": node.state.name},
-                        )
-
-                    if node.state == NodeState.PENDING:
-                        pending = graph.pending_dependency_count(task_id)
-                        return Result(
-                            success=False,
-                            message=f"Task {task_id} is not ready (dependencies not met, pending={pending})",
-                            data={"state": "PENDING", "pending_dependencies": pending},
-                        )
-
-                    node.update_state(NodeState.ACTIVE)
-                    node.agent_id = agent_id
-                    node.claimed_at = time.time()
-                    if timeout is not None:
-                        node.timeout = float(timeout)
-
-                else:
-                    ready_nodes = graph.get_ready_nodes()
-
-                    if not ready_nodes:
-                        active_count = sum(
-                            1 for n in graph.nodes.values() if n.state == NodeState.ACTIVE
-                        )
-                        pending_count = sum(
-                            1 for n in graph.nodes.values() if n.state == NodeState.PENDING
-                        )
-
-                        if active_count > 0:
-                            return Result(
-                                success=False,
-                                message=f"No available tasks. {active_count} task(s) are executed, {pending_count} pending.",
-                                data={"active": active_count, "pending": pending_count},
-                            )
-                        else:
-                            return Result(
-                                success=False,
-                                message=f"No available tasks. All {pending_count} tasks are pending (dependencies not met).",
-                                data={"pending": pending_count},
-                            )
-
-                    node = ready_nodes[0]
-                    task_id = node.id
-                    node.update_state(NodeState.ACTIVE)
-                    node.agent_id = agent_id
-                    node.claimed_at = time.time()
-                    if timeout is not None:
-                        node.timeout = float(timeout)
-
-                task_info = get_node_view(graph, task_id)
-                self._storage.save(graph)
-                self._storage.tokens.create(
-                    task_id, agent_id, node.claimed_at, notifier=cancel_notifier
+        backoffs = [0.1, 0.4, 1.6]
+        for attempt in range(len(backoffs) + 1):
+            try:
+                return self._claim_locked(
+                    agent_id, task_id, timeout=timeout, cancel_notifier=cancel_notifier
                 )
-                self._storage.events.emit(
-                    EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id
+            except LockError:
+                if attempt < len(backoffs):
+                    time.sleep(backoffs[attempt])
+                    continue
+                return Result(
+                    success=False,
+                    message=(
+                        f"Could not acquire lock after {len(backoffs) + 1} attempts. "
+                        "Another agent may be holding it for an extended period."
+                    ),
                 )
+            except Exception as e:
+                return Result(success=False, message=f"Operation failed: {e}")
 
+        return Result(success=False, message="claim retry exhausted")
+
+    def _claim_locked(
+        self,
+        agent_id: str,
+        task_id: str | None,
+        *,
+        timeout: float | None,
+        cancel_notifier: CancelNotifier | None,
+    ) -> Result:
+        """Single-attempt claim — raises LockError on lock contention."""
+        with self._storage.lock():
+            graph = self._storage.load() or Cascade()
+
+            existing_node = graph.find_agent_active_task(agent_id)
+            if existing_node:
+                task_info = get_node_view(graph, existing_node.id)
                 return Result(
                     success=True,
-                    message=f"Task {task_id} assigned (state: ACTIVE)",
+                    message=(
+                        f"You already have an active task: {existing_node.id}. "
+                        f"Use finish_task() to complete it before getting a new task."
+                    ),
                     data={
-                        "task_id": task_id,
+                        "task_id": existing_node.id,
                         "state": "ACTIVE",
                         "task_info": task_info,
-                        "assigned_to": agent_id,
+                        "reminder": True,
+                        "blocked_reason": "already_has_active_task",
                     },
                 )
 
-        except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            if task_id:
+                if task_id not in graph.nodes:
+                    return Result(success=False, message=f"Task {task_id} not found")
+
+                node = graph.nodes[task_id]
+
+                if (
+                    node.agent_id
+                    and node.agent_id != agent_id
+                    and node.state == NodeState.ACTIVE
+                ):
+                    return Result(
+                        success=False,
+                        message=f"Task {task_id} is already being executed by agent: {node.agent_id}",
+                        data={"state": "ACTIVE", "assigned_to": node.agent_id},
+                    )
+
+                if node.state == NodeState.ACTIVE:
+                    node.agent_id = agent_id
+                    task_info = get_node_view(graph, task_id)
+                    self._storage.save(graph)
+                    return Result(
+                        success=True,
+                        message=f"Task {task_id} is already active",
+                        data={"task_id": task_id, "state": "ACTIVE", "task_info": task_info},
+                    )
+
+                if node.state.is_terminal():
+                    return Result(
+                        success=False,
+                        message=f"Task {task_id} is in terminal state: {node.state.name}",
+                        data={"state": node.state.name},
+                    )
+
+                if node.state == NodeState.PENDING:
+                    pending = graph.pending_dependency_count(task_id)
+                    return Result(
+                        success=False,
+                        message=f"Task {task_id} is not ready (dependencies not met, pending={pending})",
+                        data={"state": "PENDING", "pending_dependencies": pending},
+                    )
+
+                node.update_state(NodeState.ACTIVE)
+                node.agent_id = agent_id
+                node.claimed_at = time.time()
+                if timeout is not None:
+                    node.timeout = float(timeout)
+
+            else:
+                ready_nodes = graph.get_ready_nodes()
+
+                if not ready_nodes:
+                    active_count = sum(
+                        1 for n in graph.nodes.values() if n.state == NodeState.ACTIVE
+                    )
+                    pending_count = sum(
+                        1 for n in graph.nodes.values() if n.state == NodeState.PENDING
+                    )
+
+                    if active_count > 0:
+                        return Result(
+                            success=False,
+                            message=f"No available tasks. {active_count} task(s) are executed, {pending_count} pending.",
+                            data={"active": active_count, "pending": pending_count},
+                        )
+                    else:
+                        return Result(
+                            success=False,
+                            message=f"No available tasks. All {pending_count} tasks are pending (dependencies not met).",
+                            data={"pending": pending_count},
+                        )
+
+                node = ready_nodes[0]
+                task_id = node.id
+                node.update_state(NodeState.ACTIVE)
+                node.agent_id = agent_id
+                node.claimed_at = time.time()
+                if timeout is not None:
+                    node.timeout = float(timeout)
+
+            task_info = get_node_view(graph, task_id)
+            self._storage.save(graph)
+            self._storage.tokens.create(
+                task_id, agent_id, node.claimed_at, notifier=cancel_notifier
+            )
+            self._storage.events.emit(
+                EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id
+            )
+
+            return Result(
+                success=True,
+                message=f"Task {task_id} assigned (state: ACTIVE)",
+                data={
+                    "task_id": task_id,
+                    "state": "ACTIVE",
+                    "task_info": task_info,
+                    "assigned_to": agent_id,
+                },
+            )
 
     def complete(
         self,
         task_id: str,
         *,
+        agent_id: str | None = None,
         summary: str = "",
         critical: dict[str, Any] | None = None,
         artifacts: str = "",
@@ -685,12 +720,14 @@ class CascadeClient:
 
         Args:
             task_id: Task to complete.
+            agent_id: Agent calling finish — must match the claiming agent.
             summary: Brief description of what was done (2-hop propagation).
             critical: Structured KV data for downstream (infinite propagation).
             artifacts: Full content (infinite propagation).
         """
         return self._finish(
             task_id,
+            agent_id=agent_id,
             is_success=True,
             is_release=False,
             summary=summary,
@@ -702,6 +739,7 @@ class CascadeClient:
         self,
         task_id: str,
         *,
+        agent_id: str | None = None,
         reason: str = "",
         cascade: bool = False,
     ) -> Result:
@@ -709,11 +747,13 @@ class CascadeClient:
 
         Args:
             task_id: Task that failed.
+            agent_id: Agent calling finish — must match the claiming agent.
             reason: What went wrong.
             cascade: Also fail all dependent tasks.
         """
         return self._finish(
             task_id,
+            agent_id=agent_id,
             is_success=False,
             is_release=False,
             summary=reason,
@@ -724,16 +764,19 @@ class CascadeClient:
         self,
         task_id: str,
         *,
+        agent_id: str | None = None,
         reason: str = "",
     ) -> Result:
         """Release a task back to READY.
 
         Args:
             task_id: Task to release.
+            agent_id: Agent calling release — must match the claiming agent.
             reason: Why the agent is giving up.
         """
         return self._finish(
             task_id,
+            agent_id=agent_id,
             is_success=False,
             is_release=True,
             summary=reason,
@@ -743,6 +786,7 @@ class CascadeClient:
         self,
         task_id: str,
         *,
+        agent_id: str | None = None,
         is_success: bool = True,
         is_release: bool = False,
         summary: str = "",
@@ -765,6 +809,16 @@ class CascadeClient:
                         success=False,
                         message=f"Task {task_id} is not active (current: {node.state.name})",
                         data={"state": node.state.name},
+                    )
+
+                if agent_id is not None and node.agent_id != agent_id:
+                    return Result(
+                        success=False,
+                        message=(
+                            f"Task {task_id} is claimed by '{node.agent_id}', "
+                            f"not '{agent_id}'. Only the claiming agent can finish it."
+                        ),
+                        data={"claimed_by": node.agent_id, "caller": agent_id},
                     )
 
                 if is_release:
@@ -996,6 +1050,9 @@ class CascadeClient:
                 id=n["id"],
                 state=n["state"],
                 pending_dependencies=n.get("pending_dependencies", 0),
+                agent_id=n.get("agent_id"),
+                active_seconds=n.get("active_seconds"),
+                stale=n.get("stale", False),
             )
             for n in r.data.get("nodes", [])
         ]
@@ -1014,6 +1071,7 @@ class CascadeClient:
                 nodes_list: list[dict[str, Any]] = []
                 by_state: dict[str, list[str]] = {}
 
+                now = time.time()
                 for nid, node in graph.nodes.items():
                     if state_filter and node.state.name != state_filter:
                         continue
@@ -1026,6 +1084,18 @@ class CascadeClient:
                         "state": node.state.name,
                         "pending_dependencies": pending,
                     }
+
+                    if node.state == NodeState.ACTIVE:
+                        if node.agent_id:
+                            node_info["agent_id"] = node.agent_id
+                        if node.claimed_at is not None:
+                            elapsed = now - node.claimed_at
+                            node_info["active_seconds"] = round(elapsed, 1)
+                            if node.is_timed_out(now):
+                                node_info["stale"] = True
+                            elif node.timeout is None and elapsed > 600:
+                                node_info["stale"] = True
+
                     nodes_list.append(node_info)
 
                     state_name = node.state.name

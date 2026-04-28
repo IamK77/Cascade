@@ -1,7 +1,8 @@
-"""Tests for view.py — get_node_view and render_briefing."""
+"""Tests for view.py — get_node_view, render_briefing, render_inspect."""
 
 from cascade import CascadeClient, Contract
-from cascade.view import render_briefing
+from cascade.core.cascade import Cascade
+from cascade.view import render_briefing, render_inspect
 
 
 def _make_client(tmp_path):
@@ -137,3 +138,61 @@ class TestRenderBriefing:
         assert "```json" in md
         assert '"/auth"' in md
         assert '"PostgreSQL"' in md
+
+
+class TestRenderInspect:
+    def test_inspect_unknown_node(self, tmp_path):
+        c = _make_client(tmp_path)
+        graph = c._storage.load() or Cascade()
+        out = render_inspect(graph, "ghost")
+        assert "not found" in out
+
+    def test_inspect_completed_shows_delivered(self, tmp_path):
+        c = _make_client(tmp_path)
+        c.add("a")
+        c.claim("w1", task_id="a")
+        c.complete("a", summary="Done", critical={"k": "v"}, artifacts="# Spec")
+
+        graph = c._storage.load()
+        out = render_inspect(graph, "a")
+
+        assert "_State: COMPLETED_" in out
+        assert "## Delivered" in out
+        assert "**Summary**: Done" in out
+        assert '"k": "v"' in out
+        assert "**Artifacts**: # Spec" in out
+
+    def test_inspect_ready_no_delivered_section(self, tmp_path):
+        c = _make_client(tmp_path)
+        c.add("a")
+        graph = c._storage.load()
+        out = render_inspect(graph, "a")
+
+        assert "_State: READY_" in out
+        assert "## Delivered" not in out
+
+    def test_inspect_completed_without_context(self, tmp_path):
+        c = _make_client(tmp_path)
+        c.add("a")
+        c.claim("w1", task_id="a")
+        c.complete("a")  # no summary/critical/artifacts
+
+        graph = c._storage.load()
+        out = render_inspect(graph, "a")
+
+        assert "## Delivered" in out
+        assert "No context delivered" in out
+
+    def test_inspect_includes_upstream_briefing(self, tmp_path):
+        c = _make_client(tmp_path)
+        c.add("up")
+        c.add("down", deps={"up": Contract("E", "P")})
+        c.claim("w1", task_id="up")
+        c.complete("up", summary="Up done", critical={"x": 1})
+
+        graph = c._storage.load()
+        out = render_inspect(graph, "down")
+
+        assert "## Upstream Context" in out
+        assert "Up done" in out
+        assert "_State: READY_" in out

@@ -138,6 +138,7 @@ def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
 
 def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
     client = CascadeClient(args.storage)
+    agent_id = args.agent if hasattr(args, "agent") and args.agent else None
 
     if args.success:
         critical = None
@@ -148,6 +149,7 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
                 return {"success": False, "message": "Invalid JSON for --critical"}
         r = client.complete(
             args.task,
+            agent_id=agent_id,
             summary=args.summary or "",
             critical=critical,
             artifacts=args.artifacts or "",
@@ -155,16 +157,28 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
     elif args.fail:
         r = client.fail(
             args.task,
+            agent_id=agent_id,
             reason=args.reason or "",
             cascade=args.cascade,
         )
     elif args.release:
-        r = client.release(args.task, reason=args.reason or "")
+        r = client.release(args.task, agent_id=agent_id, reason=args.reason or "")
     else:
-        # Default to success if no flag specified
-        r = client.complete(args.task)
+        r = client.complete(args.task, agent_id=agent_id)
 
     return _result_to_dict(r)
+
+
+def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
+    from cascade.core.cascade import Cascade
+    from cascade.view import render_inspect
+
+    client = CascadeClient(args.storage)
+    with client._storage.lock():
+        graph = client._storage.load() or Cascade()
+        if args.task not in graph.nodes:
+            return {"success": False, "message": f"Task {args.task} not found"}
+        return render_inspect(graph, args.task)
 
 
 def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
@@ -303,6 +317,7 @@ def main() -> None:
     # finish-task
     p = sub.add_parser("finish-task", help="Complete, fail, or release a task")
     p.add_argument("--task", "-t", required=True, help="Task ID")
+    p.add_argument("--agent", "-a", help="Agent ID (must match the claiming agent)")
     p.add_argument("--success", action="store_true", help="Mark as completed")
     p.add_argument("--fail", action="store_true", help="Mark as failed")
     p.add_argument("--release", action="store_true", help="Release back to READY")
@@ -312,6 +327,11 @@ def main() -> None:
     p.add_argument("--reason", help="Reason for fail/release")
     p.add_argument("--cascade", action="store_true", help="Cascade failure to dependents")
     p.set_defaults(func=cmd_finish_task)
+
+    # inspect
+    p = sub.add_parser("inspect", help="Read-only review of a task's briefing and delivered context")
+    p.add_argument("--task", "-t", required=True, help="Task ID to inspect")
+    p.set_defaults(func=cmd_inspect)
 
     # list-nodes
     p = sub.add_parser("list-nodes", help="View all tasks")

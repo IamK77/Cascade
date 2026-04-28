@@ -82,6 +82,45 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     return result
 
 
+def render_inspect(cascade: Cascade, node_id: str) -> str:
+    """Render a node's briefing plus its own delivered context.
+
+    Read-only review tool — no side effects, no state changes.
+    """
+    if node_id not in cascade.nodes:
+        return f"# Task: {node_id} (not found)"
+
+    node = cascade.nodes[node_id]
+    view = get_node_view(cascade, node_id)
+    parts = [render_briefing(view), f"_State: {node.state.name}_", ""]
+
+    ctx = getattr(node, "context", None)
+    delivered: list[str] = []
+    if ctx:
+        if getattr(ctx, "summary", ""):
+            delivered.append(f"- **Summary**: {ctx.summary}")
+        if getattr(ctx, "critical", None):
+            delivered.append("- **Critical**:")
+            delivered.append("  ```json")
+            delivered.append(f"  {json.dumps(ctx.critical, indent=2, ensure_ascii=False)}")
+            delivered.append("  ```")
+        if getattr(ctx, "artifacts", ""):
+            delivered.append(f"- **Artifacts**: {ctx.artifacts}")
+
+    if delivered:
+        parts.append("## Delivered (this node's output)")
+        parts.append("")
+        parts.extend(delivered)
+        parts.append("")
+    elif node.state.name == "COMPLETED":
+        parts.append("## Delivered (this node's output)")
+        parts.append("")
+        parts.append("_No context delivered — node completed without summary/critical/artifacts._")
+        parts.append("")
+
+    return "\n".join(parts)
+
+
 def render_briefing(view: dict[str, Any]) -> str:
     """Render a task view as a markdown briefing.
 

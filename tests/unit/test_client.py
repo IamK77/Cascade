@@ -181,6 +181,43 @@ class TestClaim:
         upstream_ids = [u.get("node_id") for u in task_b.upstream]
         assert "a" in upstream_ids
 
+    def test_claim_retries_on_lock_contention(self, client: CascadeClient, monkeypatch):
+        """Lock contention should retry up to 3 times before failing."""
+        from cascade.storage.graph_storage import LockError
+
+        monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
+
+        client.add("a")
+        attempts = {"count": 0}
+        original = client._claim_locked
+
+        def flaky(*args, **kwargs):
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise LockError("simulated contention")
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(client, "_claim_locked", flaky)
+        r = client._claim_inner("w1", "a")
+        assert r.success
+        assert attempts["count"] == 3
+
+    def test_claim_lock_failure_after_retries(self, client: CascadeClient, monkeypatch):
+        """All retries failing should return clear error."""
+        from cascade.storage.graph_storage import LockError
+
+        monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
+
+        client.add("a")
+
+        def always_fails(*args, **kwargs):
+            raise LockError("persistent contention")
+
+        monkeypatch.setattr(client, "_claim_locked", always_fails)
+        r = client._claim_inner("w1", "a")
+        assert not r.success
+        assert "lock" in r.message.lower()
+
 
 # ── complete() ─────────────────────────────────────────────────────────
 
@@ -228,6 +265,21 @@ class TestComplete:
         nodes = client.nodes(state="COMPLETED")
         assert len(nodes) == 1
         assert nodes[0].id == "a"
+
+    def test_complete_with_correct_agent_id(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
+        r = client.complete("a", agent_id="w1", summary="Done")
+        assert r.success
+
+    def test_complete_with_wrong_agent_id_rejected(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
+        r = client.complete("a", agent_id="other-agent", summary="Done")
+        assert not r.success
+        assert "claimed by 'w1'" in r.message
+        nodes = client.nodes(state="ACTIVE")
+        assert len(nodes) == 1  # task still ACTIVE, not finished
 
 
 # ── fail() ─────────────────────────────────────────────────────────────
@@ -339,6 +391,30 @@ class TestNodes:
     def test_empty_graph(self, client: CascadeClient):
         nodes = client.nodes()
         assert nodes == []
+
+    def test_active_node_includes_agent_and_duration(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a")
+        active = client.nodes(state="ACTIVE")
+        assert len(active) == 1
+        assert active[0].agent_id == "w1"
+        assert active[0].active_seconds is not None
+        assert active[0].active_seconds >= 0
+        assert active[0].stale is False
+
+    def test_active_node_stale_when_timed_out(self, client: CascadeClient):
+        client.add("a")
+        client.claim("w1", "a", timeout=0.01)
+        import time as _t
+        _t.sleep(0.05)
+        active = client.nodes(state="ACTIVE")
+        assert active[0].stale is True
+
+    def test_non_active_node_no_active_metadata(self, client: CascadeClient):
+        client.add("a")
+        ready = client.nodes(state="READY")
+        assert ready[0].agent_id is None
+        assert ready[0].active_seconds is None
 
 
 # ── check() ────────────────────────────────────────────────────────────
