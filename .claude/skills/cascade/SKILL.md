@@ -24,7 +24,7 @@ pipx install cascade-auto
 
 ## Commands
 
-See `commands/<name>.md` for: add-node, add-nodes, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history, inspect.
+See `commands/<name>.md` for: add-node, add-nodes, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history, inspect, watch.
 
 ## Common Patterns
 

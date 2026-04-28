@@ -117,14 +117,13 @@ If a spec line has no node owner, your DAG is incomplete. **The closed-loop feel
 
 ### Edge-triggered Notifications
 
-Don't poll `cascade list-nodes` in a loop — it's level-triggered (re-emits the same state every interval, high noise, latency tied to interval). Tail the event log instead — it's append-only, edge-triggered via the kernel, and `task_completed` events carry the `unblocked` field listing newly READY nodes.
+Don't poll `cascade list-nodes` in a loop — it's level-triggered (re-emits the same state every interval, high noise, latency tied to interval). Use `cascade watch` instead:
 
 ```bash
-tail -f .cascade/events.jsonl | \
-  jq -c 'select(.type | test("task_(completed|failed|released)"))'
+cascade watch
 ```
 
-Each line streams in as it happens. `task_completed` events include `data.unblocked: [<node-ids>]` — these are the nodes that just transitioned to READY and can be dispatched immediately.
+Long-running command. Outputs one JSONL line per state transition; silent when nothing changes. Pair with your agent harness's monitor to react to `READY` (dispatch), `COMPLETED` (review), `FAILED` (decide).
 
 ### Loop
 
@@ -147,19 +146,43 @@ Each line streams in as it happens. `task_completed` events include `data.unbloc
 
 ### Sub-Agent Prompts
 
-Workers get specs from `cascade get-task`, not the Agent prompt:
+Two non-negotiable rules:
+
+- **Step 0**: First action MUST be `cascade get-task`. Use `&&` to gate the rest — if it fails (non-zero exit), the rest never runs.
+- **Step N**: Last action MUST be `cascade finish-task --agent <id>` with the same agent ID. Do not write any files before step 0 succeeds.
+
+Template — copy verbatim, fill `<node-id>` and `<agent-id>`:
 
 ```
-# RIGHT — zero-spec prompt, context flows through cascade
 Agent({
-  prompt: "cascade get-task --agent worker-1 --task impl-auth
-           Read the upstream context. Do the work.
-           cascade finish-task --task impl-auth --success --summary '...' --critical '{...}' --artifacts '...'"
-})
-
-# WRONG — duplicating spec in prompt
-Agent({
-  prompt: "Implement auth module: JWT tokens, refresh flow, password hashing...
-           Write to src/auth.py with type hints..."
+  prompt: "
+    cascade get-task --agent <agent-id> --task <node-id> && \
+    { <do the work — only reached if get-task succeeded> } && \
+    cascade finish-task --task <node-id> --agent <agent-id> --success \
+        --summary '...' --critical '{...}' --artifacts '...'
+  "
 })
 ```
+
+Workers get specs from the briefing that `get-task` prints. Never duplicate spec in the prompt:
+
+```
+# WRONG — spec in prompt, written N times, stale on DAG changes
+Agent({
+  prompt: "Implement auth: JWT tokens, refresh flow, password hashing,
+           write to src/auth.py with type hints..."
+})
+```
+
+### Failure Codes
+
+`cascade get-task` and `finish-task` return JSON with a `code` field on failure (plus non-zero exit). Branch on `code`, not on `message`:
+
+| code | What to do |
+|------|-----------|
+| `TASK_NOT_READY` | Wait for upstream completion (use `cascade watch`) |
+| `ALREADY_HAS_ACTIVE` | Finish your existing task before claiming new |
+| `TASK_NOT_FOUND` | Report to orchestrator — DAG state mismatch |
+| `TASK_ALREADY_ACTIVE` | Another agent is on it; pick a different task |
+| `WRONG_AGENT` | Your `--agent` doesn't match the claimer; check agent_id |
+| `LOCK_CONTENTION` | Cascade already retried 3x; report and let orchestrator decide |
