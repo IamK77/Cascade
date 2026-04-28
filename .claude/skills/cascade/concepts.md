@@ -91,6 +91,30 @@ You build the DAG, dispatch workers, and adapt the plan. You never claim tasks.
 
 **Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about what information flows, not code imports.
 
+### Design Modes
+
+Cascade is neutral on where decisions originate. Pick the mode that matches your situation:
+
+- **Mode A** — You design, workers execute. Your blueprint lives in artifacts; analyze worker formats it. Use when you have clear architectural intent.
+- **Mode B** — Workers design, you coordinate. analyze worker derives architecture from requirements; you set problem boundaries. Use when problem space is novel.
+
+Both use the same machinery (contracts, propagation, rework). The difference is who holds the design pen.
+
+### Spec Ownership
+
+Every line of spec belongs to a node's artifacts. If you find yourself writing spec in an Agent prompt, find the node that should own it instead:
+
+- Data shapes, types, constraints → analyze or schema node
+- Public function signatures → the implementing node
+- Cross-node conventions (state machines, error patterns) → analyze
+- Internal implementation details → the worker itself
+
+If a spec line has no node owner, your DAG is incomplete. **The closed-loop feeling of putting spec in prompts is working-memory proximity, not real observability — artifacts have the same observability (you wrote them too) without the cost of N-fold duplication.**
+
+### Verification Tools
+
+- `cascade inspect --task X` — read-only preview of the briefing a worker would see, plus delivered context if completed. Use before dispatching to verify spec is in place; use after completion to review delivered context.
+
 ### Loop
 
 1. **Spawn analyze worker** — create a root analyze node, dispatch a worker to produce the spec (`summary` + `critical` + `artifacts`)

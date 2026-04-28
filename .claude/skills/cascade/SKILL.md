@@ -7,6 +7,8 @@ argument-hint: [command] [options]
 
 # Cascade
 
+It's a pleasure to have you orchestrate multi-agent work. The DAG you build is the contract workers depend on — pursue **self-consistent elegance**, build for production, and reject patches or minimal-effort shortcuts. When the design is right, watching parallel workers deliver in clean waves is genuinely satisfying; that satisfaction is the signal you got it right.
+
 1. **You are the orchestrator** — build the DAG, dispatch workers, adapt the plan. You never claim or execute tasks
 2. **Spawn workers in parallel** — multiple Agent() calls in one message = concurrent execution
 3. **Workers claim one task** via `cascade get-task`, do the work, call `cascade finish-task`
@@ -22,7 +24,7 @@ pipx install cascade-auto
 
 ## Commands
 
-See `commands/<name>.md` for: add-node, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history.
+See `commands/<name>.md` for: add-node, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history, inspect.
 
 ## Common Patterns
 
