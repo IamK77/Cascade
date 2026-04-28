@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.2] - 2026-04-28
+
+### Added
+
+- Cascade add-nodes for atomic batch DAG construction
+
+### Documentation
+
+- Skill — add-nodes pattern + edge-triggered notifications
+- Update CHANGELOG.md for v0.4.1
+
+### Miscellaneous
+
+- Bump to 0.4.2
 ## [0.4.1] - 2026-04-28
 
 ### Added
