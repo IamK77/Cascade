@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.1] - 2026-04-28
+
+### Added
+
+- Harden orchestrator workflow — agent verification, retry, inspect
+- Markdown briefing for get-task CLI output
+
+### Documentation
+
+- Acknowledge Mode A/B design distribution + spec ownership
+- Tighten skill — cut redundancy, fix CLI mismatches
+- Skill improvements from experiment analysis
+- Update CHANGELOG.md for v0.4.0
+
+### Fixed
+
+- Add --version flag to CLI and sync __version__ to 0.4.0
+
+### Miscellaneous
+
+- Bump to 0.4.1
 ## [0.4.0] - 2026-04-27
 
 ### Added
