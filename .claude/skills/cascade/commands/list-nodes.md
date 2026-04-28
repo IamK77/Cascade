@@ -20,38 +20,52 @@ cascade list-nodes [options]
 ```json
 {
   "success": true,
-  "message": "Found 8 nodes",
+  "message": "Listed 8 nodes",
   "data": {
     "nodes": [
       {
         "id": "analyze",
         "state": "COMPLETED",
+        "pending_dependencies": 0
+      },
+      {
+        "id": "impl-auth",
+        "state": "ACTIVE",
         "pending_dependencies": 0,
-        "agent_id": null
+        "agent_id": "worker-1",
+        "active_seconds": 42.3
+      },
+      {
+        "id": "impl-stalled",
+        "state": "ACTIVE",
+        "pending_dependencies": 0,
+        "agent_id": "worker-2",
+        "active_seconds": 1820.7,
+        "stale": true
       },
       {
         "id": "design",
         "state": "READY",
-        "pending_dependencies": 0,
-        "agent_id": null
+        "pending_dependencies": 0
       },
       {
         "id": "implement",
         "state": "PENDING",
-        "pending_dependencies": 1,
-        "agent_id": null
+        "pending_dependencies": 1
       }
     ],
-    "summary": {
-      "PENDING": 3,
-      "READY": 2,
-      "ACTIVE": 1,
-      "COMPLETED": 4,
-      "FAILED": 0
+    "count": 5,
+    "by_state": {
+      "COMPLETED": ["analyze"],
+      "ACTIVE": ["impl-auth", "impl-stalled"],
+      "READY": ["design"],
+      "PENDING": ["implement"]
     }
   }
 }
 ```
+
+ACTIVE nodes include `agent_id` and `active_seconds`; `stale: true` flags nodes either timed out or ACTIVE for >10 minutes without an explicit timeout.
 
 ## Examples
 

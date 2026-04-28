@@ -13,6 +13,7 @@ cascade finish-task --task <task-id> [outcome] [context]
 | Parameter | Short | Required | Description |
 |-----------|-------|----------|-------------|
 | `--task` | `-t` | Yes | Task ID to finish |
+| `--agent` | `-a` | Recommended | Agent ID — must match the claimer. Without it, no agent verification (returns success even if you didn't claim). With it, the framework rejects mismatch with `WRONG_AGENT`. Workers should always pass it |
 | Outcome (pick one) |||
 | `--success` | | No | Mark as COMPLETED, unblock dependents |
 | `--fail` | | No | Mark as FAILED |

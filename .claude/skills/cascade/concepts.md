@@ -87,8 +87,6 @@ cascade finish-task --task X --fail --cascade
 
 ## Orchestrator Guide
 
-You build the DAG, dispatch workers, and adapt the plan. You never claim tasks.
-
 **Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about what information flows, not code imports.
 
 ### Design Modes
@@ -111,6 +109,8 @@ Every line of spec belongs to a node's artifacts. If you find yourself writing s
 
 If a spec line has no node owner, your DAG is incomplete. **The closed-loop feeling of putting spec in prompts is working-memory proximity, not real observability — artifacts have the same observability (you wrote them too) without the cost of N-fold duplication.**
 
+**Make semantics explicit, not implicit.** `"computed": ["blocked_by"]` is ambiguous — workers may infer "computed field" but miss "therefore not persisted". Prefer: `{"blocked_by": {"type": "list[str]", "persist": false, "compute": "reverse of depends_on"}}`. Fields like `persist`, `validate`, `default` translate directly into worker code without reading source files.
+
 ### Verification Tools
 
 - `cascade inspect --task X` — read-only preview of the briefing a worker would see, plus delivered context if completed. Use before dispatching to verify spec is in place; use after completion to review delivered context.
@@ -128,9 +128,9 @@ Long-running command. Outputs one JSONL line per state transition; silent when n
 ### Loop
 
 1. **Spawn analyze worker** — create a root analyze node, dispatch a worker to produce the spec (`summary` + `critical` + `artifacts`)
-2. **Read analyze output** — understand the problem space before designing the rest
+2. **Inspect analyze output** — `cascade inspect --task analyze` to review what was delivered before designing the rest
 3. **Build the DAG** — create parallel tasks. Every independent module = separate task. More tasks = more parallelism
-4. **Dispatch workers** — multiple Agent() calls in one message = concurrent execution
+4. **Dispatch workers** for newly READY tasks (parallel)
 5. **Review and adapt** — for each completion, check whether the worker fulfilled its promises and whether the granularity was right:
 
    | Signal | Operation |
@@ -146,33 +146,45 @@ Long-running command. Outputs one JSONL line per state transition; silent when n
 
 ### Sub-Agent Prompts
 
-Two non-negotiable rules:
+Three mandatory rules — encode all three into every worker's prompt:
 
-- **Step 0**: First action MUST be `cascade get-task`. Use `&&` to gate the rest — if it fails (non-zero exit), the rest never runs.
-- **Step N**: Last action MUST be `cascade finish-task --agent <id>` with the same agent ID. Do not write any files before step 0 succeeds.
+**Rule 1 — Tool ordering.** First tool call MUST be `cascade get-task`. Until it succeeds, do NOT use Read, Write, Edit, or any other tool. Without this, LLMs translate "read upstream context" into `Read /path/to/source.py`, skip cascade entirely, work for minutes, and leave the DAG falsely READY — the "ghost agent" pattern.
 
-Template — copy verbatim, fill `<node-id>` and `<agent-id>`:
+**Rule 2 — Briefing is the spec.** What `get-task` prints is the authoritative interface (types, signatures, conventions). After claiming, you MAY Read upstream source files for **style alignment** (naming patterns, error idioms, comment style), but never for **interface discovery**. Different agents reading source files independently invent inconsistent signatures.
 
-```
-Agent({
-  prompt: "
-    cascade get-task --agent <agent-id> --task <node-id> && \
-    { <do the work — only reached if get-task succeeded> } && \
-    cascade finish-task --task <node-id> --agent <agent-id> --success \
-        --summary '...' --critical '{...}' --artifacts '...'
-  "
-})
-```
-
-Workers get specs from the briefing that `get-task` prints. Never duplicate spec in the prompt:
+**Rule 3 — Missing info → release, don't guess.** If the briefing lacks WHAT (a signature, field type, behavioral rule), do NOT fill the gap from source files. Run:
 
 ```
-# WRONG — spec in prompt, written N times, stale on DAG changes
-Agent({
-  prompt: "Implement auth: JWT tokens, refresh flow, password hashing,
-           write to src/auth.py with type hints..."
-})
+cascade finish-task --task <id> --agent <id> --release \
+    --reason "Briefing missing: <specifically what>"
 ```
+
+This escalates back so the orchestrator can fix the upstream artifact. Filling gaps locally causes interface drift across the DAG.
+
+**Prompt template** — copy verbatim, replace `<node-id>` and `<agent-id>`:
+
+```
+RULE: Your first tool call MUST be `cascade get-task`. Until it succeeds,
+do NOT use Read, Write, Edit, or any other tool.
+
+1. Claim:
+   cascade get-task --agent <agent-id> --task <node-id>
+
+   If this fails, STOP. Read the JSON's `code` field and act per the
+   failure table below. Do not proceed.
+
+2. Implement:
+   The briefing printed in step 1 IS your interface spec. Trust it.
+   You may Read upstream source files for style alignment only — not
+   to discover signatures. If briefing is missing required info,
+   release the task instead of guessing.
+
+3. Finish:
+   cascade finish-task --task <node-id> --agent <agent-id> --success \
+       --summary "..." --critical '{...}' --artifacts "..."
+```
+
+**Pitfall — `"Read upstream context"`** gets translated by LLMs into `Read` tool calls on source files, not into `cascade get-task`. Be explicit about the command.
 
 ### Failure Codes
 
