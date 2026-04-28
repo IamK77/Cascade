@@ -749,20 +749,20 @@ class CascadeClient:
 
             existing_node = graph.find_agent_active_task(agent_id)
             if existing_node:
-                task_info = get_node_view(graph, existing_node.id)
+                # Agent already holds an active task — return failure so callers
+                # can branch on `code` rather than receiving a misleading success
+                # with the briefing of a different task.
                 return Result(
-                    success=True,
+                    success=False,
                     message=(
-                        f"You already have an active task: {existing_node.id}. "
-                        f"Use finish_task() to complete it before getting a new task."
+                        f"Agent {agent_id} already holds active task "
+                        f"'{existing_node.id}'. Finish it before claiming a new one."
                     ),
                     data={
-                        "task_id": existing_node.id,
+                        "current_task": existing_node.id,
                         "state": "ACTIVE",
-                        "task_info": task_info,
-                        "reminder": True,
-                        "blocked_reason": "already_has_active_task",
                     },
+                    code=ErrorCode.ALREADY_HAS_ACTIVE,
                 )
 
             if task_id:

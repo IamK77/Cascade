@@ -66,10 +66,11 @@ class TestGetTask:
         task1 = client.claim("agent_1")
         assert task1.id == "root"
 
-        # Second claim returns the already-active task with reminder
+        # Second claim fails with ALREADY_HAS_ACTIVE — agent must finish first
         result = client._claim_inner("agent_1")
-        assert result.success is True
-        assert result.data.get("reminder") is True
+        assert result.success is False
+        assert result.code == "ALREADY_HAS_ACTIVE"
+        assert result.data.get("current_task") == "root"
 
     def test_no_available_tasks(self, client: CascadeClient):
         client.add("task_a")
