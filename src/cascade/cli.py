@@ -169,7 +169,9 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
-def _parse_node_spec(item: dict[str, Any]) -> tuple[str, dict | None, dict | None] | str:
+def _parse_node_spec(
+    item: dict[str, Any],
+) -> tuple[str, dict[str, Contract] | None, dict[str, Contract] | None] | str:
     """Parse a single node spec from add-nodes batch JSON.
 
     Returns (node_id, deps, dependents) on success, error message string on failure.

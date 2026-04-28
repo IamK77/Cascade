@@ -151,9 +151,9 @@ def render_briefing(view: dict[str, Any]) -> str:
                 lines.append(f"- **Summary**: {delivered['summary']}")
             if delivered.get("critical"):
                 lines.append("- **Critical data**:")
-                lines.append(f"  ```json")
+                lines.append("  ```json")
                 lines.append(f"  {json.dumps(delivered['critical'], indent=2, ensure_ascii=False)}")
-                lines.append(f"  ```")
+                lines.append("  ```")
             if delivered.get("artifacts"):
                 lines.append(f"- **Artifacts**: {delivered['artifacts']}")
 

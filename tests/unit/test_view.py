@@ -121,7 +121,7 @@ class TestRenderBriefing:
         md = render_briefing(task.raw)
 
         assert "# Task: standalone" in md
-        lines = [l for l in md.split("\n") if l.strip()]
+        lines = [line for line in md.split("\n") if line.strip()]
         assert len(lines) == 1
 
     def test_critical_json_formatting(self, tmp_path):
