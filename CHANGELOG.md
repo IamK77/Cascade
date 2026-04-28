@@ -3,6 +3,29 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.3] - 2026-04-28
+
+### Added
+
+- Cascade watch + error codes on Result
+
+### Documentation
+
+- Skill — hardened sub-agent template + failure code reference
+- Update CHANGELOG.md for v0.4.2
+
+### Fixed
+
+- Lint and type errors from v0.4.2 changes
+
+### Miscellaneous
+
+- Bump to 0.4.3
+- Add pre-commit hooks for ruff and mypy
+
+### Style
+
+- Ruff format on v0.4.2 changes
 ## [0.4.2] - 2026-04-28
 
 ### Added
