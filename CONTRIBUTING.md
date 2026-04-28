@@ -35,16 +35,20 @@ Feature suggestions are welcome! Please open an issue with:
    # or
    git checkout -b fix/your-bug-fix
    ```
-3. **Make your changes** following the code style guidelines
-4. **Add tests** for new functionality
-5. **Run tests** to ensure everything passes:
+3. **Install pre-commit hooks** (one-time setup, automates lint/format/type checks):
+   ```bash
+   pip install pre-commit
+   pre-commit install
+   ```
+4. **Make your changes** following the code style guidelines
+5. **Add tests** for new functionality
+6. **Run tests** to ensure everything passes:
    ```bash
    uv run pytest
-   uv run mypy src
-   uv run ruff check src tests
    ```
-6. **Commit** with a clear message (see Commit Guidelines)
-7. **Push** and open a Pull Request
+   (lint, format, and mypy run automatically on `git commit` via pre-commit)
+7. **Commit** with a clear message (see Commit Guidelines)
+8. **Push** and open a Pull Request
 
 ## Development Setup
 

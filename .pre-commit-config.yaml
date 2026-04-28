@@ -1,0 +1,23 @@
+# Run on every commit to catch lint/format/type errors before CI.
+# Install with: pip install pre-commit && pre-commit install
+#
+# Skips pytest (CI runs it). Hooks here mirror what CI checks in `ruff check`,
+# `ruff format --check`, and `mypy src` — the same things that have bitten
+# pushes when relied on memory alone.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.0
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict, on src/)
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
