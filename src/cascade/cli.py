@@ -169,6 +169,91 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
+def _parse_node_spec(item: dict[str, Any]) -> tuple[str, dict | None, dict | None] | str:
+    """Parse a single node spec from add-nodes batch JSON.
+
+    Returns (node_id, deps, dependents) on success, error message string on failure.
+    """
+    node_id = item.get("id")
+    if not node_id:
+        return f"Missing 'id' in spec: {item}"
+
+    dep_ids = item.get("deps", []) or []
+    dependent_ids = item.get("dependents", []) or []
+
+    expectations_map: dict[str, dict[str, str]] = {}
+    for exp in item.get("expectations", []) or []:
+        eid = exp.get("node_id")
+        if not eid:
+            continue
+        e_text = exp.get("expectation")
+        p_text = exp.get("promise")
+        if not e_text or not e_text.strip():
+            return f"expectation required for '{eid}' in node '{node_id}'"
+        if not p_text or not p_text.strip():
+            return f"promise required for '{eid}' in node '{node_id}'"
+        expectations_map[eid] = {"expectation": e_text, "promise": p_text}
+
+    for dep_id in dep_ids:
+        if dep_id not in expectations_map:
+            return f"Missing contract for dependency '{dep_id}' in node '{node_id}'"
+    for dep_id in dependent_ids:
+        if dep_id not in expectations_map:
+            return f"Missing contract for dependent '{dep_id}' in node '{node_id}'"
+
+    deps = {
+        dep_id: Contract(
+            expectation=expectations_map[dep_id]["expectation"],
+            promise=expectations_map[dep_id]["promise"],
+        )
+        for dep_id in dep_ids
+    } or None
+    dependents = {
+        dep_id: Contract(
+            expectation=expectations_map[dep_id]["expectation"],
+            promise=expectations_map[dep_id]["promise"],
+        )
+        for dep_id in dependent_ids
+    } or None
+    return node_id, deps, dependents
+
+
+def cmd_add_nodes(args: argparse.Namespace) -> dict[str, Any]:
+    if args.file:
+        try:
+            with open(args.file) as f:
+                raw = f.read()
+        except OSError as e:
+            return {"success": False, "message": f"Cannot read --file: {e}"}
+    else:
+        raw = args.json or ""
+
+    if not raw.strip():
+        return {"success": False, "message": "Pass --json '<array>' or --file <path>"}
+
+    try:
+        items = json.loads(raw)
+    except json.JSONDecodeError as e:
+        return {"success": False, "message": f"Invalid JSON: {e}"}
+
+    if not isinstance(items, list):
+        return {"success": False, "message": "Top-level JSON must be a list of node specs"}
+
+    specs: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            return {"success": False, "message": f"Each item must be an object, got: {item}"}
+        parsed = _parse_node_spec(item)
+        if isinstance(parsed, str):
+            return {"success": False, "message": parsed}
+        nid, deps, dependents = parsed
+        specs.append({"node_id": nid, "deps": deps, "dependents": dependents})
+
+    client = CascadeClient(args.storage)
+    r = client.add_batch(specs)
+    return _result_to_dict(r)
+
+
 def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
     from cascade.core.cascade import Cascade
     from cascade.view import render_inspect
@@ -306,6 +391,15 @@ def main() -> None:
     p.add_argument("--dependents", "-D", default="", help="Comma-separated dependent IDs")
     p.add_argument("--expectations", "-e", help="Contracts as JSON array")
     p.set_defaults(func=cmd_add_node)
+
+    # add-nodes (batch)
+    p = sub.add_parser(
+        "add-nodes",
+        help="Create multiple task nodes atomically (single lock, single save)",
+    )
+    p.add_argument("--json", help="Inline JSON array of node specs")
+    p.add_argument("--file", "-f", help="Path to JSON file with node specs")
+    p.set_defaults(func=cmd_add_nodes)
 
     # get-task
     p = sub.add_parser("get-task", help="Claim a task (critical path priority)")

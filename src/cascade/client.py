@@ -122,85 +122,159 @@ class CascadeClient:
             dependents: Dependents with contracts.
                 Key is the dependent node_id, value is a Contract.
         """
-        dep_ids = list(deps.keys()) if deps else []
-        dependent_ids = list(dependents.keys()) if dependents else []
-
         try:
             with self._storage.lock():
                 cascade = self._storage.load() or Cascade()
-
-                if node_id in cascade.nodes:
-                    return Result(
-                        success=False,
-                        message=f"Node {node_id} already exists",
-                    )
-
-                for dep_id in dep_ids:
-                    if dep_id not in cascade.nodes:
-                        return Result(
-                            success=False,
-                            message=f"Dependency {dep_id} not found. Create it first.",
-                        )
-                for dep_id in dependent_ids:
-                    if dep_id not in cascade.nodes:
-                        return Result(
-                            success=False,
-                            message=f"Dependent {dep_id} not found. Create it first.",
-                        )
-
-                # Compute initial state
-                initial_state = NodeState.READY
-                for dep_id in dep_ids:
-                    if (
-                        dep_id in cascade.nodes
-                        and cascade.nodes[dep_id].state != NodeState.COMPLETED
-                    ):
-                        initial_state = NodeState.PENDING
-                        break
-
-                node = Node(id=node_id, state=initial_state)
-                cascade.add_node(node)
-                affected_nodes = [node_id]
-
-                for dep_id in dep_ids:
-                    contract = deps[dep_id]  # type: ignore[index]
-                    cascade.add_edge(
-                        dep_id,
-                        node_id,
-                        expectation=contract.expectation,
-                        promise=contract.promise,
-                    )
-                    affected_nodes.append(dep_id)
-
-                for dep_id in dependent_ids:
-                    contract = dependents[dep_id]  # type: ignore[index]
-                    cascade.add_edge(
-                        node_id,
-                        dep_id,
-                        expectation=contract.expectation,
-                        promise=contract.promise,
-                    )
-                    affected_nodes.append(dep_id)
-
+                r = self._add_locked(cascade, node_id, deps, dependents)
+                if not r.success:
+                    return r
                 self._storage.save(cascade)
                 self._storage.events.emit(
                     EventType.NODE_ADDED,
                     node_id=node_id,
-                    dependencies=dep_ids,
-                    dependents=dependent_ids,
+                    dependencies=list(deps.keys()) if deps else [],
+                    dependents=list(dependents.keys()) if dependents else [],
                 )
-                return Result(
-                    success=True,
-                    message=f"Node {node_id} added successfully",
-                    data={
-                        "node_id": node_id,
-                        "state": initial_state.name,
-                        "affected_nodes": list(set(affected_nodes)),
-                    },
-                )
-
+                return r
         except Exception as e:
             return Result(success=False, message=f"Operation failed: {e}")
+
+    def add_batch(
+        self,
+        specs: list[dict[str, Any]],
+    ) -> Result:
+        """Atomically add multiple nodes in one lock acquisition.
+
+        Each spec is `{"node_id": str, "deps": dict[str, Contract] | None,
+        "dependents": dict[str, Contract] | None}`. If any node fails,
+        no nodes are added and no events emitted — the operation is atomic.
+
+        Order matters: a spec referencing a `dep` from an earlier spec is
+        valid (the earlier one is added first, in the same lock).
+        """
+        if not specs:
+            return Result(success=True, message="No nodes to add", data={"added": []})
+
+        try:
+            with self._storage.lock():
+                cascade = self._storage.load() or Cascade()
+                added: list[dict[str, Any]] = []
+
+                for spec in specs:
+                    nid = spec.get("node_id")
+                    if not nid:
+                        return Result(
+                            success=False,
+                            message=f"Batch failed: spec missing node_id ({spec})",
+                        )
+                    r = self._add_locked(
+                        cascade,
+                        nid,
+                        spec.get("deps"),
+                        spec.get("dependents"),
+                    )
+                    if not r.success:
+                        return Result(
+                            success=False,
+                            message=f"Batch failed at '{nid}': {r.message}",
+                        )
+                    added.append(
+                        {
+                            "node_id": nid,
+                            "deps": list((spec.get("deps") or {}).keys()),
+                            "dependents": list((spec.get("dependents") or {}).keys()),
+                        }
+                    )
+
+                self._storage.save(cascade)
+                for entry in added:
+                    self._storage.events.emit(
+                        EventType.NODE_ADDED,
+                        node_id=entry["node_id"],
+                        dependencies=entry["deps"],
+                        dependents=entry["dependents"],
+                    )
+
+                return Result(
+                    success=True,
+                    message=f"Added {len(added)} nodes",
+                    data={"added": [a["node_id"] for a in added]},
+                )
+        except Exception as e:
+            return Result(success=False, message=f"Operation failed: {e}")
+
+    def _add_locked(
+        self,
+        cascade: Cascade,
+        node_id: str,
+        deps: dict[str, Contract] | None,
+        dependents: dict[str, Contract] | None,
+    ) -> Result:
+        """Single-node add operating on an already-loaded cascade graph.
+
+        Does not acquire lock, save, or emit events. Caller is responsible.
+        """
+        dep_ids = list(deps.keys()) if deps else []
+        dependent_ids = list(dependents.keys()) if dependents else []
+
+        if node_id in cascade.nodes:
+            return Result(success=False, message=f"Node {node_id} already exists")
+
+        for dep_id in dep_ids:
+            if dep_id not in cascade.nodes:
+                return Result(
+                    success=False,
+                    message=f"Dependency {dep_id} not found. Create it first.",
+                )
+        for dep_id in dependent_ids:
+            if dep_id not in cascade.nodes:
+                return Result(
+                    success=False,
+                    message=f"Dependent {dep_id} not found. Create it first.",
+                )
+
+        initial_state = NodeState.READY
+        for dep_id in dep_ids:
+            if (
+                dep_id in cascade.nodes
+                and cascade.nodes[dep_id].state != NodeState.COMPLETED
+            ):
+                initial_state = NodeState.PENDING
+                break
+
+        node = Node(id=node_id, state=initial_state)
+        cascade.add_node(node)
+        affected_nodes = [node_id]
+
+        for dep_id in dep_ids:
+            contract = deps[dep_id]  # type: ignore[index]
+            cascade.add_edge(
+                dep_id,
+                node_id,
+                expectation=contract.expectation,
+                promise=contract.promise,
+            )
+            affected_nodes.append(dep_id)
+
+        for dep_id in dependent_ids:
+            contract = dependents[dep_id]  # type: ignore[index]
+            cascade.add_edge(
+                node_id,
+                dep_id,
+                expectation=contract.expectation,
+                promise=contract.promise,
+            )
+            affected_nodes.append(dep_id)
+
+        return Result(
+            success=True,
+            message=f"Node {node_id} added successfully",
+            data={
+                "node_id": node_id,
+                "state": initial_state.name,
+                "affected_nodes": list(set(affected_nodes)),
+            },
+        )
 
     def remove(
         self,
