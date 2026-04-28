@@ -205,3 +205,12 @@ class TestGraphStorage:
         graph_data = json.loads((storage.base_dir / "graph.json").read_text())
         assert "agent_tasks" in graph_data
         assert graph_data["agent_tasks"]["agent-001"] == "task_a"
+
+    def test_save_is_atomic_no_tmp_leftover(self, storage):
+        cascade = Cascade()
+        cascade.add_node(Node(id="a", state=NodeState.READY))
+        storage.save(cascade)
+        # tmp file should not linger after successful save
+        assert not (storage.base_dir / "graph.json.tmp").exists()
+        # graph.json must be valid JSON, not torn
+        json.loads((storage.base_dir / "graph.json").read_text())

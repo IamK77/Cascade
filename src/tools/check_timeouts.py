@@ -33,4 +33,9 @@ def check_timeouts(storage: GraphStorage, params: dict[str, Any]) -> dict[str, A
     client._storage = storage
 
     r = client.check_timeouts(default_timeout=params.get("default_timeout"))
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

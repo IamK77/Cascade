@@ -78,11 +78,41 @@ class NodeInfo:
 
 @dataclass
 class Result:
-    """Generic operation result."""
+    """Generic operation result.
+
+    On failure, `code` carries a stable enum value so callers can branch
+    programmatically without parsing `message`. See ErrorCode for the
+    exhaustive list.
+    """
 
     success: bool
     message: str
     data: dict[str, Any] = field(default_factory=dict)
+    code: str | None = None
+
+
+class ErrorCode:
+    """Stable error codes for failure Results.
+
+    Use these on every `Result(success=False, ...)` so consumers (agent
+    prompts, scripts) can dispatch on a fixed enum rather than message text.
+    """
+
+    MISSING_AGENT_ID = "MISSING_AGENT_ID"
+    TASK_NOT_FOUND = "TASK_NOT_FOUND"
+    TASK_NOT_READY = "TASK_NOT_READY"
+    TASK_ALREADY_ACTIVE = "TASK_ALREADY_ACTIVE"
+    TASK_TERMINAL = "TASK_TERMINAL"
+    TASK_NOT_ACTIVE = "TASK_NOT_ACTIVE"
+    WRONG_AGENT = "WRONG_AGENT"
+    ALREADY_HAS_ACTIVE = "ALREADY_HAS_ACTIVE"
+    NO_READY_TASKS = "NO_READY_TASKS"
+    LOCK_CONTENTION = "LOCK_CONTENTION"
+    NODE_EXISTS = "NODE_EXISTS"
+    DEP_NOT_FOUND = "DEP_NOT_FOUND"
+    BATCH_INVALID_SPEC = "BATCH_INVALID_SPEC"
+    INVALID_INPUT = "INVALID_INPUT"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +167,9 @@ class CascadeClient:
                 )
                 return r
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def add_batch(
         self,
@@ -166,6 +198,7 @@ class CascadeClient:
                         return Result(
                             success=False,
                             message=f"Batch failed: spec missing node_id ({spec})",
+                            code=ErrorCode.BATCH_INVALID_SPEC,
                         )
                     r = self._add_locked(
                         cascade,
@@ -177,6 +210,7 @@ class CascadeClient:
                         return Result(
                             success=False,
                             message=f"Batch failed at '{nid}': {r.message}",
+                            code=ErrorCode.BATCH_INVALID_SPEC,
                         )
                     added.append(
                         {
@@ -201,7 +235,9 @@ class CascadeClient:
                     data={"added": [a["node_id"] for a in added]},
                 )
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def _add_locked(
         self,
@@ -218,19 +254,23 @@ class CascadeClient:
         dependent_ids = list(dependents.keys()) if dependents else []
 
         if node_id in cascade.nodes:
-            return Result(success=False, message=f"Node {node_id} already exists")
+            return Result(
+                success=False, message=f"Node {node_id} already exists", code=ErrorCode.NODE_EXISTS
+            )
 
         for dep_id in dep_ids:
             if dep_id not in cascade.nodes:
                 return Result(
                     success=False,
                     message=f"Dependency {dep_id} not found. Create it first.",
+                    code=ErrorCode.DEP_NOT_FOUND,
                 )
         for dep_id in dependent_ids:
             if dep_id not in cascade.nodes:
                 return Result(
                     success=False,
                     message=f"Dependent {dep_id} not found. Create it first.",
+                    code=ErrorCode.DEP_NOT_FOUND,
                 )
 
         initial_state = NodeState.READY
@@ -292,7 +332,11 @@ class CascadeClient:
                 graph = self._storage.load() or Cascade()
 
                 if node_id not in graph.nodes:
-                    return Result(success=False, message=f"Node {node_id} not found")
+                    return Result(
+                        success=False,
+                        message=f"Node {node_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
+                    )
 
                 node = graph.nodes[node_id]
                 if node.state == NodeState.ACTIVE:
@@ -303,6 +347,7 @@ class CascadeClient:
                             f"Use finish_task with release=true first."
                         ),
                         data={"state": "ACTIVE", "agent_id": node.agent_id},
+                        code=ErrorCode.TASK_ALREADY_ACTIVE,
                     )
 
                 if cascade:
@@ -319,6 +364,7 @@ class CascadeClient:
                                 f"Release them first."
                             ),
                             data={"active_nodes": active_descendants},
+                            code=ErrorCode.TASK_ALREADY_ACTIVE,
                         )
 
                 operation = RemoveOperation(graph)
@@ -344,7 +390,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def split(
         self,
@@ -361,7 +409,11 @@ class CascadeClient:
             reason: Why -- recorded in event log.
         """
         if not into:
-            return Result(success=False, message="new_nodes must be a non-empty list")
+            return Result(
+                success=False,
+                message="new_nodes must be a non-empty list",
+                code=ErrorCode.INVALID_INPUT,
+            )
 
         try:
             with self._storage.lock():
@@ -371,6 +423,7 @@ class CascadeClient:
                     return Result(
                         success=False,
                         message=f"Parent node {node_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
                     )
 
                 parent = graph.nodes[node_id]
@@ -382,6 +435,7 @@ class CascadeClient:
                             f"Use finish_task with release=true first."
                         ),
                         data={"state": "ACTIVE", "agent_id": parent.agent_id},
+                        code=ErrorCode.TASK_ALREADY_ACTIVE,
                     )
 
                 parent_state = parent.state
@@ -409,7 +463,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def refine(
         self,
@@ -430,32 +486,47 @@ class CascadeClient:
             reason: Why -- recorded in event log.
         """
         if not expectation or not expectation.strip():
-            return Result(success=False, message="Missing required parameter: expectation")
+            return Result(
+                success=False,
+                message="Missing required parameter: expectation",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not promise or not promise.strip():
-            return Result(success=False, message="Missing required parameter: promise")
+            return Result(
+                success=False,
+                message="Missing required parameter: promise",
+                code=ErrorCode.INVALID_INPUT,
+            )
 
         try:
             with self._storage.lock():
                 graph = self._storage.load() or Cascade()
 
                 if node_id not in graph.nodes:
-                    return Result(success=False, message=f"Node {node_id} not found")
+                    return Result(
+                        success=False,
+                        message=f"Node {node_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
+                    )
                 if dep_id not in graph.nodes:
                     return Result(
                         success=False,
                         message=f"Dependency {dep_id} not found. Create it first with add_node.",
+                        code=ErrorCode.DEP_NOT_FOUND,
                     )
 
                 if graph.has_dependency(node_id, dep_id):
                     return Result(
                         success=False,
                         message=f"Node {node_id} already depends on {dep_id}",
+                        code=ErrorCode.INVALID_INPUT,
                     )
 
                 if graph._has_path(node_id, dep_id):
                     return Result(
                         success=False,
                         message=f"Adding dependency {dep_id} to {node_id} would create a cycle",
+                        code=ErrorCode.INVALID_INPUT,
                     )
 
                 graph.add_edge(dep_id, node_id, expectation=expectation, promise=promise)
@@ -480,7 +551,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def edit(
         self,
@@ -509,7 +582,11 @@ class CascadeClient:
                 graph = self._storage.load() or Cascade()
 
                 if node_id not in graph.nodes:
-                    return Result(success=False, message=f"Node {node_id} not found")
+                    return Result(
+                        success=False,
+                        message=f"Node {node_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
+                    )
 
                 node = graph.nodes[node_id]
                 changes: list[str] = []
@@ -522,6 +599,7 @@ class CascadeClient:
                         return Result(
                             success=False,
                             message=f"Invalid state: {state}. Valid: {valid}",
+                            code=ErrorCode.INVALID_INPUT,
                         )
 
                     old_state = node.state
@@ -529,6 +607,7 @@ class CascadeClient:
                         return Result(
                             success=False,
                             message=f"Invalid transition: {old_state.name} -> {new_state.name}",
+                            code=ErrorCode.INVALID_INPUT,
                         )
 
                     node.update_state(new_state)
@@ -568,7 +647,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     # -- Execution ----------------------------------------------------------
 
@@ -624,6 +705,7 @@ class CascadeClient:
             return Result(
                 success=False,
                 message="agent_id is required. Each agent can only hold ONE task at a time.",
+                code=ErrorCode.MISSING_AGENT_ID,
             )
 
         backoffs = [0.1, 0.4, 1.6]
@@ -642,11 +724,16 @@ class CascadeClient:
                         f"Could not acquire lock after {len(backoffs) + 1} attempts. "
                         "Another agent may be holding it for an extended period."
                     ),
+                    code=ErrorCode.LOCK_CONTENTION,
                 )
             except Exception as e:
-                return Result(success=False, message=f"Operation failed: {e}")
+                return Result(
+                    success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+                )
 
-        return Result(success=False, message="claim retry exhausted")
+        return Result(
+            success=False, message="claim retry exhausted", code=ErrorCode.LOCK_CONTENTION
+        )
 
     def _claim_locked(
         self,
@@ -680,7 +767,11 @@ class CascadeClient:
 
             if task_id:
                 if task_id not in graph.nodes:
-                    return Result(success=False, message=f"Task {task_id} not found")
+                    return Result(
+                        success=False,
+                        message=f"Task {task_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
+                    )
 
                 node = graph.nodes[task_id]
 
@@ -689,6 +780,7 @@ class CascadeClient:
                         success=False,
                         message=f"Task {task_id} is already being executed by agent: {node.agent_id}",
                         data={"state": "ACTIVE", "assigned_to": node.agent_id},
+                        code=ErrorCode.TASK_ALREADY_ACTIVE,
                     )
 
                 if node.state == NodeState.ACTIVE:
@@ -706,6 +798,7 @@ class CascadeClient:
                         success=False,
                         message=f"Task {task_id} is in terminal state: {node.state.name}",
                         data={"state": node.state.name},
+                        code=ErrorCode.TASK_TERMINAL,
                     )
 
                 if node.state == NodeState.PENDING:
@@ -714,6 +807,7 @@ class CascadeClient:
                         success=False,
                         message=f"Task {task_id} is not ready (dependencies not met, pending={pending})",
                         data={"state": "PENDING", "pending_dependencies": pending},
+                        code=ErrorCode.TASK_NOT_READY,
                     )
 
                 node.update_state(NodeState.ACTIVE)
@@ -738,12 +832,14 @@ class CascadeClient:
                             success=False,
                             message=f"No available tasks. {active_count} task(s) are executed, {pending_count} pending.",
                             data={"active": active_count, "pending": pending_count},
+                            code=ErrorCode.NO_READY_TASKS,
                         )
                     else:
                         return Result(
                             success=False,
                             message=f"No available tasks. All {pending_count} tasks are pending (dependencies not met).",
                             data={"pending": pending_count},
+                            code=ErrorCode.NO_READY_TASKS,
                         )
 
                 node = ready_nodes[0]
@@ -865,7 +961,11 @@ class CascadeClient:
                 graph = self._storage.load() or Cascade()
 
                 if task_id not in graph.nodes:
-                    return Result(success=False, message=f"Task {task_id} not found")
+                    return Result(
+                        success=False,
+                        message=f"Task {task_id} not found",
+                        code=ErrorCode.TASK_NOT_FOUND,
+                    )
 
                 node = graph.nodes[task_id]
 
@@ -874,6 +974,7 @@ class CascadeClient:
                         success=False,
                         message=f"Task {task_id} is not active (current: {node.state.name})",
                         data={"state": node.state.name},
+                        code=ErrorCode.TASK_NOT_ACTIVE,
                     )
 
                 if agent_id is not None and node.agent_id != agent_id:
@@ -884,6 +985,7 @@ class CascadeClient:
                             f"not '{agent_id}'. Only the claiming agent can finish it."
                         ),
                         data={"claimed_by": node.agent_id, "caller": agent_id},
+                        code=ErrorCode.WRONG_AGENT,
                     )
 
                 if is_release:
@@ -993,7 +1095,9 @@ class CascadeClient:
                     )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     # -- Feedback -----------------------------------------------------------
 
@@ -1022,23 +1126,53 @@ class CascadeClient:
             corrective_promise: What corrective promises to requester.
         """
         if not source:
-            return Result(success=False, message="Missing required parameter: source_node_id")
+            return Result(
+                success=False,
+                message="Missing required parameter: source_node_id",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not corrective:
-            return Result(success=False, message="Missing required parameter: corrective_node_id")
+            return Result(
+                success=False,
+                message="Missing required parameter: corrective_node_id",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not reason:
-            return Result(success=False, message="Missing required parameter: reason")
+            return Result(
+                success=False,
+                message="Missing required parameter: reason",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not agent_id:
-            return Result(success=False, message="Missing required parameter: agent_id")
+            return Result(
+                success=False,
+                message="Missing required parameter: agent_id",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not source_expectation:
-            return Result(success=False, message="Missing required parameter: source_expectation")
+            return Result(
+                success=False,
+                message="Missing required parameter: source_expectation",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not source_promise:
-            return Result(success=False, message="Missing required parameter: source_promise")
+            return Result(
+                success=False,
+                message="Missing required parameter: source_promise",
+                code=ErrorCode.INVALID_INPUT,
+            )
         if not corrective_expectation:
             return Result(
-                success=False, message="Missing required parameter: corrective_expectation"
+                success=False,
+                message="Missing required parameter: corrective_expectation",
+                code=ErrorCode.INVALID_INPUT,
             )
         if not corrective_promise:
-            return Result(success=False, message="Missing required parameter: corrective_promise")
+            return Result(
+                success=False,
+                message="Missing required parameter: corrective_promise",
+                code=ErrorCode.INVALID_INPUT,
+            )
 
         source_contract = Contract(
             expectation=source_expectation,
@@ -1058,6 +1192,7 @@ class CascadeClient:
                     return Result(
                         success=False,
                         message=f"Agent '{agent_id}' has no active task to request rework from",
+                        code=ErrorCode.TASK_NOT_ACTIVE,
                     )
 
                 operation = ReworkOperation(graph)
@@ -1099,7 +1234,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     # -- Query --------------------------------------------------------------
 
@@ -1183,6 +1320,7 @@ class CascadeClient:
                 success=False,
                 message=f"Failed to list nodes: {e}",
                 data={"nodes": [], "count": 0, "by_state": {}},
+                code=ErrorCode.INTERNAL_ERROR,
             )
 
     def check(self, task_id: str) -> Result:
@@ -1192,7 +1330,11 @@ class CascadeClient:
             task_id: Task to check.
         """
         if not task_id:
-            return Result(success=False, message="Missing required parameter: task_id")
+            return Result(
+                success=False,
+                message="Missing required parameter: task_id",
+                code=ErrorCode.INVALID_INPUT,
+            )
 
         token = self._storage.tokens.check(task_id)
         if token is None:
@@ -1281,7 +1423,9 @@ class CascadeClient:
                 )
 
         except Exception as e:
-            return Result(success=False, message=f"Operation failed: {e}")
+            return Result(
+                success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
     def history(
         self,
@@ -1320,6 +1464,7 @@ class CascadeClient:
                     return Result(
                         success=False,
                         message=f"Invalid event_type: {event_type}. Valid: {valid}",
+                        code=ErrorCode.INVALID_INPUT,
                     )
                 events = event_store.read_by_type(et)
             else:
@@ -1346,7 +1491,9 @@ class CascadeClient:
             )
 
         except Exception as e:
-            return Result(success=False, message=f"Failed to read history: {e}")
+            return Result(
+                success=False, message=f"Failed to read history: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -112,4 +112,9 @@ def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     client._storage = storage
 
     r = client.add(node_id, deps=deps, dependents=deps_dependents)
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

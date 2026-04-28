@@ -52,4 +52,9 @@ def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         timeout=timeout,
         cancel_notifier=cancel_notifier,
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

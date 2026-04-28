@@ -55,4 +55,9 @@ def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
     client._storage = storage
 
     r = client.split(params["parent_id"], into, reason=params.get("reason", ""))
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

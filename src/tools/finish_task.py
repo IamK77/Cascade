@@ -54,4 +54,9 @@ def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
     else:
         r = client.fail(task_id, reason=summary or "", cascade=should_cascade)
 
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

@@ -40,4 +40,9 @@ def history(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         last_n=params.get("last_n", 0),
         summary=params.get("summary", False),
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

@@ -36,4 +36,9 @@ def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         state_filter=params.get("state_filter"),
         include_pending_only=params.get("include_pending_only", False),
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

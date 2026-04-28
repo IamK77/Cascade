@@ -30,7 +30,10 @@ from cascade.types import Contract
 
 def _result_to_dict(r: Result) -> dict[str, Any]:
     """Convert a Result to a dict for JSON output."""
-    return {"success": r.success, "message": r.message, "data": r.data}
+    out: dict[str, Any] = {"success": r.success, "message": r.message, "data": r.data}
+    if r.code:
+        out["code"] = r.code
+    return out
 
 
 def output(result: dict[str, Any] | str) -> None:
@@ -256,6 +259,110 @@ def cmd_add_nodes(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
+def cmd_watch(args: argparse.Namespace) -> None:
+    """Stream node state transitions to stdout as JSONL.
+
+    Watches graph.json directly via mtime polling. On each change,
+    diffs current vs previous snapshot and emits one transition per
+    node whose state changed. Initial snapshot is the baseline — no
+    transitions emitted at startup. Press Ctrl-C to exit.
+    """
+    import time as _t
+    from pathlib import Path
+
+    # Defense-in-depth: when stdout is a pipe Python defaults to block-buffering.
+    # Per-print flush=True handles the common case; line_buffering ensures any
+    # forgotten path still flushes on newline so consumers see lines immediately.
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+
+    graph_path = Path(args.storage) / "graph.json"
+
+    def read_snapshot() -> dict[str, dict[str, Any]] | None:
+        try:
+            data = json.loads(graph_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+        result: dict[str, dict[str, Any]] = {}
+        for nid, node in (data.get("nodes") or {}).items():
+            entry: dict[str, Any] = {"state": node.get("state")}
+            if node.get("agent_id"):
+                entry["agent_id"] = node["agent_id"]
+            result[nid] = entry
+        return result
+
+    def emit(transition: dict[str, Any]) -> None:
+        print(json.dumps(transition, ensure_ascii=False), flush=True)
+
+    last_mtime = 0.0
+    last_snapshot: dict[str, dict[str, Any]] = {}
+
+    if graph_path.exists():
+        last_mtime = graph_path.stat().st_mtime
+        snap = read_snapshot()
+        if snap is not None:
+            last_snapshot = snap
+
+    try:
+        while True:
+            try:
+                mtime = graph_path.stat().st_mtime if graph_path.exists() else 0.0
+            except OSError:
+                mtime = 0.0
+
+            if mtime == last_mtime:
+                _t.sleep(0.05)
+                continue
+
+            snap = read_snapshot()
+            if snap is None:
+                _t.sleep(0.05)
+                continue
+
+            last_mtime = mtime
+            now = _t.time()
+
+            for nid, entry in snap.items():
+                prev = last_snapshot.get(nid)
+                if prev is None:
+                    transition: dict[str, Any] = {
+                        "type": "transition",
+                        "node": nid,
+                        "from": None,
+                        "to": entry["state"],
+                        "ts": now,
+                    }
+                    if entry.get("agent_id"):
+                        transition["agent"] = entry["agent_id"]
+                    emit(transition)
+                elif prev["state"] != entry["state"]:
+                    transition = {
+                        "type": "transition",
+                        "node": nid,
+                        "from": prev["state"],
+                        "to": entry["state"],
+                        "ts": now,
+                    }
+                    if entry.get("agent_id"):
+                        transition["agent"] = entry["agent_id"]
+                    emit(transition)
+
+            for nid, prev in last_snapshot.items():
+                if nid not in snap:
+                    emit(
+                        {
+                            "type": "transition",
+                            "node": nid,
+                            "from": prev["state"],
+                            "to": None,
+                            "ts": now,
+                        }
+                    )
+
+            last_snapshot = snap
+    except KeyboardInterrupt:
+        return
+
+
 def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
     from cascade.core.cascade import Cascade
     from cascade.view import render_inspect
@@ -431,6 +538,13 @@ def main() -> None:
     p.add_argument("--task", "-t", required=True, help="Task ID to inspect")
     p.set_defaults(func=cmd_inspect)
 
+    # watch
+    p = sub.add_parser(
+        "watch",
+        help="Stream node state transitions to stdout as JSONL (long-running)",
+    )
+    p.set_defaults(func=cmd_watch)
+
     # list-nodes
     p = sub.add_parser("list-nodes", help="View all tasks")
     p.add_argument("--state", "-s", help="Filter by state")
@@ -515,6 +629,10 @@ def main() -> None:
         sys.exit(1)
 
     result = args.func(args)
+    if result is None:
+        # Streaming/long-running commands (e.g. watch) print directly and
+        # return None on clean exit; nothing to format.
+        sys.exit(0)
     output(result)
 
 

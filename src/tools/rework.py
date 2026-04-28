@@ -62,4 +62,9 @@ def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         corrective_expectation=params["corrective_expectation"],
         corrective_promise=params["corrective_promise"],
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

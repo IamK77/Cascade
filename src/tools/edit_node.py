@@ -49,4 +49,9 @@ def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
         context_merge=params.get("context_merge", "merge"),
         reason=params.get("reason", ""),
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }

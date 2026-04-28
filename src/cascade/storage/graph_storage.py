@@ -15,6 +15,7 @@
 """Storage for Cascade persistence."""
 
 import json
+import os
 import threading
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -168,9 +169,18 @@ class GraphStorage:
             graph_data["edges"].append(edge_data)
 
         graph_path = self.base_dir / "graph.json"
-        graph_path.write_text(
-            json.dumps(graph_data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        self._atomic_write(graph_path, json.dumps(graph_data, indent=2, ensure_ascii=False))
+
+    @staticmethod
+    def _atomic_write(path: Path, content: str) -> None:
+        """Write content atomically via tmp file + rename.
+
+        Concurrent readers (e.g. cascade watch) see either the old or
+        new file complete — never a torn write.
+        """
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
 
     def save_node(self, cascade: Cascade, node_id: str) -> None:
         """Save a single node incrementally."""
@@ -208,9 +218,7 @@ class GraphStorage:
                 node_data["context"] = ctx_data
 
         graph_data["nodes"][node_id] = node_data
-        graph_path.write_text(
-            json.dumps(graph_data, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        self._atomic_write(graph_path, json.dumps(graph_data, indent=2, ensure_ascii=False))
 
     # ------------------------------------------------------------------
     # Load

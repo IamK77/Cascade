@@ -41,4 +41,9 @@ def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]
         cascade=params.get("cascade", False),
         reason=params.get("reason", ""),
     )
-    return {"success": r.success, "message": r.message, "data": r.data}
+    return {
+        "success": r.success,
+        "message": r.message,
+        "data": r.data,
+        **({"code": r.code} if r.code else {}),
+    }
