@@ -115,6 +115,17 @@ If a spec line has no node owner, your DAG is incomplete. **The closed-loop feel
 
 - `cascade inspect --task X` — read-only preview of the briefing a worker would see, plus delivered context if completed. Use before dispatching to verify spec is in place; use after completion to review delivered context.
 
+### Edge-triggered Notifications
+
+Don't poll `cascade list-nodes` in a loop — it's level-triggered (re-emits the same state every interval, high noise, latency tied to interval). Tail the event log instead — it's append-only, edge-triggered via the kernel, and `task_completed` events carry the `unblocked` field listing newly READY nodes.
+
+```bash
+tail -f .cascade/events.jsonl | \
+  jq -c 'select(.type | test("task_(completed|failed|released)"))'
+```
+
+Each line streams in as it happens. `task_completed` events include `data.unblocked: [<node-ids>]` — these are the nodes that just transitioned to READY and can be dispatched immediately.
+
 ### Loop
 
 1. **Spawn analyze worker** — create a root analyze node, dispatch a worker to produce the spec (`summary` + `critical` + `artifacts`)

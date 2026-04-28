@@ -24,15 +24,20 @@ pipx install cascade-auto
 
 ## Commands
 
-See `commands/<name>.md` for: add-node, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history, inspect.
+See `commands/<name>.md` for: add-node, add-nodes, get-task, finish-task, list-nodes, split-node, refine-node, remove-node, edit-node, rework, check-task, check-timeouts, history, inspect.
 
 ## Common Patterns
 
 ```bash
-# Build DAG
+# Build DAG (one-shot, atomic — preferred for multi-node DAGs)
+cascade add-nodes --json '[
+  {"id": "analyze"},
+  {"id": "design", "deps": ["analyze"],
+   "expectations": [{"node_id": "analyze", "expectation": "Spec", "promise": "Design doc"}]}
+]'
+
+# Or single-node form
 cascade add-node --id analyze
-cascade add-node --id design --deps analyze \
-  --expectations '[{"node_id": "analyze", "expectation": "Spec", "promise": "Design doc"}]'
 
 # Worker claims and completes
 cascade get-task --agent worker-1 --task analyze
