@@ -235,10 +235,7 @@ class CascadeClient:
 
         initial_state = NodeState.READY
         for dep_id in dep_ids:
-            if (
-                dep_id in cascade.nodes
-                and cascade.nodes[dep_id].state != NodeState.COMPLETED
-            ):
+            if dep_id in cascade.nodes and cascade.nodes[dep_id].state != NodeState.COMPLETED:
                 initial_state = NodeState.PENDING
                 break
 
@@ -687,11 +684,7 @@ class CascadeClient:
 
                 node = graph.nodes[task_id]
 
-                if (
-                    node.agent_id
-                    and node.agent_id != agent_id
-                    and node.state == NodeState.ACTIVE
-                ):
+                if node.agent_id and node.agent_id != agent_id and node.state == NodeState.ACTIVE:
                     return Result(
                         success=False,
                         message=f"Task {task_id} is already being executed by agent: {node.agent_id}",
@@ -766,9 +759,7 @@ class CascadeClient:
             self._storage.tokens.create(
                 task_id, agent_id, node.claimed_at, notifier=cancel_notifier
             )
-            self._storage.events.emit(
-                EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id
-            )
+            self._storage.events.emit(EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id)
 
             return Result(
                 success=True,

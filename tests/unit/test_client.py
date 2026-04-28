@@ -63,22 +63,26 @@ class TestAddBatch:
         assert client.nodes() == []
 
     def test_batch_simple(self, client: CascadeClient):
-        r = client.add_batch([
-            {"node_id": "a"},
-            {"node_id": "b"},
-            {"node_id": "c"},
-        ])
+        r = client.add_batch(
+            [
+                {"node_id": "a"},
+                {"node_id": "b"},
+                {"node_id": "c"},
+            ]
+        )
         assert r.success
         assert len(client.nodes()) == 3
         assert r.data["added"] == ["a", "b", "c"]
 
     def test_batch_with_internal_dependencies(self, client: CascadeClient):
         """A spec can reference a dep added earlier in the same batch."""
-        r = client.add_batch([
-            {"node_id": "a"},
-            {"node_id": "b", "deps": {"a": Contract("E", "P")}},
-            {"node_id": "c", "deps": {"b": Contract("E", "P")}},
-        ])
+        r = client.add_batch(
+            [
+                {"node_id": "a"},
+                {"node_id": "b", "deps": {"a": Contract("E", "P")}},
+                {"node_id": "c", "deps": {"b": Contract("E", "P")}},
+            ]
+        )
         assert r.success
         nodes = {n.id: n for n in client.nodes()}
         assert nodes["a"].state == "READY"
@@ -87,11 +91,13 @@ class TestAddBatch:
 
     def test_batch_atomic_on_failure(self, client: CascadeClient):
         """If any spec fails, no nodes are added."""
-        r = client.add_batch([
-            {"node_id": "good1"},
-            {"node_id": "good2"},
-            {"node_id": "bad", "deps": {"nonexistent": Contract("E", "P")}},
-        ])
+        r = client.add_batch(
+            [
+                {"node_id": "good1"},
+                {"node_id": "good2"},
+                {"node_id": "bad", "deps": {"nonexistent": Contract("E", "P")}},
+            ]
+        )
         assert not r.success
         assert "Batch failed at 'bad'" in r.message
         assert client.nodes() == []
@@ -103,10 +109,12 @@ class TestAddBatch:
 
     def test_batch_duplicate_in_existing_graph(self, client: CascadeClient):
         client.add("a")
-        r = client.add_batch([
-            {"node_id": "b"},
-            {"node_id": "a"},  # already exists
-        ])
+        r = client.add_batch(
+            [
+                {"node_id": "b"},
+                {"node_id": "a"},  # already exists
+            ]
+        )
         assert not r.success
         # neither b nor anything else added
         assert len(client.nodes()) == 1
@@ -462,6 +470,7 @@ class TestNodes:
         client.add("a")
         client.claim("w1", "a", timeout=0.01)
         import time as _t
+
         _t.sleep(0.05)
         active = client.nodes(state="ACTIVE")
         assert active[0].stale is True

@@ -69,10 +69,13 @@ class TestRenderBriefing:
         c = _make_client(tmp_path)
         c.add("auth")
         c.add("api")
-        c.add("integrate", deps={
-            "auth": Contract("Need auth", "Deliver auth module"),
-            "api": Contract("Need api", "Deliver api module"),
-        })
+        c.add(
+            "integrate",
+            deps={
+                "auth": Contract("Need auth", "Deliver auth module"),
+                "api": Contract("Need api", "Deliver api module"),
+            },
+        )
 
         c.claim("w1", task_id="auth")
         c.complete("auth", summary="Auth done", critical={"type": "JWT"})

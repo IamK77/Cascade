@@ -425,7 +425,9 @@ def main() -> None:
     p.set_defaults(func=cmd_finish_task)
 
     # inspect
-    p = sub.add_parser("inspect", help="Read-only review of a task's briefing and delivered context")
+    p = sub.add_parser(
+        "inspect", help="Read-only review of a task's briefing and delivered context"
+    )
     p.add_argument("--task", "-t", required=True, help="Task ID to inspect")
     p.set_defaults(func=cmd_inspect)
 
