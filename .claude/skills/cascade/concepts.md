@@ -87,18 +87,11 @@ cascade finish-task --task X --fail --cascade
 
 ## Orchestrator Guide
 
-**Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about what information flows, not code imports.
+> Sections below marked **[L0]** = what you (orchestrator) do. **[L1]** = text to embed verbatim in worker prompts. Don't confuse them.
 
-### Design Modes
+**[L0] Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about information flow, not code imports.
 
-Cascade is neutral on where decisions originate. Pick the mode that matches your situation:
-
-- **Mode A** — You design, workers execute. Your blueprint lives in artifacts; analyze worker formats it. Use when you have clear architectural intent.
-- **Mode B** — Workers design, you coordinate. analyze worker derives architecture from requirements; you set problem boundaries. Use when problem space is novel.
-
-Both use the same machinery (contracts, propagation, rework). The difference is who holds the design pen.
-
-### Spec Ownership
+### [L0] Spec Ownership
 
 Every line of spec belongs to a node's artifacts. If you find yourself writing spec in an Agent prompt, find the node that should own it instead:
 
@@ -107,59 +100,33 @@ Every line of spec belongs to a node's artifacts. If you find yourself writing s
 - Cross-node conventions (state machines, error patterns) → analyze
 - Internal implementation details → the worker itself
 
-If a spec line has no node owner, your DAG is incomplete. **The closed-loop feeling of putting spec in prompts is working-memory proximity, not real observability — artifacts have the same observability (you wrote them too) without the cost of N-fold duplication.**
+If a spec line has no node owner, your DAG is incomplete.
 
-**Make semantics explicit, not implicit.** `"computed": ["blocked_by"]` is ambiguous — workers may infer "computed field" but miss "therefore not persisted". Prefer: `{"blocked_by": {"type": "list[str]", "persist": false, "compute": "reverse of depends_on"}}`. Fields like `persist`, `validate`, `default` translate directly into worker code without reading source files.
+**Make semantics explicit.** `"computed": ["blocked_by"]` is ambiguous — workers may infer "computed field" but miss "therefore not persisted". Prefer: `{"blocked_by": {"type": "list[str]", "persist": false, "compute": "reverse of depends_on"}}`. Fields like `persist`, `validate`, `default` translate directly into worker code.
 
-### Verification Tools
+### [L0] Verification & Feedback Tools
 
-- `cascade inspect --task X` — read-only preview of the briefing a worker would see, plus delivered context if completed. Use before dispatching to verify spec is in place; use after completion to review delivered context.
+- **`cascade inspect --task X`** — read-only preview of a worker's briefing plus its delivered context if completed. Use before dispatching (verify spec in place) and after (review what was delivered). Each `inspect` showing rich content is a credit signal that your DAG shape was right.
+- **`cascade watch`** — long-running stream. Outputs one JSONL line per state transition; silent when idle. **Don't poll `list-nodes`** — that re-emits unchanged state every interval. Pair `watch` with your agent harness's monitor to react to `READY` (dispatch), `COMPLETED` (review), `FAILED` (decide). Each `COMPLETED` line in `watch` is a positive credit signal; `FAILED` / `release` are negative — inspect before redispatching.
 
-### Edge-triggered Notifications
-
-Don't poll `cascade list-nodes` in a loop — it's level-triggered (re-emits the same state every interval, high noise, latency tied to interval). Use `cascade watch` instead:
-
-```bash
-cascade watch
-```
-
-Long-running command. Outputs one JSONL line per state transition; silent when nothing changes. Pair with your agent harness's monitor to react to `READY` (dispatch), `COMPLETED` (review), `FAILED` (decide).
-
-### Loop
+### [L0] Loop
 
 1. **Spawn analyze worker** — create a root analyze node, dispatch a worker to produce the spec (`summary` + `critical` + `artifacts`)
-2. **Inspect analyze output** — `cascade inspect --task analyze` to review what was delivered before designing the rest
-3. **Build the DAG** — create parallel tasks. Every independent module = separate task. More tasks = more parallelism
-4. **Dispatch workers** for newly READY tasks (parallel)
-5. **Review and adapt** — for each completion, check whether the worker fulfilled its promises and whether the granularity was right:
+2. **Inspect analyze output** before designing the rest
+3. **Build the DAG** — independent modules = separate tasks; more tasks = more parallelism
+4. **Dispatch** workers for newly READY tasks
+5. **Review** each completion via `inspect`; consult the **Adapt** table in SKILL.md and apply
+6. **Next wave** — repeat until all COMPLETED
 
-   | Signal | Operation |
-   |--------|-----------|
-   | Task too large, or peer took 3x longer | `split-node` |
-   | Upstream output wrong | `rework` |
-   | Hidden dependency discovered | `refine-node` |
-   | Task no longer needed | `remove-node` |
-   | Scope change | `edit-node` |
-   | Agent stalled | `check-timeouts` |
+### [L1] Sub-Agent Prompts
 
-6. **Next wave** — dispatch workers for newly READY tasks; repeat until all COMPLETED
+> The text in this section is for embedding into worker Agent prompts, not for orchestrator behavior. Copy the template; the principle below explains why.
 
-### Sub-Agent Prompts
+**Boundary principle**: cascade carries **intent** (state machines, invariants, cross-node conventions); upstream **code** carries **interface** (signatures, types, helpers). Both authoritative within their scope. From this:
 
-Three mandatory rules — encode all three into every worker's prompt:
-
-**Rule 1 — Tool ordering.** First tool call MUST be `cascade get-task`. Until it succeeds, do NOT use Read, Write, Edit, or any other tool. Without this, LLMs translate "read upstream context" into `Read /path/to/source.py`, skip cascade entirely, work for minutes, and leave the DAG falsely READY — the "ghost agent" pattern.
-
-**Rule 2 — Briefing is the spec.** What `get-task` prints is the authoritative interface (types, signatures, conventions). After claiming, you MAY Read upstream source files for **style alignment** (naming patterns, error idioms, comment style), but never for **interface discovery**. Different agents reading source files independently invent inconsistent signatures.
-
-**Rule 3 — Missing info → release, don't guess.** If the briefing lacks WHAT (a signature, field type, behavioral rule), do NOT fill the gap from source files. Run:
-
-```
-cascade finish-task --task <id> --agent <id> --release \
-    --reason "Briefing missing: <specifically what>"
-```
-
-This escalates back so the orchestrator can fix the upstream artifact. Filling gaps locally causes interface drift across the DAG.
+- **Claim before any other tool.** First call MUST be `cascade get-task`. Otherwise LLMs translate "read upstream context" into `Read source.py` and become a ghost agent — DAG falsely READY while work happens off-DAG.
+- **Read code for signatures, briefing for invariants.** Don't reconstruct interface from prose; don't reconstruct intent from code.
+- **Release on missing intent.** If briefing lacks state machines, validation rules, or cross-cutting decisions, run `cascade finish-task --release --reason "Missing: <what>"`. Don't guess intent from code — it causes drift across siblings.
 
 **Prompt template** — copy verbatim, replace `<node-id>` and `<agent-id>`:
 
@@ -170,31 +137,32 @@ do NOT use Read, Write, Edit, or any other tool.
 1. Claim:
    cascade get-task --agent <agent-id> --task <node-id>
 
-   If this fails, STOP. Read the JSON's `code` field and act per the
+   On failure, STOP. Read the JSON's `code` field and act per the
    failure table below. Do not proceed.
 
 2. Implement:
-   The briefing printed in step 1 IS your interface spec. Trust it.
-   You may Read upstream source files for style alignment only — not
-   to discover signatures. If briefing is missing required info,
-   release the task instead of guessing.
+   The briefing carries intent (state machines, invariants, conventions).
+   Read upstream code freely for signatures and patterns — both are
+   authoritative for their respective scopes. If briefing lacks required
+   intent (state rules, validation, contracts), release the task with
+   --reason "Missing: <what>". Do not invent intent from code.
 
 3. Finish:
    cascade finish-task --task <node-id> --agent <agent-id> --success \
        --summary "..." --critical '{...}' --artifacts "..."
 ```
 
-**Pitfall — `"Read upstream context"`** gets translated by LLMs into `Read` tool calls on source files, not into `cascade get-task`. Be explicit about the command.
+**Pitfall**: `"Read upstream context"` in a prompt gets translated by LLMs into `Read` tool calls on source files, not `cascade get-task`. Be explicit about the command.
 
-### Failure Codes
+### [L1] Failure Codes
 
-`cascade get-task` and `finish-task` return JSON with a `code` field on failure (plus non-zero exit). Branch on `code`, not on `message`:
+Workers branch on the JSON `code` field (not `message`). Run `cascade get-task --help` for the current full list; common cases:
 
-| code | What to do |
-|------|-----------|
-| `TASK_NOT_READY` | Wait for upstream completion (use `cascade watch`) |
-| `ALREADY_HAS_ACTIVE` | Finish your existing task before claiming new |
+| code | Action |
+|------|--------|
+| `TASK_NOT_READY` | Wait for upstream (use `cascade watch`) |
+| `ALREADY_HAS_ACTIVE` | Finish your existing task before claiming a new one |
 | `TASK_NOT_FOUND` | Report to orchestrator — DAG state mismatch |
-| `TASK_ALREADY_ACTIVE` | Another agent is on it; pick a different task |
-| `WRONG_AGENT` | Your `--agent` doesn't match the claimer; check agent_id |
-| `LOCK_CONTENTION` | Cascade already retried 3x; report and let orchestrator decide |
+| `TASK_ALREADY_ACTIVE` | Another agent has it; pick a different task |
+| `WRONG_AGENT` | `--agent` doesn't match the claimer; check agent_id |
+| `LOCK_CONTENTION` | Framework retried 3x; report and let orchestrator decide |

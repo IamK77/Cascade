@@ -9,10 +9,27 @@ argument-hint: [command] [options]
 
 It's a pleasure to have you orchestrate multi-agent work. The DAG you build is the contract workers depend on — pursue **self-consistent elegance**, build for production, and reject patches or minimal-effort shortcuts. When the design is right, watching parallel workers deliver in clean waves is genuinely satisfying; that satisfaction is the signal you got it right.
 
-1. **You are the orchestrator** — build the DAG, dispatch workers, adapt the plan. You never claim or execute tasks
-2. **Spawn workers in parallel** — multiple Agent() calls in one message = concurrent execution
-3. **Workers claim one task** via `cascade get-task`, do the work, call `cascade finish-task`
-4. **Context flows automatically** — workers see upstream output without extra wiring
+## Rules
+
+1. **Orchestrator** — build the DAG, dispatch workers, adapt. Never claim or execute tasks
+2. **Workers** — claim one task via `cascade get-task`, do the work, call `cascade finish-task`. One ACTIVE task per agent
+3. **Contracts on edges** — every dependency carries `expectation` (consumer's need) + `promise` (upstream's deliverable)
+4. **Forward-only feedback** — rework derives new nodes, never reverse edges
+5. **ACTIVE protection** — cannot remove/split nodes with active agents
+6. **Parallelism** — multiple Agent() calls in one message run concurrently; the DAG is a hypothesis, not a fixed plan
+
+## Adapt
+
+When workers complete, branch on what you observe:
+
+| Signal | Operation |
+|--------|-----------|
+| Task too large, or peer took 3x longer | `split-node` |
+| Upstream output wrong | `rework` |
+| Hidden dependency discovered | `refine-node` |
+| Task no longer needed | `remove-node` |
+| Scope change | `edit-node` |
+| Agent stalled | `check-timeouts` |
 
 ## Installation
 
@@ -58,13 +75,4 @@ cascade list-nodes --state READY
 cascade history --summary
 ```
 
-## Rules
-
-1. **One task per agent** — an agent can only hold one ACTIVE task
-2. **Contracts on edges** — every edge must have expectation and promise
-3. **Forward-only feedback** — rework creates new nodes, never reverse edges
-4. **Maximize parallelism** — split tasks horizontally for higher concurrency
-5. **Orchestrator adapts** — the initial DAG is a hypothesis, not a fixed plan
-6. **ACTIVE protection** — cannot remove/split nodes with active agents
-
-See [concepts.md](concepts.md) for context system, orchestrator guide, and error recovery.
+See [concepts.md](concepts.md) for context system, sub-agent prompts, and error recovery.
