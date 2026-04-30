@@ -46,7 +46,7 @@ from cascade.operations.split import SplitOperation
 from cascade.storage.file_storage import FileStorage, LockError
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
-from cascade.types import Context, Contract
+from cascade.types import Context, Contract, PromiseEntry, UpstreamEntry
 from cascade.view import get_node_view
 
 # ---------------------------------------------------------------------------
@@ -60,8 +60,8 @@ class TaskView:
 
     id: str
     state: str
-    upstream: list[dict[str, Any]] = field(default_factory=list)
-    promises: list[dict[str, Any]] = field(default_factory=list)
+    upstream: list[UpstreamEntry] = field(default_factory=list)
+    promises: list[PromiseEntry] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
     token: int | None = None
 

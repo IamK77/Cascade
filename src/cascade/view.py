@@ -25,6 +25,7 @@ from typing import Any
 
 from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
+from cascade.types import DeliveredContext, UpstreamEntry
 
 
 def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
@@ -43,20 +44,20 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     propagator = ContextPropagator(cascade)
     entries = propagator.collect_context_at(node_id)
 
-    upstream: list[dict[str, Any]] = []
+    upstream: list[UpstreamEntry] = []
     for entry in entries:
-        item: dict[str, Any] = {
-            "node_id": entry.node_id,
-            "state": entry.state,
-            "distance": entry.distance,
-            "path": entry.path,
-        }
+        item = UpstreamEntry(
+            node_id=entry.node_id,
+            state=entry.state,
+            distance=entry.distance,
+            path=entry.path,
+        )
         if entry.expectation:
             item["expectation"] = entry.expectation
         if entry.promise:
             item["promise"] = entry.promise
 
-        delivered: dict[str, Any] = {}
+        delivered = DeliveredContext()
         if entry.summary:
             delivered["summary"] = entry.summary
         if entry.critical:

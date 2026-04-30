@@ -25,11 +25,10 @@ Design invariants:
 import warnings
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.types import Contract, EdgeId
+from cascade.types import Contract, DependencyInfo, EdgeId, PromiseEntry
 
 
 @dataclass
@@ -339,27 +338,27 @@ class Cascade:
 
         return path
 
-    def get_node_dependencies_info(self, node_id: str) -> list[dict[str, Any]]:
+    def get_node_dependencies_info(self, node_id: str) -> list[DependencyInfo]:
         """Get dependency information for a node, including contracts."""
-        result = []
+        result: list[DependencyInfo] = []
         for dep_id in self._reverse.get(node_id, set()):
             contract = self.get_contract(dep_id, node_id)
             result.append(
-                {
-                    "node_id": dep_id,
-                    "expectation": contract.expectation if contract else None,
-                    "promise": contract.promise if contract else None,
-                }
+                DependencyInfo(
+                    node_id=dep_id,
+                    expectation=contract.expectation if contract else None,
+                    promise=contract.promise if contract else None,
+                )
             )
         return result
 
-    def get_node_promises(self, node_id: str) -> list[dict[str, Any]]:
+    def get_node_promises(self, node_id: str) -> list[PromiseEntry]:
         """Get all promises this node has made to its dependents."""
-        result = []
+        result: list[PromiseEntry] = []
         for dependent_id in self._adjacency.get(node_id, set()):
             contract = self.get_contract(node_id, dependent_id)
             if contract:
-                result.append({"to_node": dependent_id, "promise": contract.promise})
+                result.append(PromiseEntry(to_node=dependent_id, promise=contract.promise))
         return result
 
     def has_dependency(self, node_id: str, dep_id: str) -> bool:

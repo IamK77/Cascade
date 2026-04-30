@@ -22,7 +22,7 @@ Dependency rule: types.py → (nothing in cascade/)
 """
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TypedDict
 
 # ---------------------------------------------------------------------------
 # Edge identifier
@@ -155,3 +155,43 @@ class Context:
             self.artifacts[:30] + "..." if len(self.artifacts) > 30 else self.artifacts
         )
         return f"Context(critical={critical_str}, summary={summary_preview!r}, artifacts={artifacts_preview!r})"
+
+
+# ---------------------------------------------------------------------------
+# View layer TypedDicts — typed shapes for agent-facing data.
+# ---------------------------------------------------------------------------
+
+
+class DeliveredContext(TypedDict, total=False):
+    """What an upstream node delivered."""
+
+    summary: str
+    critical: ContextKV
+    artifacts: str
+
+
+class UpstreamEntry(TypedDict, total=False):
+    """One upstream node's contribution to a task's briefing."""
+
+    node_id: str
+    state: str
+    distance: int
+    path: list[str]
+    expectation: str
+    promise: str
+    delivered: DeliveredContext
+
+
+class PromiseEntry(TypedDict):
+    """A promise this node made to a downstream dependent."""
+
+    to_node: str
+    promise: str
+
+
+class DependencyInfo(TypedDict):
+    """Dependency metadata for a node."""
+
+    node_id: str
+    expectation: str | None
+    promise: str | None

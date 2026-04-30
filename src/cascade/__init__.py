@@ -25,7 +25,18 @@ from cascade.core.state import NodeState
 from cascade.storage.file_storage import FileStorage, LockError
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
-from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId, TokenStatus
+from cascade.types import (
+    Context,
+    ContextEntry,
+    ContextKV,
+    Contract,
+    DeliveredContext,
+    DependencyInfo,
+    EdgeId,
+    PromiseEntry,
+    TokenStatus,
+    UpstreamEntry,
+)
 from cascade.view import get_node_view
 
 __all__ = [
@@ -36,8 +47,12 @@ __all__ = [
     "Contract",
     "ContextKV",
     "ContextEntry",
+    "DeliveredContext",
+    "DependencyInfo",
     "EdgeId",
+    "PromiseEntry",
     "TokenStatus",
+    "UpstreamEntry",
     # Core
     "Cascade",
     "Node",
