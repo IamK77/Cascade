@@ -120,7 +120,7 @@ class TestFileStorage:
         loaded = storage.load()
         assert loaded.nodes["test"].context is None
 
-    def test_artifacts_saved_as_file(self, storage, temp_dir):
+    def test_artifacts_saved_to_content_store(self, storage, temp_dir):
         cascade = Cascade()
         artifacts_content = "# Task Artifacts\n\nThis is the full documentation."
         node = Node(
@@ -133,12 +133,10 @@ class TestFileStorage:
         cascade.add_node(node)
         storage.save(cascade)
 
-        artifacts_file = temp_dir / "artifacts" / "task_a.md"
-        assert artifacts_file.exists()
-        assert artifacts_file.read_text(encoding="utf-8") == artifacts_content
-
         graph_data = json.loads((temp_dir / "graph.json").read_text(encoding="utf-8"))
-        assert graph_data["nodes"]["task_a"]["context"]["artifacts_ref"] == "task_a.md"
+        ref = graph_data["nodes"]["task_a"]["context"]["artifacts_ref"]
+        assert len(ref) == 64  # SHA-256 hex
+        assert storage.content.get(ref) == artifacts_content
 
     def test_artifacts_loaded_from_file(self, storage):
         cascade = Cascade()
@@ -165,12 +163,6 @@ class TestFileStorage:
         cascade.add_node(node)
         storage.save(cascade)
 
-        # Verify file was created
-        artifacts_file = temp_dir / "artifacts" / "pre_node.md"
-        assert artifacts_file.exists()
-        assert artifacts_file.read_text(encoding="utf-8") == content
-
-        # Verify round-trip
         loaded = storage.load()
         assert loaded.nodes["pre_node"].context.artifacts == content
 

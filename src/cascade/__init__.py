@@ -32,6 +32,7 @@ from cascade.errors import (
     NodeExistsError,
     NodeNotFoundError,
 )
+from cascade.storage.content import ContentStore, GitContentStore, LocalContentStore
 from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
@@ -94,7 +95,10 @@ __all__ = [
     # View
     "get_node_view",
     # Storage
+    "ContentStore",
     "FileStorage",
+    "GitContentStore",
+    "LocalContentStore",
     "StorageProtocol",
     "LockError",
 ]

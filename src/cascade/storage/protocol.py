@@ -20,6 +20,7 @@ from typing import Protocol, runtime_checkable
 
 from cascade.core.cascade import Cascade
 from cascade.events import EventStore
+from cascade.storage.content import ContentStore
 from cascade.storage.op_log import OpLog
 from cascade.storage.token_store import TokenStore
 
@@ -36,6 +37,7 @@ class StorageProtocol(Protocol):
     events: EventStore
     tokens: TokenStore
     ops: OpLog
+    content: ContentStore
 
     def exists(self) -> bool: ...
 

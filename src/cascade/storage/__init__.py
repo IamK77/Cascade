@@ -14,7 +14,15 @@
 
 """Storage components for Cascade persistence."""
 
+from cascade.storage.content import ContentStore, GitContentStore, LocalContentStore
 from cascade.storage.file_storage import FileStorage, StorageScope
 from cascade.storage.protocol import StorageProtocol
 
-__all__ = ["FileStorage", "StorageProtocol", "StorageScope"]
+__all__ = [
+    "ContentStore",
+    "FileStorage",
+    "GitContentStore",
+    "LocalContentStore",
+    "StorageProtocol",
+    "StorageScope",
+]

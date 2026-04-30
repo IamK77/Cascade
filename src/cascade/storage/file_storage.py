@@ -30,6 +30,7 @@ from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.errors import LockError
 from cascade.events import EventStore
+from cascade.storage.content import ContentStore, LocalContentStore
 from cascade.storage.op_log import OpLog
 from cascade.storage.token_store import TokenStore
 from cascade.types import Context, Contract
@@ -57,6 +58,7 @@ class FileStorage:
         self,
         base_dir: Path | str | None = None,
         scope: StorageScope = StorageScope.PROJECT,
+        content: ContentStore | None = None,
     ):
         if base_dir is not None:
             self.base_dir = Path(base_dir)
@@ -65,13 +67,13 @@ class FileStorage:
         else:
             self.base_dir = Path.cwd() / ".cascade"
 
-        self.artifacts_dir = self.base_dir / "artifacts"
         self._file_lock = FileLock(self.base_dir / ".lock")
         self._thread_lock = threading.Lock()
         self._lamport: int = self._recover_lamport()
         self.events = EventStore(self.base_dir)
         self.tokens = TokenStore(self.base_dir)
         self.ops = OpLog(self.base_dir)
+        self.content = content or LocalContentStore(self.base_dir)
 
     def _recover_lamport(self) -> int:
         """Read lamport from graph.json at startup."""
@@ -140,7 +142,6 @@ class FileStorage:
     def save(self, cascade: Cascade) -> None:
         """Save the Cascade to storage."""
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         graph_data: dict[str, Any] = {
             "epoch": cascade.epoch,
@@ -170,8 +171,8 @@ class FileStorage:
                 if node.context.summary:
                     ctx_data["summary"] = node.context.summary
                 if node.context.artifacts:
-                    self._save_artifacts(node_id, node.context.artifacts)
-                    ctx_data["artifacts_ref"] = f"{node_id}.md"
+                    ref = self.content.put(node.context.artifacts)
+                    ctx_data["artifacts_ref"] = ref
                 if ctx_data:
                     node_data["context"] = ctx_data
 
@@ -232,9 +233,7 @@ class FileStorage:
 
                 artifacts_ref = ctx_data.get("artifacts_ref", "")
                 if artifacts_ref:
-                    artifacts_path = self.artifacts_dir / artifacts_ref
-                    if artifacts_path.exists():
-                        artifacts = artifacts_path.read_text(encoding="utf-8")
+                    artifacts = self.content.get(artifacts_ref) or ""
 
                 context = Context(
                     critical=ctx_data.get("critical", {}),
@@ -280,8 +279,3 @@ class FileStorage:
 
         if self.base_dir.exists():
             shutil.rmtree(self.base_dir)
-
-    def _save_artifacts(self, node_id: str, content: str) -> None:
-        """Save artifacts content to file."""
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        (self.artifacts_dir / f"{node_id}.md").write_text(content, encoding="utf-8")
