@@ -3,6 +3,45 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.6] - 2026-04-30
+
+### Added
+
+- Event replay — rebuild graph state from event log
+- Idempotent operations via op_id
+
+### Miscellaneous
+
+- Bump to 0.4.6
+
+### Refactored
+
+- Extract _mutate transaction + move result types to types.py
+- Lamport owned by storage, not EventStore
+- Tighten types — TypedDict for view layer
+## [0.4.5] - 2026-04-30
+
+### Added
+
+- Distributed prep — event identity, storage protocol, fencing tokens
+
+### Documentation
+
+- Skill — promote Adapt table, level markers, collapse rules
+- Update CHANGELOG.md for v0.4.4
+
+### Fixed
+
+- Use structured artifacts_ref field instead of string prefix detection
+- Remove save_node() — incomplete incremental persistence
+- Remove write-only agent_tasks from graph.json
+- Let cycle detection errors propagate instead of silently degrading
+- Let cancellation callback errors propagate
+- Let cascade remove propagate errors instead of swallowing them
+
+### Refactored
+
+- Persist Lamport clock to dedicated file instead of log scan
 ## [0.4.4] - 2026-04-28
 
 ### Documentation
