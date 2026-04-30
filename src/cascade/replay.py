@@ -26,16 +26,14 @@ events alone, enabling:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.events import Event, EventType
+from cascade.storage.content import ContentStore
 from cascade.types import Context
-
-if TYPE_CHECKING:
-    from cascade.storage.content import ContentStore
 
 
 def replay(events: list[Event], content: ContentStore | None = None) -> Cascade:

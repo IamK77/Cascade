@@ -486,6 +486,24 @@ def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
+def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
+    client = CascadeClient(args.storage)
+    r = client.show(args.ts)
+    return _result_to_dict(r)
+
+
+def cmd_diff(args: argparse.Namespace) -> dict[str, Any]:
+    client = CascadeClient(args.storage)
+    r = client.diff(args.from_ts, args.to_ts)
+    return _result_to_dict(r)
+
+
+def cmd_snapshot_at(args: argparse.Namespace) -> dict[str, Any]:
+    client = CascadeClient(args.storage)
+    r = client.snapshot_at(args.ts)
+    return _result_to_dict(r)
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -630,6 +648,22 @@ def main() -> None:
     p.add_argument("--last", type=int, help="Last N events")
     p.add_argument("--summary", action="store_true", help="Show counts by type")
     p.set_defaults(func=cmd_history)
+
+    # show
+    p = sub.add_parser("show", help="Show event at a logical timestamp")
+    p.add_argument("--ts", type=int, required=True, help="Logical timestamp")
+    p.set_defaults(func=cmd_show)
+
+    # diff
+    p = sub.add_parser("diff", help="Show events between two logical timestamps")
+    p.add_argument("--from", type=int, required=True, dest="from_ts", help="Start logical_ts")
+    p.add_argument("--to", type=int, required=True, dest="to_ts", help="End logical_ts")
+    p.set_defaults(func=cmd_diff)
+
+    # snapshot-at
+    p = sub.add_parser("snapshot-at", help="Rebuild graph state at a logical timestamp")
+    p.add_argument("--ts", type=int, required=True, help="Logical timestamp to replay to")
+    p.set_defaults(func=cmd_snapshot_at)
 
     args = parser.parse_args()
     if not args.command:

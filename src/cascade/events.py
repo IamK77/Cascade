@@ -129,6 +129,21 @@ class EventStore:
         """Read events after a given timestamp."""
         return [e for e in self.read_all() if e.timestamp > since]
 
+    def read_at(self, logical_ts: int) -> Event | None:
+        """Read the event at a specific logical timestamp."""
+        for e in self.read_all():
+            if e.logical_ts == logical_ts:
+                return e
+        return None
+
+    def read_range(self, from_ts: int, to_ts: int) -> list[Event]:
+        """Read events within a logical timestamp range (inclusive)."""
+        return [e for e in self.read_all() if from_ts <= e.logical_ts <= to_ts]
+
+    def read_until(self, until_ts: int) -> list[Event]:
+        """Read events up to and including a logical timestamp."""
+        return [e for e in self.read_all() if e.logical_ts <= until_ts]
+
     def read_by_type(self, event_type: EventType) -> list[Event]:
         """Read events of a specific type."""
         return [e for e in self.read_all() if e.type == event_type]

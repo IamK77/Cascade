@@ -45,6 +45,7 @@ from cascade.events import EventType
 from cascade.operations.remove import RemoveOperation
 from cascade.operations.rework import ReworkOperation
 from cascade.operations.split import SplitOperation
+from cascade.replay import replay as replay_events
 from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
@@ -1604,6 +1605,151 @@ class CascadeClient:
         except Exception as e:
             return Result(
                 success=False, message=f"Failed to read history: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
+
+    def show(self, logical_ts: int) -> Result:
+        """Show the event at a specific logical timestamp.
+
+        Args:
+            logical_ts: The logical timestamp to look up.
+        """
+        try:
+            event = self._storage.events.read_at(logical_ts)
+            if event is None:
+                return Result(
+                    success=False,
+                    message=f"No event at logical_ts={logical_ts}",
+                    code=ErrorCode.TASK_NOT_FOUND,
+                )
+
+            ts = datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat()
+            data = dict(event.data)
+            if "artifacts_ref" in data.get("context", {}):
+                ref = data["context"]["artifacts_ref"]
+                content = self._storage.content.get(ref)
+                if content is not None:
+                    data["context"]["artifacts_content"] = content
+
+            return Result(
+                success=True,
+                message=f"Event at logical_ts={logical_ts}",
+                data={
+                    "id": event.id,
+                    "type": event.type.value,
+                    "timestamp": ts,
+                    "logical_ts": event.logical_ts,
+                    "data": data,
+                },
+            )
+
+        except Exception as e:
+            return Result(
+                success=False, message=f"Failed to read event: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
+
+    def diff(self, from_ts: int, to_ts: int) -> Result:
+        """Show events between two logical timestamps (inclusive).
+
+        Args:
+            from_ts: Start of range.
+            to_ts: End of range.
+        """
+        if from_ts > to_ts:
+            return Result(
+                success=False,
+                message=f"from_ts ({from_ts}) must be <= to_ts ({to_ts})",
+                code=ErrorCode.INVALID_INPUT,
+            )
+
+        try:
+            events = self._storage.events.read_range(from_ts, to_ts)
+
+            formatted = []
+            for event in events:
+                ts = datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat()
+                entry: dict[str, Any] = {
+                    "type": event.type.value,
+                    "timestamp": ts,
+                    "logical_ts": event.logical_ts,
+                    "data": event.data,
+                }
+                if event.id:
+                    entry["id"] = event.id
+                formatted.append(entry)
+
+            nodes_changed: set[str] = set()
+            for event in events:
+                nid = event.data.get("node_id", "")
+                if nid:
+                    nodes_changed.add(nid)
+                for nid in event.data.get("new_node_ids", []):
+                    nodes_changed.add(nid)
+                for nid in event.data.get("affected_nodes", []):
+                    nodes_changed.add(nid)
+
+            return Result(
+                success=True,
+                message=f"{len(formatted)} event(s) in range [{from_ts}, {to_ts}]",
+                data={
+                    "events": formatted,
+                    "count": len(formatted),
+                    "from_ts": from_ts,
+                    "to_ts": to_ts,
+                    "nodes_changed": sorted(nodes_changed),
+                },
+            )
+
+        except Exception as e:
+            return Result(
+                success=False, message=f"Failed to read events: {e}", code=ErrorCode.INTERNAL_ERROR
+            )
+
+    def snapshot_at(self, logical_ts: int) -> Result:
+        """Rebuild graph state at a specific logical timestamp.
+
+        Replays events up to and including logical_ts to reconstruct
+        the graph as it was at that point in time.
+
+        Args:
+            logical_ts: Replay up to this point.
+        """
+        try:
+            events = self._storage.events.read_until(logical_ts)
+            if not events:
+                return Result(
+                    success=False,
+                    message=f"No events at or before logical_ts={logical_ts}",
+                    code=ErrorCode.TASK_NOT_FOUND,
+                )
+
+            cascade = replay_events(events, self._storage.content)
+
+            nodes_list: list[dict[str, Any]] = []
+            for nid, node in cascade.nodes.items():
+                node_info: dict[str, Any] = {
+                    "id": nid,
+                    "state": node.state.name,
+                }
+                if node.agent_id:
+                    node_info["agent_id"] = node.agent_id
+                nodes_list.append(node_info)
+
+            return Result(
+                success=True,
+                message=f"Snapshot at logical_ts={logical_ts}: {len(nodes_list)} nodes",
+                data={
+                    "logical_ts": logical_ts,
+                    "events_replayed": len(events),
+                    "nodes": nodes_list,
+                    "node_count": len(nodes_list),
+                },
+            )
+
+        except Exception as e:
+            return Result(
+                success=False,
+                message=f"Failed to build snapshot: {e}",
+                code=ErrorCode.INTERNAL_ERROR,
             )
 
 
