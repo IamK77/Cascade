@@ -74,10 +74,7 @@ class CancellationToken:
         if self._event:
             self._event.set()
         for callback in self._callbacks:
-            try:
-                callback()
-            except Exception:
-                pass
+            callback()
 
     def throw_if_cancelled(self) -> None:
         if self._is_cancelled:
