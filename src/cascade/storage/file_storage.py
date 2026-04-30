@@ -180,44 +180,6 @@ class FileStorage:
         tmp.write_text(content, encoding="utf-8")
         os.replace(tmp, path)
 
-    def save_node(self, cascade: Cascade, node_id: str) -> None:
-        """Save a single node incrementally."""
-        self.base_dir.mkdir(parents=True, exist_ok=True)
-        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-        graph_path = self.base_dir / "graph.json"
-        if graph_path.exists():
-            graph_data = json.loads(graph_path.read_text(encoding="utf-8"))
-        else:
-            graph_data = {"nodes": {}, "edges": []}
-
-        node = cascade.nodes.get(node_id)
-        if not node:
-            return
-
-        node_data: dict[str, Any] = {
-            "id": node.id,
-            "state": node.state.name,
-        }
-
-        if node.agent_id:
-            node_data["agent_id"] = node.agent_id
-
-        if node.context:
-            ctx_data: dict[str, Any] = {}
-            if node.context.critical:
-                ctx_data["critical"] = node.context.critical
-            if node.context.summary:
-                ctx_data["summary"] = node.context.summary
-            if node.context.artifacts:
-                artifacts_path = self._save_artifacts(node_id, node.context.artifacts)
-                ctx_data["artifacts"] = artifacts_path
-            if ctx_data:
-                node_data["context"] = ctx_data
-
-        graph_data["nodes"][node_id] = node_data
-        self._atomic_write(graph_path, json.dumps(graph_data, indent=2, ensure_ascii=False))
-
     # ------------------------------------------------------------------
     # Load
     # ------------------------------------------------------------------

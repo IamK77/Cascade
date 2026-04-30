@@ -100,18 +100,6 @@ class TestFileStorage:
         assert len(dependents) == 1
         assert dependents[0].id == "b"
 
-    def test_save_node_incremental(self, storage, sample_cascade):
-        storage.save(sample_cascade)
-        sample_cascade.nodes["a"].context = Context(
-            critical={"project": "updated"},
-            summary="Updated summary",
-        )
-        storage.save_node(sample_cascade, "a")
-
-        loaded = storage.load()
-        assert loaded.nodes["a"].context.summary == "Updated summary"
-        assert "b" in loaded.nodes
-
     def test_delete(self, storage, sample_cascade):
         storage.save(sample_cascade)
         assert storage.exists()
