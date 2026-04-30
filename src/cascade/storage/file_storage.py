@@ -44,7 +44,7 @@ class LockError(Exception):
     """Raised when lock cannot be acquired."""
 
 
-class GraphStorage:
+class FileStorage:
     """Handles persistence of Cascade structures with file locking.
 
     Storage structure:
@@ -74,11 +74,11 @@ class GraphStorage:
         self.tokens = TokenStore(self.base_dir)
 
     @classmethod
-    def project(cls, base_dir: Path | str | None = None) -> "GraphStorage":
+    def project(cls, base_dir: Path | str | None = None) -> "FileStorage":
         return cls(base_dir=base_dir, scope=StorageScope.PROJECT)
 
     @classmethod
-    def user(cls) -> "GraphStorage":
+    def user(cls) -> "FileStorage":
         return cls(scope=StorageScope.USER)
 
     def exists(self) -> bool:
@@ -122,6 +122,7 @@ class GraphStorage:
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         graph_data: dict[str, Any] = {
+            "epoch": cascade.epoch,
             "nodes": {},
             "edges": [],
             "agent_tasks": {},
@@ -236,6 +237,7 @@ class GraphStorage:
             return None
 
         cascade = Cascade()
+        cascade.epoch = graph_data.get("epoch", 0)
 
         # Load nodes
         for node_id, node_data in graph_data.get("nodes", {}).items():

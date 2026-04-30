@@ -15,7 +15,7 @@
 """LLM Tools for Cascade Scheduler.
 
 Thin wrappers that delegate to CascadeClient. Each tool:
-- Takes (GraphStorage, dict) and returns dict (the LLM serialization boundary)
+- Takes (StorageProtocol, dict) and returns dict (the LLM serialization boundary)
 - Parses dict params, creates a CascadeClient, and calls the typed method
 - Converts Result back to dict
 
@@ -30,7 +30,7 @@ Tool Categories:
 from collections.abc import Callable
 from typing import Any
 
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 __all__ = [
     # Structure operations
@@ -56,7 +56,7 @@ __all__ = [
 ]
 
 # Type alias for tool functions
-ToolFunc = Callable[[GraphStorage, dict[str, Any]], dict[str, Any]]
+ToolFunc = Callable[[StorageProtocol, dict[str, Any]], dict[str, Any]]
 
 
 def get_all_tools() -> dict[str, ToolFunc]:
@@ -92,7 +92,9 @@ def get_all_tools() -> dict[str, ToolFunc]:
     }
 
 
-def execute_tool(storage: GraphStorage, tool_name: str, params: dict[str, Any]) -> dict[str, Any]:
+def execute_tool(
+    storage: StorageProtocol, tool_name: str, params: dict[str, Any]
+) -> dict[str, Any]:
     """Execute a tool by name.
 
     Raises:

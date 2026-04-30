@@ -134,14 +134,19 @@ def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
         return _result_to_dict(r)
 
     task_info = r.data.get("task_info", {})
+    token = r.data.get("token")
     from cascade.view import render_briefing
 
-    return render_briefing(task_info)
+    briefing = render_briefing(task_info)
+    if token is not None:
+        briefing += f"\n---\nfencing_token: {token}\n"
+    return briefing
 
 
 def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
     client = CascadeClient(args.storage)
     agent_id = args.agent if hasattr(args, "agent") and args.agent else None
+    token = args.token if hasattr(args, "token") and args.token is not None else None
 
     if args.success:
         critical = None
@@ -153,6 +158,7 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
         r = client.complete(
             args.task,
             agent_id=agent_id,
+            token=token,
             summary=args.summary or "",
             critical=critical,
             artifacts=args.artifacts or "",
@@ -161,13 +167,14 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
         r = client.fail(
             args.task,
             agent_id=agent_id,
+            token=token,
             reason=args.reason or "",
             cascade=args.cascade,
         )
     elif args.release:
-        r = client.release(args.task, agent_id=agent_id, reason=args.reason or "")
+        r = client.release(args.task, agent_id=agent_id, token=token, reason=args.reason or "")
     else:
-        r = client.complete(args.task, agent_id=agent_id)
+        r = client.complete(args.task, agent_id=agent_id, token=token)
 
     return _result_to_dict(r)
 
@@ -521,6 +528,7 @@ def main() -> None:
     p = sub.add_parser("finish-task", help="Complete, fail, or release a task")
     p.add_argument("--task", "-t", required=True, help="Task ID")
     p.add_argument("--agent", "-a", help="Agent ID (must match the claiming agent)")
+    p.add_argument("--token", type=int, help="Fencing token from get-task (rejects stale writes)")
     p.add_argument("--success", action="store_true", help="Mark as completed")
     p.add_argument("--fail", action="store_true", help="Mark as failed")
     p.add_argument("--release", action="store_true", help="Release back to READY")

@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def remove_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def remove_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Remove a node from the DAG.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - node_id (str, required)
             - cascade (bool, optional): Also remove dependents (default: False)

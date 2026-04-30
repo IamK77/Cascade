@@ -14,7 +14,7 @@
 
 """Cascade - A DAG-based multi-agent task scheduling framework."""
 
-__version__ = "0.4.4"
+__version__ = "0.4.5"
 
 from cascade.client import CascadeClient
 from cascade.context.cancellation import CancellationToken, CancelledError
@@ -22,7 +22,8 @@ from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.storage.graph_storage import GraphStorage, LockError
+from cascade.storage.file_storage import FileStorage, LockError
+from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
 from cascade.types import Context, ContextEntry, ContextKV, Contract, EdgeId, TokenStatus
 from cascade.view import get_node_view
@@ -52,6 +53,7 @@ __all__ = [
     # View
     "get_node_view",
     # Storage
-    "GraphStorage",
+    "FileStorage",
+    "StorageProtocol",
     "LockError",
 ]

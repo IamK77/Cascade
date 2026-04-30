@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def check_timeouts(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def check_timeouts(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Scan for timed-out tasks and release them.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - default_timeout (float, optional): Timeout in seconds applied
               to ACTIVE tasks that don't have a per-task timeout set.

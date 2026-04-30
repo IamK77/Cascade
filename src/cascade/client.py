@@ -43,7 +43,8 @@ from cascade.events import EventType
 from cascade.operations.remove import RemoveOperation
 from cascade.operations.rework import ReworkOperation
 from cascade.operations.split import SplitOperation
-from cascade.storage.graph_storage import GraphStorage, LockError
+from cascade.storage.file_storage import FileStorage, LockError
+from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
 from cascade.types import Context, Contract
 from cascade.view import get_node_view
@@ -62,6 +63,7 @@ class TaskView:
     upstream: list[dict[str, Any]] = field(default_factory=list)
     promises: list[dict[str, Any]] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
+    token: int | None = None
 
 
 @dataclass
@@ -112,6 +114,7 @@ class ErrorCode:
     DEP_NOT_FOUND = "DEP_NOT_FOUND"
     BATCH_INVALID_SPEC = "BATCH_INVALID_SPEC"
     INVALID_INPUT = "INVALID_INPUT"
+    STALE_TOKEN = "STALE_TOKEN"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
@@ -127,11 +130,14 @@ class CascadeClient:
     Tools and CLI delegate here.
     """
 
-    def __init__(self, path: str | Path = ".cascade"):
-        self._storage = GraphStorage(path)
+    def __init__(self, storage: StorageProtocol | str | Path = ".cascade"):
+        if isinstance(storage, (str, Path)):
+            self._storage: StorageProtocol = FileStorage(storage)
+        else:
+            self._storage = storage
 
     @property
-    def storage(self) -> GraphStorage:
+    def storage(self) -> StorageProtocol:
         return self._storage
 
     # -- Structure ----------------------------------------------------------
@@ -686,6 +692,7 @@ class CascadeClient:
             upstream=info.get("upstream", []),
             promises=info.get("promises", []),
             raw=info,
+            token=r.data.get("token"),
         )
 
     def _claim_inner(
@@ -850,6 +857,7 @@ class CascadeClient:
                 if timeout is not None:
                     node.timeout = float(timeout)
 
+            token = graph.increment_epoch()
             task_info = get_node_view(graph, task_id)
             self._storage.save(graph)
             self._storage.tokens.create(
@@ -865,6 +873,7 @@ class CascadeClient:
                     "state": "ACTIVE",
                     "task_info": task_info,
                     "assigned_to": agent_id,
+                    "token": token,
                 },
             )
 
@@ -873,6 +882,7 @@ class CascadeClient:
         task_id: str,
         *,
         agent_id: str | None = None,
+        token: int | None = None,
         summary: str = "",
         critical: dict[str, Any] | None = None,
         artifacts: str = "",
@@ -882,6 +892,7 @@ class CascadeClient:
         Args:
             task_id: Task to complete.
             agent_id: Agent calling finish — must match the claiming agent.
+            token: Fencing token from claim. If provided, rejects stale writes.
             summary: Brief description of what was done (2-hop propagation).
             critical: Structured KV data for downstream (infinite propagation).
             artifacts: Full content (infinite propagation).
@@ -889,6 +900,7 @@ class CascadeClient:
         return self._finish(
             task_id,
             agent_id=agent_id,
+            token=token,
             is_success=True,
             is_release=False,
             summary=summary,
@@ -901,6 +913,7 @@ class CascadeClient:
         task_id: str,
         *,
         agent_id: str | None = None,
+        token: int | None = None,
         reason: str = "",
         cascade: bool = False,
     ) -> Result:
@@ -909,12 +922,14 @@ class CascadeClient:
         Args:
             task_id: Task that failed.
             agent_id: Agent calling finish — must match the claiming agent.
+            token: Fencing token from claim. If provided, rejects stale writes.
             reason: What went wrong.
             cascade: Also fail all dependent tasks.
         """
         return self._finish(
             task_id,
             agent_id=agent_id,
+            token=token,
             is_success=False,
             is_release=False,
             summary=reason,
@@ -926,6 +941,7 @@ class CascadeClient:
         task_id: str,
         *,
         agent_id: str | None = None,
+        token: int | None = None,
         reason: str = "",
     ) -> Result:
         """Release a task back to READY.
@@ -933,11 +949,13 @@ class CascadeClient:
         Args:
             task_id: Task to release.
             agent_id: Agent calling release — must match the claiming agent.
+            token: Fencing token from claim. If provided, rejects stale writes.
             reason: Why the agent is giving up.
         """
         return self._finish(
             task_id,
             agent_id=agent_id,
+            token=token,
             is_success=False,
             is_release=True,
             summary=reason,
@@ -948,6 +966,7 @@ class CascadeClient:
         task_id: str,
         *,
         agent_id: str | None = None,
+        token: int | None = None,
         is_success: bool = True,
         is_release: bool = False,
         summary: str = "",
@@ -959,6 +978,18 @@ class CascadeClient:
         try:
             with self._storage.lock():
                 graph = self._storage.load() or Cascade()
+
+                if token is not None and token < graph.epoch:
+                    return Result(
+                        success=False,
+                        message=(
+                            f"Stale fencing token: provided {token}, "
+                            f"current epoch is {graph.epoch}. "
+                            f"The graph has been modified since this task was claimed."
+                        ),
+                        data={"provided_token": token, "current_epoch": graph.epoch},
+                        code=ErrorCode.STALE_TOKEN,
+                    )
 
                 if task_id not in graph.nodes:
                     return Result(
@@ -987,6 +1018,8 @@ class CascadeClient:
                         data={"claimed_by": node.agent_id, "caller": agent_id},
                         code=ErrorCode.WRONG_AGENT,
                     )
+
+                graph.increment_epoch()
 
                 if is_release:
                     node.update_state(NodeState.READY)
@@ -1476,13 +1509,16 @@ class CascadeClient:
             formatted = []
             for event in events:
                 ts = datetime.fromtimestamp(event.timestamp, tz=UTC).isoformat()
-                formatted.append(
-                    {
-                        "type": event.type.value,
-                        "timestamp": ts,
-                        "data": event.data,
-                    }
-                )
+                entry: dict[str, Any] = {
+                    "type": event.type.value,
+                    "timestamp": ts,
+                    "data": event.data,
+                }
+                if event.id:
+                    entry["id"] = event.id
+                if event.logical_ts:
+                    entry["logical_ts"] = event.logical_ts
+                formatted.append(entry)
 
             return Result(
                 success=True,

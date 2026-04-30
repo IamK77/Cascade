@@ -25,6 +25,7 @@ object per line). It provides:
 
 import json
 import time
+import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -59,12 +60,16 @@ class Event:
 
     type: EventType
     timestamp: float
+    id: str = ""
+    logical_ts: int = 0
     data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "id": self.id,
             "type": self.type.value,
             "timestamp": self.timestamp,
+            "logical_ts": self.logical_ts,
             "data": self.data,
         }
 
@@ -73,6 +78,8 @@ class Event:
         return cls(
             type=EventType(d["type"]),
             timestamp=d["timestamp"],
+            id=d.get("id", ""),
+            logical_ts=d.get("logical_ts", 0),
             data=d.get("data", {}),
         )
 
@@ -81,11 +88,47 @@ class EventStore:
     """Append-only event log backed by JSONL file.
 
     Events are appended one per line. Reading loads all events.
-    The store is designed to be used alongside GraphStorage.
+    The store is designed to be used alongside FileStorage.
+
+    Maintains a Lamport clock: each emit increments the counter.
+    Call ``observe(logical_ts)`` when receiving events from another
+    store to advance the clock past the observed timestamp.
     """
 
     def __init__(self, base_dir: Path | str):
         self._path = Path(base_dir) / "events.jsonl"
+        self._lamport: int = self._recover_lamport()
+
+    def _recover_lamport(self) -> int:
+        """Read the last event's logical_ts to resume the counter across restarts."""
+        if not self._path.exists():
+            return 0
+        last_line = ""
+        try:
+            with open(self._path, "rb") as f:
+                f.seek(0, 2)
+                pos = f.tell()
+                while pos > 0:
+                    pos -= 1
+                    f.seek(pos)
+                    ch = f.read(1)
+                    if ch == b"\n" and last_line:
+                        break
+                    last_line = ch.decode() + last_line
+        except OSError:
+            return 0
+        last_line = last_line.strip()
+        if not last_line:
+            return 0
+        try:
+            return int(json.loads(last_line).get("logical_ts", 0))
+        except (json.JSONDecodeError, ValueError):
+            return 0
+
+    def observe(self, remote_ts: int) -> None:
+        """Advance clock to at least ``remote_ts`` (Lamport rule on receive)."""
+        if remote_ts > self._lamport:
+            self._lamport = remote_ts
 
     def append(self, event: Event) -> None:
         """Append an event to the log."""
@@ -95,7 +138,14 @@ class EventStore:
 
     def emit(self, event_type: EventType, **data: Any) -> Event:
         """Create, append, and return an event in one call."""
-        event = Event(type=event_type, timestamp=time.time(), data=data)
+        self._lamport += 1
+        event = Event(
+            type=event_type,
+            timestamp=time.time(),
+            id=uuid.uuid4().hex,
+            logical_ts=self._lamport,
+            data=data,
+        )
         self.append(event)
         return event
 

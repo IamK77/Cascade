@@ -17,15 +17,15 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 from cascade.types import Contract
 
 
-def add_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def add_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Add a new node to the Cascade.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - node_id (str, required): Unique identifier
             - dependencies (list[str], optional): Node IDs this node depends on

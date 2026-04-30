@@ -24,7 +24,7 @@ from cascade.context.context import Context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.file_storage import FileStorage
 
 
 @pytest.fixture
@@ -35,9 +35,9 @@ def client(temp_storage):
 
 @pytest.fixture
 def temp_storage():
-    """Create a temporary GraphStorage for testing."""
+    """Create a temporary FileStorage for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        storage = GraphStorage(Path(tmpdir))
+        storage = FileStorage(Path(tmpdir))
         yield storage
 
 

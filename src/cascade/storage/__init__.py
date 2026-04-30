@@ -14,6 +14,7 @@
 
 """Storage components for Cascade persistence."""
 
-from cascade.storage.graph_storage import GraphStorage, StorageScope
+from cascade.storage.file_storage import FileStorage, StorageScope
+from cascade.storage.protocol import StorageProtocol
 
-__all__ = ["GraphStorage", "StorageScope"]
+__all__ = ["FileStorage", "StorageProtocol", "StorageScope"]

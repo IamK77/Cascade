@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def split_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def split_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Split a node into multiple new nodes.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - parent_id (str, required)
             - new_nodes (list[dict], required): Each dict has node_id

@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def get_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def get_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Get a task to work on.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - agent_id (str, required): ID of the agent requesting work
             - task_id (str, optional): Specific task to get

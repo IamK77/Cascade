@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def check_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def check_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Check whether a claimed task is still valid.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - task_id (str, required): The task to check
     """

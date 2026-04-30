@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def history(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def history(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Query the event history.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - node_id (str, optional): Filter events for a specific node
             - event_type (str, optional): Filter by event type

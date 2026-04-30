@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def rework(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def rework(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Request rework of an upstream node's output.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - source_node_id (str, required)
             - corrective_node_id (str, required)

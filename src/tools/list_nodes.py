@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def list_nodes(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def list_nodes(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """List all nodes in the DAG with basic information.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - state_filter (str, optional): Filter by state
             - include_pending_only (bool, optional): Only show PENDING nodes

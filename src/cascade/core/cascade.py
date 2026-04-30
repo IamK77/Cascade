@@ -46,9 +46,19 @@ class Cascade:
     """
 
     nodes: dict[str, Node] = field(default_factory=dict)
+    epoch: int = 0
     _adjacency: dict[str, set[str]] = field(default_factory=dict, repr=False)
     _reverse: dict[str, set[str]] = field(default_factory=dict, repr=False)
     _contracts: dict[EdgeId, Contract] = field(default_factory=dict, repr=False)
+
+    # ------------------------------------------------------------------
+    # Epoch — monotonic version counter for fencing
+    # ------------------------------------------------------------------
+
+    def increment_epoch(self) -> int:
+        """Advance epoch by 1 and return the new value."""
+        self.epoch += 1
+        return self.epoch
 
     # ------------------------------------------------------------------
     # Computed properties — no redundant state

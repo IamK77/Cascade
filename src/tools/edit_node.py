@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def edit_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def edit_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Edit an existing node's properties.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - node_id (str, required)
             - state (str, optional): New state

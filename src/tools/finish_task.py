@@ -17,10 +17,10 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def finish_task(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def finish_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Mark a task as finished.
 
     Three outcomes:

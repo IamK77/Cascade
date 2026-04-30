@@ -247,7 +247,7 @@ class TestClaim:
 
     def test_claim_retries_on_lock_contention(self, client: CascadeClient, monkeypatch):
         """Lock contention should retry up to 3 times before failing."""
-        from cascade.storage.graph_storage import LockError
+        from cascade.storage.file_storage import LockError
 
         monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
 
@@ -268,7 +268,7 @@ class TestClaim:
 
     def test_claim_lock_failure_after_retries(self, client: CascadeClient, monkeypatch):
         """All retries failing should return clear error."""
-        from cascade.storage.graph_storage import LockError
+        from cascade.storage.file_storage import LockError
 
         monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
 

@@ -17,14 +17,14 @@
 from typing import Any
 
 from cascade.client import CascadeClient
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.protocol import StorageProtocol
 
 
-def refine_node(storage: GraphStorage, params: dict[str, Any]) -> dict[str, Any]:
+def refine_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
     """Add a new dependency to an existing node.
 
     Args:
-        storage: GraphStorage instance
+        storage: StorageProtocol instance
         params: Dictionary containing:
             - node_id (str, required)
             - dependency_id (str, required)

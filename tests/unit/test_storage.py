@@ -24,11 +24,11 @@ from cascade.context.context import Context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.storage.graph_storage import GraphStorage
+from cascade.storage.file_storage import FileStorage
 
 
-class TestGraphStorage:
-    """Tests for GraphStorage."""
+class TestFileStorage:
+    """Tests for FileStorage."""
 
     @pytest.fixture
     def temp_dir(self):
@@ -37,7 +37,7 @@ class TestGraphStorage:
 
     @pytest.fixture
     def storage(self, temp_dir):
-        return GraphStorage(base_dir=temp_dir)
+        return FileStorage(base_dir=temp_dir)
 
     @pytest.fixture
     def sample_cascade(self):
