@@ -41,15 +41,12 @@ class RemoveOperation(NodeOperation):
         if cascade:
             to_remove = self._collect_descendants(node_id)
             for nid in to_remove:
-                try:
-                    for dep in self._cascade.get_dependents(nid):
-                        affected_nodes.add(dep.id)
-                    for dep in self._cascade.get_dependencies(nid):
-                        affected_nodes.add(dep.id)
-                    self._cascade.remove_node(nid)
-                    affected_nodes.add(nid)
-                except ValueError:
-                    pass
+                for dep in self._cascade.get_dependents(nid):
+                    affected_nodes.add(dep.id)
+                for dep in self._cascade.get_dependencies(nid):
+                    affected_nodes.add(dep.id)
+                self._cascade.remove_node(nid)
+                affected_nodes.add(nid)
         else:
             for dep in self._cascade.get_dependents(node_id):
                 affected_nodes.add(dep.id)
