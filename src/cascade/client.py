@@ -92,6 +92,21 @@ class Result:
     data: dict[str, Any] = field(default_factory=dict)
     code: str | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"success": self.success, "message": self.message, "data": self.data}
+        if self.code:
+            d["code"] = self.code
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Result:
+        return cls(
+            success=d["success"],
+            message=d["message"],
+            data=d.get("data", {}),
+            code=d.get("code"),
+        )
+
 
 class ErrorCode:
     """Stable error codes for failure Results.
@@ -136,6 +151,20 @@ class CascadeClient:
         else:
             self._storage = storage
 
+    def _check_op(self, op_id: str | None) -> Result | None:
+        """If op_id was already executed, return the cached Result."""
+        if op_id is None:
+            return None
+        cached = self._storage.ops.get(op_id)
+        if cached is not None:
+            return Result.from_dict(cached)
+        return None
+
+    def _record_op(self, op_id: str | None, result: Result) -> None:
+        """Record an executed operation for idempotency."""
+        if op_id is not None:
+            self._storage.ops.record(op_id, result.to_dict())
+
     @property
     def storage(self) -> StorageProtocol:
         return self._storage
@@ -148,6 +177,7 @@ class CascadeClient:
         *,
         deps: dict[str, Contract] | None = None,
         dependents: dict[str, Contract] | None = None,
+        op_id: str | None = None,
     ) -> Result:
         """Add a task node to the DAG.
 
@@ -157,7 +187,11 @@ class CascadeClient:
                 Key is the dependency node_id, value is a Contract.
             dependents: Dependents with contracts.
                 Key is the dependent node_id, value is a Contract.
+            op_id: Idempotency key. Retries with the same op_id return cached result.
         """
+        cached = self._check_op(op_id)
+        if cached is not None:
+            return cached
         try:
             with self._storage.lock():
                 cascade = self._storage.load() or Cascade()
@@ -171,6 +205,7 @@ class CascadeClient:
                     dependencies=list(deps.keys()) if deps else [],
                     dependents=list(dependents.keys()) if dependents else [],
                 )
+                self._record_op(op_id, r)
                 return r
         except Exception as e:
             return Result(
@@ -883,6 +918,7 @@ class CascadeClient:
         *,
         agent_id: str | None = None,
         token: int | None = None,
+        op_id: str | None = None,
         summary: str = "",
         critical: dict[str, Any] | None = None,
         artifacts: str = "",
@@ -893,6 +929,7 @@ class CascadeClient:
             task_id: Task to complete.
             agent_id: Agent calling finish — must match the claiming agent.
             token: Fencing token from claim. If provided, rejects stale writes.
+            op_id: Idempotency key. Retries with the same op_id return cached result.
             summary: Brief description of what was done (2-hop propagation).
             critical: Structured KV data for downstream (infinite propagation).
             artifacts: Full content (infinite propagation).
@@ -901,6 +938,7 @@ class CascadeClient:
             task_id,
             agent_id=agent_id,
             token=token,
+            op_id=op_id,
             is_success=True,
             is_release=False,
             summary=summary,
@@ -914,6 +952,7 @@ class CascadeClient:
         *,
         agent_id: str | None = None,
         token: int | None = None,
+        op_id: str | None = None,
         reason: str = "",
         cascade: bool = False,
     ) -> Result:
@@ -923,6 +962,7 @@ class CascadeClient:
             task_id: Task that failed.
             agent_id: Agent calling finish — must match the claiming agent.
             token: Fencing token from claim. If provided, rejects stale writes.
+            op_id: Idempotency key. Retries with the same op_id return cached result.
             reason: What went wrong.
             cascade: Also fail all dependent tasks.
         """
@@ -930,6 +970,7 @@ class CascadeClient:
             task_id,
             agent_id=agent_id,
             token=token,
+            op_id=op_id,
             is_success=False,
             is_release=False,
             summary=reason,
@@ -942,6 +983,7 @@ class CascadeClient:
         *,
         agent_id: str | None = None,
         token: int | None = None,
+        op_id: str | None = None,
         reason: str = "",
     ) -> Result:
         """Release a task back to READY.
@@ -950,12 +992,14 @@ class CascadeClient:
             task_id: Task to release.
             agent_id: Agent calling release — must match the claiming agent.
             token: Fencing token from claim. If provided, rejects stale writes.
+            op_id: Idempotency key. Retries with the same op_id return cached result.
             reason: Why the agent is giving up.
         """
         return self._finish(
             task_id,
             agent_id=agent_id,
             token=token,
+            op_id=op_id,
             is_success=False,
             is_release=True,
             summary=reason,
@@ -967,6 +1011,7 @@ class CascadeClient:
         *,
         agent_id: str | None = None,
         token: int | None = None,
+        op_id: str | None = None,
         is_success: bool = True,
         is_release: bool = False,
         summary: str = "",
@@ -975,6 +1020,9 @@ class CascadeClient:
         should_cascade: bool = False,
     ) -> Result:
         """Internal finish logic shared by complete/fail/release."""
+        cached = self._check_op(op_id)
+        if cached is not None:
+            return cached
         try:
             with self._storage.lock():
                 graph = self._storage.load() or Cascade()
@@ -1036,11 +1084,13 @@ class CascadeClient:
                     self._storage.events.emit(
                         EventType.TASK_RELEASED, node_id=task_id, reason=summary
                     )
-                    return Result(
+                    r = Result(
                         success=True,
                         message=message,
                         data={"task_id": task_id, "outcome": "RELEASED", "state": "READY"},
                     )
+                    self._record_op(op_id, r)
+                    return r
 
                 elif is_success:
                     node.update_state(NodeState.COMPLETED)
@@ -1069,7 +1119,7 @@ class CascadeClient:
                     self._storage.events.emit(
                         EventType.TASK_COMPLETED, node_id=task_id, unblocked=unblocked
                     )
-                    return Result(
+                    r = Result(
                         success=True,
                         message=message,
                         data={
@@ -1078,6 +1128,8 @@ class CascadeClient:
                             "unblocked_tasks": unblocked,
                         },
                     )
+                    self._record_op(op_id, r)
+                    return r
 
                 else:
                     affected = [task_id]
@@ -1116,7 +1168,7 @@ class CascadeClient:
                         affected=affected,
                         cascade=should_cascade,
                     )
-                    return Result(
+                    r = Result(
                         success=True,
                         message=message,
                         data={
@@ -1126,6 +1178,8 @@ class CascadeClient:
                             "cascade": should_cascade,
                         },
                     )
+                    self._record_op(op_id, r)
+                    return r
 
         except Exception as e:
             return Result(
