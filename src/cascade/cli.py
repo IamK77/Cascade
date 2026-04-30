@@ -24,8 +24,8 @@ import sys
 from typing import Any
 
 from cascade import __version__
-from cascade.client import CascadeClient, Result
-from cascade.types import Contract
+from cascade.client import CascadeClient
+from cascade.types import Contract, Result
 
 
 def _result_to_dict(r: Result) -> dict[str, Any]:

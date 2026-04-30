@@ -195,3 +195,82 @@ class DependencyInfo(TypedDict):
     node_id: str
     expectation: str | None
     promise: str | None
+
+
+# ---------------------------------------------------------------------------
+# Client result types — value types returned by CascadeClient methods.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TaskView:
+    """What an agent sees when claiming a task."""
+
+    id: str
+    state: str
+    upstream: list[UpstreamEntry] = field(default_factory=list)
+    promises: list[PromiseEntry] = field(default_factory=list)
+    raw: dict[str, Any] = field(default_factory=dict)
+    token: int | None = None
+
+
+@dataclass
+class NodeInfo:
+    """Summary of a node's state."""
+
+    id: str
+    state: str
+    pending_dependencies: int = 0
+    agent_id: str | None = None
+    active_seconds: float | None = None
+    stale: bool = False
+
+
+@dataclass
+class Result:
+    """Generic operation result.
+
+    On failure, ``code`` carries a stable enum value so callers can branch
+    programmatically without parsing ``message``.
+    """
+
+    success: bool
+    message: str
+    data: dict[str, Any] = field(default_factory=dict)
+    code: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {"success": self.success, "message": self.message, "data": self.data}
+        if self.code:
+            d["code"] = self.code
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Result":
+        return cls(
+            success=d["success"],
+            message=d["message"],
+            data=d.get("data", {}),
+            code=d.get("code"),
+        )
+
+
+class ErrorCode:
+    """Stable error codes for failure Results."""
+
+    MISSING_AGENT_ID = "MISSING_AGENT_ID"
+    TASK_NOT_FOUND = "TASK_NOT_FOUND"
+    TASK_NOT_READY = "TASK_NOT_READY"
+    TASK_ALREADY_ACTIVE = "TASK_ALREADY_ACTIVE"
+    TASK_TERMINAL = "TASK_TERMINAL"
+    TASK_NOT_ACTIVE = "TASK_NOT_ACTIVE"
+    WRONG_AGENT = "WRONG_AGENT"
+    ALREADY_HAS_ACTIVE = "ALREADY_HAS_ACTIVE"
+    NO_READY_TASKS = "NO_READY_TASKS"
+    LOCK_CONTENTION = "LOCK_CONTENTION"
+    NODE_EXISTS = "NODE_EXISTS"
+    DEP_NOT_FOUND = "DEP_NOT_FOUND"
+    BATCH_INVALID_SPEC = "BATCH_INVALID_SPEC"
+    INVALID_INPUT = "INVALID_INPUT"
+    STALE_TOKEN = "STALE_TOKEN"
+    INTERNAL_ERROR = "INTERNAL_ERROR"

@@ -33,7 +33,11 @@ from cascade.types import (
     DeliveredContext,
     DependencyInfo,
     EdgeId,
+    ErrorCode,
+    NodeInfo,
     PromiseEntry,
+    Result,
+    TaskView,
     TokenStatus,
     UpstreamEntry,
 )
@@ -50,7 +54,11 @@ __all__ = [
     "DeliveredContext",
     "DependencyInfo",
     "EdgeId",
+    "ErrorCode",
+    "NodeInfo",
     "PromiseEntry",
+    "Result",
+    "TaskView",
     "TokenStatus",
     "UpstreamEntry",
     # Core

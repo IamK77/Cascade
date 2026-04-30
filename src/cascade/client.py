@@ -31,7 +31,8 @@ lives here — tools and CLI are thin wrappers that delegate to this.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -46,91 +47,44 @@ from cascade.operations.split import SplitOperation
 from cascade.storage.file_storage import FileStorage, LockError
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
-from cascade.types import Context, Contract, PromiseEntry, UpstreamEntry
+from cascade.types import (
+    Context,
+    Contract,
+    ErrorCode,
+    NodeInfo,
+    Result,
+    TaskView,
+)
 from cascade.view import get_node_view
 
 # ---------------------------------------------------------------------------
-# Result types
+# Transaction helper
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class TaskView:
-    """What an agent sees when claiming a task."""
+class _Tx:
+    """Mutation transaction — holds graph, handles emit/save/op_id."""
 
-    id: str
-    state: str
-    upstream: list[UpstreamEntry] = field(default_factory=list)
-    promises: list[PromiseEntry] = field(default_factory=list)
-    raw: dict[str, Any] = field(default_factory=dict)
-    token: int | None = None
+    def __init__(self, graph: Cascade, storage: StorageProtocol, op_id: str | None):
+        self.graph = graph
+        self._storage = storage
+        self._op_id = op_id
+        self._dirty = False
 
+    def emit(self, event_type: EventType, **data: Any) -> None:
+        self._storage.events.emit(event_type, logical_ts=self._storage.next_lamport(), **data)
+        self._dirty = True
 
-@dataclass
-class NodeInfo:
-    """Summary of a node's state."""
+    def save(self) -> None:
+        self._storage.save(self.graph)
 
-    id: str
-    state: str
-    pending_dependencies: int = 0
-    agent_id: str | None = None
-    active_seconds: float | None = None
-    stale: bool = False
-
-
-@dataclass
-class Result:
-    """Generic operation result.
-
-    On failure, `code` carries a stable enum value so callers can branch
-    programmatically without parsing `message`. See ErrorCode for the
-    exhaustive list.
-    """
-
-    success: bool
-    message: str
-    data: dict[str, Any] = field(default_factory=dict)
-    code: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"success": self.success, "message": self.message, "data": self.data}
-        if self.code:
-            d["code"] = self.code
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> Result:
-        return cls(
-            success=d["success"],
-            message=d["message"],
-            data=d.get("data", {}),
-            code=d.get("code"),
-        )
-
-
-class ErrorCode:
-    """Stable error codes for failure Results.
-
-    Use these on every `Result(success=False, ...)` so consumers (agent
-    prompts, scripts) can dispatch on a fixed enum rather than message text.
-    """
-
-    MISSING_AGENT_ID = "MISSING_AGENT_ID"
-    TASK_NOT_FOUND = "TASK_NOT_FOUND"
-    TASK_NOT_READY = "TASK_NOT_READY"
-    TASK_ALREADY_ACTIVE = "TASK_ALREADY_ACTIVE"
-    TASK_TERMINAL = "TASK_TERMINAL"
-    TASK_NOT_ACTIVE = "TASK_NOT_ACTIVE"
-    WRONG_AGENT = "WRONG_AGENT"
-    ALREADY_HAS_ACTIVE = "ALREADY_HAS_ACTIVE"
-    NO_READY_TASKS = "NO_READY_TASKS"
-    LOCK_CONTENTION = "LOCK_CONTENTION"
-    NODE_EXISTS = "NODE_EXISTS"
-    DEP_NOT_FOUND = "DEP_NOT_FOUND"
-    BATCH_INVALID_SPEC = "BATCH_INVALID_SPEC"
-    INVALID_INPUT = "INVALID_INPUT"
-    STALE_TOKEN = "STALE_TOKEN"
-    INTERNAL_ERROR = "INTERNAL_ERROR"
+    def ok(self, result: Result) -> Result:
+        """Finalize a successful mutation: save graph, record op, return result."""
+        if self._dirty:
+            self._storage.save(self.graph)
+        if self._op_id is not None:
+            self._storage.ops.record(self._op_id, result.to_dict())
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +105,8 @@ class CascadeClient:
         else:
             self._storage = storage
 
-    def _check_op(self, op_id: str | None) -> Result | None:
-        """If op_id was already executed, return the cached Result."""
+    def _cached_op(self, op_id: str | None) -> Result | None:
+        """Return cached result for a previously executed op_id."""
         if op_id is None:
             return None
         cached = self._storage.ops.get(op_id)
@@ -160,10 +114,22 @@ class CascadeClient:
             return Result.from_dict(cached)
         return None
 
-    def _record_op(self, op_id: str | None, result: Result) -> None:
-        """Record an executed operation for idempotency."""
-        if op_id is not None:
-            self._storage.ops.record(op_id, result.to_dict())
+    @contextmanager
+    def _mutate(self, op_id: str | None = None) -> Generator[_Tx, None, None]:
+        """Transaction context: lock, load, yield _Tx.
+
+        Usage:
+            cached = self._cached_op(op_id)
+            if cached:
+                return cached
+            with self._mutate(op_id) as tx:
+                # tx.graph is loaded, lock is held
+                tx.emit(EventType.XXX, ...)
+                return tx.ok(Result(...))
+        """
+        with self._storage.lock():
+            graph = self._storage.load() or Cascade()
+            yield _Tx(graph, self._storage, op_id)
 
     @property
     def storage(self) -> StorageProtocol:
@@ -189,18 +155,16 @@ class CascadeClient:
                 Key is the dependent node_id, value is a Contract.
             op_id: Idempotency key. Retries with the same op_id return cached result.
         """
-        cached = self._check_op(op_id)
+        cached = self._cached_op(op_id)
         if cached is not None:
             return cached
         try:
-            with self._storage.lock():
-                cascade = self._storage.load() or Cascade()
-                r = self._add_locked(cascade, node_id, deps, dependents)
+            with self._mutate(op_id) as tx:
+                r = self._add_locked(tx.graph, node_id, deps, dependents)
                 if not r.success:
                     return r
-                self._storage.events.emit(
+                tx.emit(
                     EventType.NODE_ADDED,
-                    logical_ts=self._storage.next_lamport(),
                     node_id=node_id,
                     dependencies=list(deps.keys()) if deps else [],
                     dependents=list(dependents.keys()) if dependents else [],
@@ -213,9 +177,7 @@ class CascadeClient:
                         for k, v in (dependents or {}).items()
                     ],
                 )
-                self._storage.save(cascade)
-                self._record_op(op_id, r)
-                return r
+                return tx.ok(r)
         except Exception as e:
             return Result(
                 success=False, message=f"Operation failed: {e}", code=ErrorCode.INTERNAL_ERROR
@@ -238,8 +200,7 @@ class CascadeClient:
             return Result(success=True, message="No nodes to add", data={"added": []})
 
         try:
-            with self._storage.lock():
-                cascade = self._storage.load() or Cascade()
+            with self._mutate() as tx:
                 added: list[dict[str, Any]] = []
 
                 for spec in specs:
@@ -251,7 +212,7 @@ class CascadeClient:
                             code=ErrorCode.BATCH_INVALID_SPEC,
                         )
                     r = self._add_locked(
-                        cascade,
+                        tx.graph,
                         nid,
                         spec.get("deps"),
                         spec.get("dependents"),
@@ -281,16 +242,15 @@ class CascadeClient:
                     )
 
                 for entry in added:
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.NODE_ADDED,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=entry["node_id"],
                         dependencies=entry["deps"],
                         dependents=entry["dependents"],
                         deps_contracts=entry.get("deps_contracts", []),
                         dependent_contracts=entry.get("dependent_contracts", []),
                     )
-                self._storage.save(cascade)
+                tx.save()
 
                 return Result(
                     success=True,
@@ -382,6 +342,7 @@ class CascadeClient:
         *,
         cascade: bool = False,
         reason: str = "",
+        op_id: str | None = None,
     ) -> Result:
         """Remove a node from the DAG.
 
@@ -389,19 +350,21 @@ class CascadeClient:
             node_id: Node to remove.
             cascade: Also remove all dependents.
             reason: Why -- recorded in event log.
+            op_id: Idempotency key.
         """
+        cached = self._cached_op(op_id)
+        if cached is not None:
+            return cached
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                if node_id not in graph.nodes:
+            with self._mutate(op_id) as tx:
+                if node_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Node {node_id} not found",
                         code=ErrorCode.TASK_NOT_FOUND,
                     )
 
-                node = graph.nodes[node_id]
+                node = tx.graph.nodes[node_id]
                 if node.state == NodeState.ACTIVE:
                     return Result(
                         success=False,
@@ -416,7 +379,7 @@ class CascadeClient:
                 if cascade:
                     active_descendants = [
                         dep.id
-                        for dep in graph.get_dependents(node_id)
+                        for dep in tx.graph.get_dependents(node_id)
                         if dep.state == NodeState.ACTIVE
                     ]
                     if active_descendants:
@@ -430,19 +393,18 @@ class CascadeClient:
                             code=ErrorCode.TASK_ALREADY_ACTIVE,
                         )
 
-                operation = RemoveOperation(graph)
+                operation = RemoveOperation(tx.graph)
                 result = operation.execute(node_id=node_id, cascade=cascade)
 
                 if result.success:
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.NODE_REMOVED,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=node_id,
                         cascade=cascade,
                         affected_nodes=result.affected_nodes,
                         reason=reason,
                     )
-                self._storage.save(graph)
+                tx.save()
                 return Result(
                     success=result.success,
                     message=result.message,
@@ -464,6 +426,7 @@ class CascadeClient:
         into: list[str],
         *,
         reason: str = "",
+        op_id: str | None = None,
     ) -> Result:
         """Split a node into multiple subtasks.
 
@@ -471,6 +434,7 @@ class CascadeClient:
             node_id: Node to split (must not be ACTIVE).
             into: List of new node IDs to replace it.
             reason: Why -- recorded in event log.
+            op_id: Idempotency key.
         """
         if not into:
             return Result(
@@ -478,19 +442,20 @@ class CascadeClient:
                 message="new_nodes must be a non-empty list",
                 code=ErrorCode.INVALID_INPUT,
             )
+        cached = self._cached_op(op_id)
+        if cached is not None:
+            return cached
 
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                if node_id not in graph.nodes:
+            with self._mutate(op_id) as tx:
+                if node_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Parent node {node_id} not found",
                         code=ErrorCode.TASK_NOT_FOUND,
                     )
 
-                parent = graph.nodes[node_id]
+                parent = tx.graph.nodes[node_id]
                 if parent.state == NodeState.ACTIVE:
                     return Result(
                         success=False,
@@ -505,18 +470,17 @@ class CascadeClient:
                 parent_state = parent.state
                 new_nodes = [Node(id=nid, state=parent_state) for nid in into]
 
-                operation = SplitOperation(graph)
+                operation = SplitOperation(tx.graph)
                 result = operation.execute(parent_id=node_id, new_nodes=new_nodes)
 
                 if result.success:
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.NODE_SPLIT,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=node_id,
                         new_node_ids=result.data.new_node_ids if result.data else [],
                         reason=reason,
                     )
-                self._storage.save(graph)
+                tx.save()
                 return Result(
                     success=result.success,
                     message=result.message,
@@ -540,6 +504,7 @@ class CascadeClient:
         promise: str,
         *,
         reason: str = "",
+        op_id: str | None = None,
     ) -> Result:
         """Add a dependency to an existing node.
 
@@ -549,6 +514,7 @@ class CascadeClient:
             expectation: What node_id needs from dep_id.
             promise: What dep_id delivers.
             reason: Why -- recorded in event log.
+            op_id: Idempotency key.
         """
         if not expectation or not expectation.strip():
             return Result(
@@ -562,58 +528,59 @@ class CascadeClient:
                 message="Missing required parameter: promise",
                 code=ErrorCode.INVALID_INPUT,
             )
+        cached = self._cached_op(op_id)
+        if cached is not None:
+            return cached
 
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                if node_id not in graph.nodes:
+            with self._mutate(op_id) as tx:
+                if node_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Node {node_id} not found",
                         code=ErrorCode.TASK_NOT_FOUND,
                     )
-                if dep_id not in graph.nodes:
+                if dep_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Dependency {dep_id} not found. Create it first with add_node.",
                         code=ErrorCode.DEP_NOT_FOUND,
                     )
 
-                if graph.has_dependency(node_id, dep_id):
+                if tx.graph.has_dependency(node_id, dep_id):
                     return Result(
                         success=False,
                         message=f"Node {node_id} already depends on {dep_id}",
                         code=ErrorCode.INVALID_INPUT,
                     )
 
-                if graph._has_path(node_id, dep_id):
+                if tx.graph._has_path(node_id, dep_id):
                     return Result(
                         success=False,
                         message=f"Adding dependency {dep_id} to {node_id} would create a cycle",
                         code=ErrorCode.INVALID_INPUT,
                     )
 
-                graph.add_edge(dep_id, node_id, expectation=expectation, promise=promise)
+                tx.graph.add_edge(dep_id, node_id, expectation=expectation, promise=promise)
 
-                self._storage.events.emit(
+                tx.emit(
                     EventType.NODE_REFINED,
-                    logical_ts=self._storage.next_lamport(),
                     node_id=node_id,
                     dependency_id=dep_id,
                     expectation=expectation,
                     promise=promise,
                     reason=reason,
                 )
-                self._storage.save(graph)
-                return Result(
-                    success=True,
-                    message=f"Node {node_id} now depends on {dep_id}",
-                    data={
-                        "node_id": node_id,
-                        "dependency_id": dep_id,
-                        "affected_nodes": [node_id, dep_id],
-                    },
+                return tx.ok(
+                    Result(
+                        success=True,
+                        message=f"Node {node_id} now depends on {dep_id}",
+                        data={
+                            "node_id": node_id,
+                            "dependency_id": dep_id,
+                            "affected_nodes": [node_id, dep_id],
+                        },
+                    )
                 )
 
         except Exception as e:
@@ -631,6 +598,7 @@ class CascadeClient:
         artifacts: str = "",
         context_merge: str = "merge",
         reason: str = "",
+        op_id: str | None = None,
     ) -> Result:
         """Edit a node's properties.
 
@@ -642,19 +610,21 @@ class CascadeClient:
             artifacts: Update artifacts content.
             context_merge: How to merge context: "replace", "merge", "append".
             reason: Why -- recorded in event log.
+            op_id: Idempotency key.
         """
+        cached = self._cached_op(op_id)
+        if cached is not None:
+            return cached
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                if node_id not in graph.nodes:
+            with self._mutate(op_id) as tx:
+                if node_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Node {node_id} not found",
                         code=ErrorCode.TASK_NOT_FOUND,
                     )
 
-                node = graph.nodes[node_id]
+                node = tx.graph.nodes[node_id]
                 changes: list[str] = []
 
                 if state:
@@ -680,7 +650,7 @@ class CascadeClient:
                     changes.append(f"state: {old_state.name} -> {new_state.name}")
 
                     if new_state == NodeState.COMPLETED:
-                        graph.notify_completion(node_id)
+                        tx.graph.notify_completion(node_id)
 
                 context_updated = _update_context(
                     node,
@@ -715,16 +685,13 @@ class CascadeClient:
                     if artifacts:
                         edit_ctx["artifacts"] = artifacts
                     edit_event_data["context"] = edit_ctx
-                self._storage.events.emit(
-                    EventType.NODE_EDITED,
-                    logical_ts=self._storage.next_lamport(),
-                    **edit_event_data,
-                )
-                self._storage.save(graph)
-                return Result(
-                    success=True,
-                    message=f"Node {node_id} updated: {', '.join(changes)}",
-                    data={"node_id": node_id, "state": node.state.name},
+                tx.emit(EventType.NODE_EDITED, **edit_event_data)
+                return tx.ok(
+                    Result(
+                        success=True,
+                        message=f"Node {node_id} updated: {', '.join(changes)}",
+                        data={"node_id": node_id, "state": node.state.name},
+                    )
                 )
 
         except Exception as e:
@@ -826,8 +793,8 @@ class CascadeClient:
         cancel_notifier: CancelNotifier | None,
     ) -> Result:
         """Single-attempt claim — raises LockError on lock contention."""
-        with self._storage.lock():
-            graph = self._storage.load() or Cascade()
+        with self._mutate() as tx:
+            graph = tx.graph
 
             existing_node = graph.find_agent_active_task(agent_id)
             if existing_node:
@@ -868,7 +835,7 @@ class CascadeClient:
                 if node.state == NodeState.ACTIVE:
                     node.agent_id = agent_id
                     task_info = get_node_view(graph, task_id)
-                    self._storage.save(graph)
+                    tx.save()
                     return Result(
                         success=True,
                         message=f"Task {task_id} is already active",
@@ -937,15 +904,14 @@ class CascadeClient:
             self._storage.tokens.create(
                 task_id, agent_id, node.claimed_at, notifier=cancel_notifier
             )
-            self._storage.events.emit(
+            tx.emit(
                 EventType.TASK_CLAIMED,
-                logical_ts=self._storage.next_lamport(),
                 node_id=task_id,
                 agent_id=agent_id,
                 claimed_at=node.claimed_at,
                 timeout=node.timeout,
             )
-            self._storage.save(graph)
+            tx.save()
 
             return Result(
                 success=True,
@@ -1067,33 +1033,31 @@ class CascadeClient:
         should_cascade: bool = False,
     ) -> Result:
         """Internal finish logic shared by complete/fail/release."""
-        cached = self._check_op(op_id)
+        cached = self._cached_op(op_id)
         if cached is not None:
             return cached
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                if token is not None and token < graph.epoch:
+            with self._mutate(op_id) as tx:
+                if token is not None and token < tx.graph.epoch:
                     return Result(
                         success=False,
                         message=(
                             f"Stale fencing token: provided {token}, "
-                            f"current epoch is {graph.epoch}. "
+                            f"current epoch is {tx.graph.epoch}. "
                             f"The graph has been modified since this task was claimed."
                         ),
-                        data={"provided_token": token, "current_epoch": graph.epoch},
+                        data={"provided_token": token, "current_epoch": tx.graph.epoch},
                         code=ErrorCode.STALE_TOKEN,
                     )
 
-                if task_id not in graph.nodes:
+                if task_id not in tx.graph.nodes:
                     return Result(
                         success=False,
                         message=f"Task {task_id} not found",
                         code=ErrorCode.TASK_NOT_FOUND,
                     )
 
-                node = graph.nodes[task_id]
+                node = tx.graph.nodes[task_id]
 
                 if node.state != NodeState.ACTIVE:
                     return Result(
@@ -1114,7 +1078,7 @@ class CascadeClient:
                         code=ErrorCode.WRONG_AGENT,
                     )
 
-                graph.increment_epoch()
+                tx.graph.increment_epoch()
 
                 if is_release:
                     node.update_state(NodeState.READY)
@@ -1127,20 +1091,14 @@ class CascadeClient:
                         message += f" (reason: {summary})"
 
                     self._storage.tokens.invalidate(task_id, reason="released")
-                    self._storage.events.emit(
-                        EventType.TASK_RELEASED,
-                        logical_ts=self._storage.next_lamport(),
-                        node_id=task_id,
-                        reason=summary,
+                    tx.emit(EventType.TASK_RELEASED, node_id=task_id, reason=summary)
+                    return tx.ok(
+                        Result(
+                            success=True,
+                            message=message,
+                            data={"task_id": task_id, "outcome": "RELEASED", "state": "READY"},
+                        )
                     )
-                    self._storage.save(graph)
-                    r = Result(
-                        success=True,
-                        message=message,
-                        data={"task_id": task_id, "outcome": "RELEASED", "state": "READY"},
-                    )
-                    self._record_op(op_id, r)
-                    return r
 
                 elif is_success:
                     node.update_state(NodeState.COMPLETED)
@@ -1158,7 +1116,7 @@ class CascadeClient:
                         if artifacts:
                             node.context.artifacts = str(artifacts)
 
-                    unblocked = graph.notify_completion(task_id)
+                    unblocked = tx.graph.notify_completion(task_id)
 
                     message = f"Task {task_id} completed"
                     if unblocked:
@@ -1172,25 +1130,23 @@ class CascadeClient:
                         ctx_data["critical"] = critical
                     if artifacts:
                         ctx_data["artifacts"] = artifacts
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.TASK_COMPLETED,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=task_id,
                         unblocked=unblocked,
                         context=ctx_data if ctx_data else None,
                     )
-                    self._storage.save(graph)
-                    r = Result(
-                        success=True,
-                        message=message,
-                        data={
-                            "task_id": task_id,
-                            "outcome": "COMPLETED",
-                            "unblocked_tasks": unblocked,
-                        },
+                    return tx.ok(
+                        Result(
+                            success=True,
+                            message=message,
+                            data={
+                                "task_id": task_id,
+                                "outcome": "COMPLETED",
+                                "unblocked_tasks": unblocked,
+                            },
+                        )
                     )
-                    self._record_op(op_id, r)
-                    return r
 
                 else:
                     affected = [task_id]
@@ -1199,7 +1155,7 @@ class CascadeClient:
                     if should_cascade:
 
                         def fail_recursive(nid: str) -> None:
-                            current = graph.nodes[nid]
+                            current = tx.graph.nodes[nid]
                             if current.state.is_terminal():
                                 return
                             current.update_state(NodeState.FAILED)
@@ -1207,7 +1163,7 @@ class CascadeClient:
                             current.claimed_at = None
                             current.timeout = None
                             affected.append(nid)
-                            for dep in graph.get_dependents(nid):
+                            for dep in tx.graph.get_dependents(nid):
                                 fail_recursive(dep.id)
 
                         fail_recursive(task_id)
@@ -1221,27 +1177,25 @@ class CascadeClient:
                         message += f": {summary}"
 
                     self._storage.tokens.cleanup(task_id)
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.TASK_FAILED,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=task_id,
                         reason=summary,
                         affected=affected,
                         cascade=should_cascade,
                     )
-                    self._storage.save(graph)
-                    r = Result(
-                        success=True,
-                        message=message,
-                        data={
-                            "task_id": task_id,
-                            "outcome": "FAILED",
-                            "affected_tasks": affected,
-                            "cascade": should_cascade,
-                        },
+                    return tx.ok(
+                        Result(
+                            success=True,
+                            message=message,
+                            data={
+                                "task_id": task_id,
+                                "outcome": "FAILED",
+                                "affected_tasks": affected,
+                                "cascade": should_cascade,
+                            },
+                        )
                     )
-                    self._record_op(op_id, r)
-                    return r
 
         except Exception as e:
             return Result(
@@ -1333,10 +1287,8 @@ class CascadeClient:
         )
 
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
-                active_node = graph.find_agent_active_task(agent_id)
+            with self._mutate() as tx:
+                active_node = tx.graph.find_agent_active_task(agent_id)
                 if not active_node:
                     return Result(
                         success=False,
@@ -1344,7 +1296,7 @@ class CascadeClient:
                         code=ErrorCode.TASK_NOT_ACTIVE,
                     )
 
-                operation = ReworkOperation(graph)
+                operation = ReworkOperation(tx.graph)
                 result = operation.execute(
                     requesting_node_id=active_node.id,
                     source_node_id=source,
@@ -1357,9 +1309,8 @@ class CascadeClient:
                 if result.success:
                     active_node.agent_id = None
                     self._storage.tokens.invalidate(active_node.id, reason="rework_requested")
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.REWORK_REQUESTED,
-                        logical_ts=self._storage.next_lamport(),
                         source_node_id=source,
                         corrective_node_id=corrective,
                         requesting_node_id=active_node.id,
@@ -1374,7 +1325,7 @@ class CascadeClient:
                             "promise": corrective_promise,
                         },
                     )
-                    self._storage.save(graph)
+                    tx.save()
 
                 return Result(
                     success=result.success,
@@ -1522,13 +1473,11 @@ class CascadeClient:
             default_timeout: Timeout in seconds for tasks without explicit timeout.
         """
         try:
-            with self._storage.lock():
-                graph = self._storage.load() or Cascade()
-
+            with self._mutate() as tx:
                 now = time.time()
                 released: list[dict[str, Any]] = []
 
-                for node in graph.nodes.values():
+                for node in tx.graph.nodes.values():
                     if node.state != NodeState.ACTIVE:
                         continue
                     if node.claimed_at is None:
@@ -1557,16 +1506,15 @@ class CascadeClient:
                         }
                     )
                     self._storage.tokens.invalidate(node.id, reason="timed_out")
-                    self._storage.events.emit(
+                    tx.emit(
                         EventType.TASK_TIMED_OUT,
-                        logical_ts=self._storage.next_lamport(),
                         node_id=node.id,
                         agent_id=old_agent,
                         elapsed=round(elapsed, 1),
                     )
 
                 if released:
-                    self._storage.save(graph)
+                    tx.save()
 
                 return Result(
                     success=True,
