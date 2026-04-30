@@ -204,6 +204,14 @@ class CascadeClient:
                     node_id=node_id,
                     dependencies=list(deps.keys()) if deps else [],
                     dependents=list(dependents.keys()) if dependents else [],
+                    deps_contracts=[
+                        {"node_id": k, "expectation": v.expectation, "promise": v.promise}
+                        for k, v in (deps or {}).items()
+                    ],
+                    dependent_contracts=[
+                        {"node_id": k, "expectation": v.expectation, "promise": v.promise}
+                        for k, v in (dependents or {}).items()
+                    ],
                 )
                 self._record_op(op_id, r)
                 return r
@@ -253,11 +261,21 @@ class CascadeClient:
                             message=f"Batch failed at '{nid}': {r.message}",
                             code=ErrorCode.BATCH_INVALID_SPEC,
                         )
+                    spec_deps = spec.get("deps") or {}
+                    spec_dependents = spec.get("dependents") or {}
                     added.append(
                         {
                             "node_id": nid,
-                            "deps": list((spec.get("deps") or {}).keys()),
-                            "dependents": list((spec.get("dependents") or {}).keys()),
+                            "deps": list(spec_deps.keys()),
+                            "dependents": list(spec_dependents.keys()),
+                            "deps_contracts": [
+                                {"node_id": k, "expectation": v.expectation, "promise": v.promise}
+                                for k, v in spec_deps.items()
+                            ],
+                            "dependent_contracts": [
+                                {"node_id": k, "expectation": v.expectation, "promise": v.promise}
+                                for k, v in spec_dependents.items()
+                            ],
                         }
                     )
 
@@ -268,6 +286,8 @@ class CascadeClient:
                         node_id=entry["node_id"],
                         dependencies=entry["deps"],
                         dependents=entry["dependents"],
+                        deps_contracts=entry.get("deps_contracts", []),
+                        dependent_contracts=entry.get("dependent_contracts", []),
                     )
 
                 return Result(
@@ -675,12 +695,23 @@ class CascadeClient:
                     )
 
                 self._storage.save(graph)
-                self._storage.events.emit(
-                    EventType.NODE_EDITED,
-                    node_id=node_id,
-                    changes=changes,
-                    reason=reason,
-                )
+                edit_event_data: dict[str, Any] = {
+                    "node_id": node_id,
+                    "changes": changes,
+                    "reason": reason,
+                }
+                if state:
+                    edit_event_data["new_state"] = node.state.name
+                if summary or critical is not None or artifacts:
+                    edit_ctx: dict[str, Any] = {}
+                    if summary:
+                        edit_ctx["summary"] = summary
+                    if critical is not None:
+                        edit_ctx["critical"] = critical
+                    if artifacts:
+                        edit_ctx["artifacts"] = artifacts
+                    edit_event_data["context"] = edit_ctx
+                self._storage.events.emit(EventType.NODE_EDITED, **edit_event_data)
                 return Result(
                     success=True,
                     message=f"Node {node_id} updated: {', '.join(changes)}",
@@ -898,7 +929,13 @@ class CascadeClient:
             self._storage.tokens.create(
                 task_id, agent_id, node.claimed_at, notifier=cancel_notifier
             )
-            self._storage.events.emit(EventType.TASK_CLAIMED, node_id=task_id, agent_id=agent_id)
+            self._storage.events.emit(
+                EventType.TASK_CLAIMED,
+                node_id=task_id,
+                agent_id=agent_id,
+                claimed_at=node.claimed_at,
+                timeout=node.timeout,
+            )
 
             return Result(
                 success=True,
@@ -1116,8 +1153,18 @@ class CascadeClient:
 
                     self._storage.save(graph)
                     self._storage.tokens.cleanup(task_id)
+                    ctx_data: dict[str, Any] = {}
+                    if summary:
+                        ctx_data["summary"] = summary
+                    if critical:
+                        ctx_data["critical"] = critical
+                    if artifacts:
+                        ctx_data["artifacts"] = artifacts
                     self._storage.events.emit(
-                        EventType.TASK_COMPLETED, node_id=task_id, unblocked=unblocked
+                        EventType.TASK_COMPLETED,
+                        node_id=task_id,
+                        unblocked=unblocked,
+                        context=ctx_data if ctx_data else None,
                     )
                     r = Result(
                         success=True,
@@ -1303,6 +1350,14 @@ class CascadeClient:
                         requesting_node_id=active_node.id,
                         agent_id=agent_id,
                         reason=reason,
+                        source_contract={
+                            "expectation": source_expectation,
+                            "promise": source_promise,
+                        },
+                        corrective_contract={
+                            "expectation": corrective_expectation,
+                            "promise": corrective_promise,
+                        },
                     )
 
                 return Result(
