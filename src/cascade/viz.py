@@ -126,10 +126,7 @@ def to_ascii(cascade: Cascade) -> str:
     if not cascade.nodes:
         return "(empty graph)"
 
-    try:
-        order = cascade.topological_sort()
-    except ValueError:
-        order = list(cascade.nodes.keys())
+    order = cascade.topological_sort()
 
     critical_set = set(cascade.get_critical_path())
     lines: list[str] = []

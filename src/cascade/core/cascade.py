@@ -291,11 +291,7 @@ class Cascade:
         depths: dict[str, int] = {}
 
         # Process in reverse topological order (leaves first)
-        try:
-            topo = self.topological_sort()
-        except ValueError:
-            # Graph has cycle — fall back to zero depths
-            return {nid: 0 for nid in self.nodes}
+        topo = self.topological_sort()
 
         for node_id in reversed(topo):
             max_child_depth = -1
