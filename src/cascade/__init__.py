@@ -14,7 +14,7 @@
 
 """Cascade - A DAG-based multi-agent task scheduling framework."""
 
-__version__ = "0.4.5"
+__version__ = "0.4.6"
 
 from cascade.client import CascadeClient
 from cascade.context.cancellation import CancellationToken, CancelledError
