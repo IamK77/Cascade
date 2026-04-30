@@ -148,9 +148,8 @@ class FileStorage:
                 if node.context.summary:
                     ctx_data["summary"] = node.context.summary
                 if node.context.artifacts:
-                    # Always save non-empty artifacts to file — no heuristic.
-                    artifacts_path = self._save_artifacts(node_id, node.context.artifacts)
-                    ctx_data["artifacts"] = artifacts_path
+                    self._save_artifacts(node_id, node.context.artifacts)
+                    ctx_data["artifacts_ref"] = f"{node_id}.md"
                 if ctx_data:
                     node_data["context"] = ctx_data
 
@@ -206,16 +205,13 @@ class FileStorage:
             context = None
             if "context" in node_data:
                 ctx_data = node_data["context"]
-                artifacts = ctx_data.get("artifacts", "")
+                artifacts = ""
 
-                # Load artifacts from file if it's a path reference
-                if artifacts.startswith(".cascade/artifacts/"):
-                    filename = artifacts.replace(".cascade/artifacts/", "")
-                    artifacts_path = self.base_dir / "artifacts" / filename
+                artifacts_ref = ctx_data.get("artifacts_ref", "")
+                if artifacts_ref:
+                    artifacts_path = self.artifacts_dir / artifacts_ref
                     if artifacts_path.exists():
                         artifacts = artifacts_path.read_text(encoding="utf-8")
-                    else:
-                        artifacts = ""
 
                 context = Context(
                     critical=ctx_data.get("critical", {}),
@@ -262,9 +258,7 @@ class FileStorage:
         if self.base_dir.exists():
             shutil.rmtree(self.base_dir)
 
-    def _save_artifacts(self, node_id: str, content: str) -> str:
-        """Save artifacts content to file. Returns the relative path."""
+    def _save_artifacts(self, node_id: str, content: str) -> None:
+        """Save artifacts content to file."""
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
-        artifacts_path = self.artifacts_dir / f"{node_id}.md"
-        artifacts_path.write_text(content, encoding="utf-8")
-        return f".cascade/artifacts/{node_id}.md"
+        (self.artifacts_dir / f"{node_id}.md").write_text(content, encoding="utf-8")

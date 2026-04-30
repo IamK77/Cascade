@@ -138,9 +138,7 @@ class TestFileStorage:
         assert artifacts_file.read_text(encoding="utf-8") == artifacts_content
 
         graph_data = json.loads((temp_dir / "graph.json").read_text(encoding="utf-8"))
-        assert (
-            graph_data["nodes"]["task_a"]["context"]["artifacts"] == ".cascade/artifacts/task_a.md"
-        )
+        assert graph_data["nodes"]["task_a"]["context"]["artifacts_ref"] == "task_a.md"
 
     def test_artifacts_loaded_from_file(self, storage):
         cascade = Cascade()
