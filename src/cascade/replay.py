@@ -23,8 +23,10 @@ events alone, enabling:
 - Consistency verification (replay == load)
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
@@ -32,23 +34,30 @@ from cascade.core.state import NodeState
 from cascade.events import Event, EventType
 from cascade.types import Context
 
+if TYPE_CHECKING:
+    from cascade.storage.content import ContentStore
 
-def replay(events: list[Event]) -> Cascade:
+
+def replay(events: list[Event], content: ContentStore | None = None) -> Cascade:
     """Rebuild a Cascade graph by replaying events in order.
 
     Events must be sorted by logical_ts (or insertion order).
+    If a ContentStore is provided, artifacts_ref values in events
+    are resolved to content. Otherwise artifacts are left empty.
     """
     cascade = Cascade()
 
     for event in events:
-        _HANDLERS[event.type](cascade, event.data)
+        _HANDLERS[event.type](cascade, event.data, content)
 
     return cascade
 
 
-def verify(events: list[Event], snapshot: Cascade) -> list[str]:
+def verify(
+    events: list[Event], snapshot: Cascade, content: ContentStore | None = None
+) -> list[str]:
     """Compare replayed state against a snapshot. Returns list of differences."""
-    replayed = replay(events)
+    replayed = replay(events, content)
     diffs: list[str] = []
 
     replay_ids = set(replayed.nodes.keys())
@@ -84,7 +93,9 @@ def verify(events: list[Event], snapshot: Cascade) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _handle_node_added(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_added(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data["node_id"]
     if node_id in cascade.nodes:
         return
@@ -111,13 +122,17 @@ def _handle_node_added(cascade: Cascade, data: dict[str, Any]) -> None:
             )
 
 
-def _handle_node_removed(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_removed(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     for nid in data.get("affected_nodes", []):
         if nid in cascade.nodes and cascade.nodes[nid].state != NodeState.ACTIVE:
             cascade.remove_node(nid)
 
 
-def _handle_node_split(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_split(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     for nid in data.get("new_node_ids", []):
         if nid not in cascade.nodes:
             cascade.add_node(Node(id=nid))
@@ -126,7 +141,9 @@ def _handle_node_split(cascade: Cascade, data: dict[str, Any]) -> None:
         cascade.remove_node(parent_id)
 
 
-def _handle_node_refined(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_refined(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     dep_id = data.get("dependency_id", "")
     if node_id in cascade.nodes and dep_id in cascade.nodes:
@@ -138,7 +155,9 @@ def _handle_node_refined(cascade: Cascade, data: dict[str, Any]) -> None:
         )
 
 
-def _handle_node_edited(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_edited(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     if node_id not in cascade.nodes:
         return
@@ -158,9 +177,14 @@ def _handle_node_edited(cascade: Cascade, data: dict[str, Any]) -> None:
             node.context.summary = ctx["summary"]
         if "critical" in ctx:
             node.context.critical.update(ctx["critical"])
+        if "artifacts_ref" in ctx:
+            ref = ctx["artifacts_ref"]
+            node.context.artifacts = content.get(ref) or "" if content else ""
 
 
-def _handle_task_claimed(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_task_claimed(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     if node_id not in cascade.nodes:
         return
@@ -175,7 +199,9 @@ def _handle_task_claimed(cascade: Cascade, data: dict[str, Any]) -> None:
     cascade.increment_epoch()
 
 
-def _handle_task_completed(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_task_completed(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     if node_id not in cascade.nodes:
         return
@@ -194,14 +220,17 @@ def _handle_task_completed(cascade: Cascade, data: dict[str, Any]) -> None:
             node.context.summary = ctx["summary"]
         if "critical" in ctx:
             node.context.critical.update(ctx["critical"])
-        if "artifacts" in ctx:
-            node.context.artifacts = ctx["artifacts"]
+        if "artifacts_ref" in ctx:
+            ref = ctx["artifacts_ref"]
+            node.context.artifacts = content.get(ref) or "" if content else ""
 
     cascade.notify_completion(node_id)
     cascade.increment_epoch()
 
 
-def _handle_task_failed(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_task_failed(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     for nid in data.get("affected", [data.get("node_id", "")]):
         if nid in cascade.nodes:
             node = cascade.nodes[nid]
@@ -213,7 +242,9 @@ def _handle_task_failed(cascade: Cascade, data: dict[str, Any]) -> None:
     cascade.increment_epoch()
 
 
-def _handle_task_released(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_task_released(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     if node_id not in cascade.nodes:
         return
@@ -226,11 +257,13 @@ def _handle_task_released(cascade: Cascade, data: dict[str, Any]) -> None:
     cascade.increment_epoch()
 
 
-def _handle_task_timed_out(cascade: Cascade, data: dict[str, Any]) -> None:
-    _handle_task_released(cascade, data)
+def _handle_task_timed_out(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
+    _handle_task_released(cascade, data, content)
 
 
-def _handle_rework(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_rework(cascade: Cascade, data: dict[str, Any], content: ContentStore | None) -> None:
     corrective_id = data.get("corrective_node_id", "")
     if corrective_id and corrective_id not in cascade.nodes:
         cascade.add_node(Node(id=corrective_id))
@@ -264,7 +297,9 @@ def _handle_rework(cascade: Cascade, data: dict[str, Any]) -> None:
             node.agent_id = None
 
 
-def _handle_node_cancelled(cascade: Cascade, data: dict[str, Any]) -> None:
+def _handle_node_cancelled(
+    cascade: Cascade, data: dict[str, Any], content: ContentStore | None
+) -> None:
     node_id = data.get("node_id", "")
     if node_id in cascade.nodes:
         node = cascade.nodes[node_id]
@@ -272,11 +307,11 @@ def _handle_node_cancelled(cascade: Cascade, data: dict[str, Any]) -> None:
             node.update_state(NodeState.CANCELLED)
 
 
-def _noop(cascade: Cascade, data: dict[str, Any]) -> None:
+def _noop(cascade: Cascade, data: dict[str, Any], content: ContentStore | None) -> None:
     pass
 
 
-_Handler = Callable[[Cascade, dict[str, Any]], None]
+_Handler = Callable[[Cascade, dict[str, Any], ContentStore | None], None]
 
 _HANDLERS: dict[EventType, _Handler] = {
     EventType.NODE_ADDED: _handle_node_added,

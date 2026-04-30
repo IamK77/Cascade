@@ -684,7 +684,7 @@ class CascadeClient:
                     if critical is not None:
                         edit_ctx["critical"] = critical
                     if artifacts:
-                        edit_ctx["artifacts"] = artifacts
+                        edit_ctx["artifacts_ref"] = self._storage.content.put(str(artifacts))
                     edit_event_data["context"] = edit_ctx
                 tx.emit(EventType.NODE_EDITED, **edit_event_data)
                 return tx.ok(
@@ -1130,7 +1130,7 @@ class CascadeClient:
                     if critical:
                         ctx_data["critical"] = critical
                     if artifacts:
-                        ctx_data["artifacts"] = artifacts
+                        ctx_data["artifacts_ref"] = self._storage.content.put(str(artifacts))
                     tx.emit(
                         EventType.TASK_COMPLETED,
                         node_id=task_id,
