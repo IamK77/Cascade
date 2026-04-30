@@ -125,7 +125,6 @@ class FileStorage:
             "epoch": cascade.epoch,
             "nodes": {},
             "edges": [],
-            "agent_tasks": {},
         }
 
         for node_id, node in cascade.nodes.items():
@@ -136,8 +135,6 @@ class FileStorage:
 
             if node.agent_id:
                 node_data["agent_id"] = node.agent_id
-                if node.state == NodeState.ACTIVE:
-                    graph_data["agent_tasks"][node.agent_id] = node_id
 
             if node.claimed_at is not None:
                 node_data["claimed_at"] = node.claimed_at

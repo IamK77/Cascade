@@ -196,16 +196,6 @@ class TestFileStorage:
         loaded = storage.load()
         assert loaded.nodes["task"].agent_id == "agent-001"
 
-    def test_agent_tasks_index(self, storage):
-        cascade = Cascade()
-        cascade.add_node(Node(id="task_a", state=NodeState.ACTIVE, agent_id="agent-001"))
-        cascade.add_node(Node(id="task_b", state=NodeState.PENDING))
-        storage.save(cascade)
-
-        graph_data = json.loads((storage.base_dir / "graph.json").read_text())
-        assert "agent_tasks" in graph_data
-        assert graph_data["agent_tasks"]["agent-001"] == "task_a"
-
     def test_save_is_atomic_no_tmp_leftover(self, storage):
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
