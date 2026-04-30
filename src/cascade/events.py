@@ -96,39 +96,28 @@ class EventStore:
     """
 
     def __init__(self, base_dir: Path | str):
-        self._path = Path(base_dir) / "events.jsonl"
-        self._lamport: int = self._recover_lamport()
+        self._base_dir = Path(base_dir)
+        self._path = self._base_dir / "events.jsonl"
+        self._clock_path = self._base_dir / "clock"
+        self._lamport: int = self._load_clock()
 
-    def _recover_lamport(self) -> int:
-        """Read the last event's logical_ts to resume the counter across restarts."""
-        if not self._path.exists():
-            return 0
-        last_line = ""
+    def _load_clock(self) -> int:
+        """Read persisted Lamport counter."""
         try:
-            with open(self._path, "rb") as f:
-                f.seek(0, 2)
-                pos = f.tell()
-                while pos > 0:
-                    pos -= 1
-                    f.seek(pos)
-                    ch = f.read(1)
-                    if ch == b"\n" and last_line:
-                        break
-                    last_line = ch.decode() + last_line
-        except OSError:
+            return int(self._clock_path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
             return 0
-        last_line = last_line.strip()
-        if not last_line:
-            return 0
-        try:
-            return int(json.loads(last_line).get("logical_ts", 0))
-        except (json.JSONDecodeError, ValueError):
-            return 0
+
+    def _save_clock(self) -> None:
+        """Persist current Lamport counter."""
+        self._clock_path.parent.mkdir(parents=True, exist_ok=True)
+        self._clock_path.write_text(str(self._lamport), encoding="utf-8")
 
     def observe(self, remote_ts: int) -> None:
         """Advance clock to at least ``remote_ts`` (Lamport rule on receive)."""
         if remote_ts > self._lamport:
             self._lamport = remote_ts
+            self._save_clock()
 
     def append(self, event: Event) -> None:
         """Append an event to the log."""
@@ -139,6 +128,7 @@ class EventStore:
     def emit(self, event_type: EventType, **data: Any) -> Event:
         """Create, append, and return an event in one call."""
         self._lamport += 1
+        self._save_clock()
         event = Event(
             type=event_type,
             timestamp=time.time(),
