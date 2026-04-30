@@ -28,6 +28,7 @@ from dataclasses import dataclass
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import CascadeError
 from cascade.operations.base import NodeOperation, OperationResult
 from cascade.types import Context, Contract
 
@@ -167,7 +168,7 @@ class ReworkOperation(NodeOperation):
                 ),
             )
 
-        except ValueError as e:
+        except CascadeError as e:
             return OperationResult(
                 success=False,
                 affected_nodes=[],

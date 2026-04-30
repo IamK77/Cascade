@@ -25,6 +25,7 @@ from typing import Any
 
 from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
+from cascade.errors import NodeNotFoundError
 from cascade.types import DeliveredContext, UpstreamEntry
 
 
@@ -37,7 +38,7 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     - visible_nodes: downstream topology (2 hops)
     """
     if node_id not in cascade.nodes:
-        raise ValueError(f"Node {node_id} not found")
+        raise NodeNotFoundError(f"Node {node_id} not found")
 
     node = cascade.nodes[node_id]
 

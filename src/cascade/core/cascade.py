@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import ContractError, CycleError, NodeExistsError, NodeNotFoundError
 from cascade.types import Contract, DependencyInfo, EdgeId, PromiseEntry
 
 
@@ -99,7 +100,7 @@ class Cascade:
         result is READY). Terminal and ACTIVE states are preserved as-is.
         """
         if node.id in self.nodes:
-            raise ValueError(f"Node {node.id} already exists")
+            raise NodeExistsError(f"Node {node.id} already exists")
         self.nodes[node.id] = node
         self._adjacency[node.id] = set()
         self._reverse[node.id] = set()
@@ -109,7 +110,7 @@ class Cascade:
     def remove_node(self, node_id: str) -> None:
         """Remove a node and all its edges from the graph."""
         if node_id not in self.nodes:
-            raise ValueError(f"Node {node_id} not found")
+            raise NodeNotFoundError(f"Node {node_id} not found")
 
         for dep_id in list(self._reverse[node_id]):
             self.remove_edge(dep_id, node_id)
@@ -147,11 +148,11 @@ class Cascade:
             edge_contract = Contract(expectation=expectation, promise=promise)
 
         if not edge_contract.expectation or not edge_contract.expectation.strip():
-            raise ValueError(f"expectation is required for edge {from_id} -> {to_id}")
+            raise ContractError(f"expectation is required for edge {from_id} -> {to_id}")
         if not edge_contract.promise or not edge_contract.promise.strip():
-            raise ValueError(f"promise is required for edge {from_id} -> {to_id}")
+            raise ContractError(f"promise is required for edge {from_id} -> {to_id}")
         if from_id not in self.nodes or to_id not in self.nodes:
-            raise ValueError(f"Both nodes must exist: {from_id}, {to_id}")
+            raise NodeNotFoundError(f"Both nodes must exist: {from_id}, {to_id}")
 
         edge_key: EdgeId = (from_id, to_id)
 
@@ -161,7 +162,7 @@ class Cascade:
             return
 
         if self._would_create_cycle(from_id, to_id):
-            raise ValueError(f"Adding edge {from_id} -> {to_id} would create a cycle")
+            raise CycleError(f"Adding edge {from_id} -> {to_id} would create a cycle")
 
         self._adjacency[from_id].add(to_id)
         self._reverse[to_id].add(from_id)
@@ -400,7 +401,7 @@ class Cascade:
                     queue.append(dependent)
 
         if len(result) != len(self.nodes):
-            raise ValueError("Graph contains a cycle")
+            raise CycleError("Graph contains a cycle")
         return result
 
     def _would_create_cycle(self, from_id: str, to_id: str) -> bool:
@@ -424,7 +425,7 @@ class Cascade:
         try:
             self.topological_sort()
             return False
-        except ValueError:
+        except CycleError:
             return True
 
     def find_cycle(self) -> list[str] | None:

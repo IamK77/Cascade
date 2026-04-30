@@ -40,11 +40,12 @@ from typing import Any
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import LockError
 from cascade.events import EventType
 from cascade.operations.remove import RemoveOperation
 from cascade.operations.rework import ReworkOperation
 from cascade.operations.split import SplitOperation
-from cascade.storage.file_storage import FileStorage, LockError
+from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
 from cascade.types import (

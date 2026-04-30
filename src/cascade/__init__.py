@@ -17,12 +17,22 @@
 __version__ = "0.4.6"
 
 from cascade.client import CascadeClient
-from cascade.context.cancellation import CancellationToken, CancelledError
+from cascade.context.cancellation import CancellationToken
 from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.storage.file_storage import FileStorage, LockError
+from cascade.errors import (
+    CancelledError,
+    CascadeError,
+    ContractError,
+    CycleError,
+    InvalidTransitionError,
+    LockError,
+    NodeExistsError,
+    NodeNotFoundError,
+)
+from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
 from cascade.types import (
@@ -65,6 +75,14 @@ __all__ = [
     "Cascade",
     "Node",
     "NodeState",
+    # Errors
+    "CascadeError",
+    "NodeNotFoundError",
+    "NodeExistsError",
+    "CycleError",
+    "InvalidTransitionError",
+    "ContractError",
+    "LockError",
     # Cancellation
     "CancelNotifier",
     "CancellationToken",

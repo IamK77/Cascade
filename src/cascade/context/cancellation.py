@@ -32,18 +32,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from cascade.core.state import NodeState
+from cascade.errors import CancelledError
 
 if TYPE_CHECKING:
     from cascade.core.cascade import Cascade
     from cascade.types import TokenStatus
-
-
-class CancelledError(Exception):
-    """Raised when an operation is cancelled."""
-
-    def __init__(self, reason: str | None = None):
-        self.reason = reason
-        super().__init__(reason or "Operation cancelled")
 
 
 @dataclass

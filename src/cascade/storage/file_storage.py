@@ -28,6 +28,7 @@ from filelock import FileLock, Timeout
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import LockError
 from cascade.events import EventStore
 from cascade.storage.op_log import OpLog
 from cascade.storage.token_store import TokenStore
@@ -39,10 +40,6 @@ class StorageScope(Enum):
 
     PROJECT = "project"
     USER = "user"
-
-
-class LockError(Exception):
-    """Raised when lock cannot be acquired."""
 
 
 class FileStorage:

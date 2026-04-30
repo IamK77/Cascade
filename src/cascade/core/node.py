@@ -21,6 +21,7 @@ and agent assignment, but nothing about the graph structure it lives in.
 from dataclasses import dataclass
 
 from cascade.core.state import NodeState
+from cascade.errors import InvalidTransitionError
 from cascade.types import Context
 
 
@@ -56,7 +57,7 @@ class Node:
             Self for method chaining.
         """
         if not self.state.can_transition_to(new_state):
-            raise ValueError(f"Invalid state transition: {self.state} -> {new_state}")
+            raise InvalidTransitionError(f"Invalid state transition: {self.state} -> {new_state}")
         self.state = new_state
         return self
 

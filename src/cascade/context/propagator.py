@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections import deque
 from typing import TYPE_CHECKING
 
+from cascade.errors import NodeNotFoundError
 from cascade.types import ContextEntry
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ class ContextPropagator:
             - summary (within SUMMARY_MAX_DISTANCE only)
         """
         if node_id not in self._cascade.nodes:
-            raise ValueError(f"Node {node_id} not found")
+            raise NodeNotFoundError(f"Node {node_id} not found")
 
         entries: list[ContextEntry] = []
         visited: set[str] = {node_id}

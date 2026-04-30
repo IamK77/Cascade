@@ -14,7 +14,8 @@
 
 """Context propagation and cancellation."""
 
-from cascade.context.cancellation import CancellationToken, CancelledError
+from cascade.context.cancellation import CancellationToken
 from cascade.context.propagator import ContextPropagator
+from cascade.errors import CancelledError
 
 __all__ = ["ContextPropagator", "CancellationToken", "CancelledError"]

@@ -18,6 +18,7 @@ import pytest
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import InvalidTransitionError
 
 
 class TestNodeState:
@@ -81,7 +82,7 @@ class TestNode:
 
     def test_update_state_invalid(self):
         node = Node(id="test", state=NodeState.COMPLETED)
-        with pytest.raises(ValueError, match="Invalid state transition"):
+        with pytest.raises(InvalidTransitionError, match="Invalid state transition"):
             node.update_state(NodeState.ACTIVE)
 
     def test_update_state_chaining(self):

@@ -19,6 +19,7 @@ import pytest
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
+from cascade.errors import ContractError, CycleError, NodeExistsError, NodeNotFoundError
 from cascade.types import Context, Contract
 from cascade.view import get_node_view
 
@@ -44,7 +45,7 @@ class TestCascadeCreation:
     def test_add_duplicate_node(self, empty_cascade):
         node = Node(id="test", state=NodeState.READY)
         empty_cascade.add_node(node)
-        with pytest.raises(ValueError, match="already exists"):
+        with pytest.raises(NodeExistsError, match="already exists"):
             empty_cascade.add_node(node)
 
     def test_remove_node(self, sample_cascade):
@@ -53,7 +54,7 @@ class TestCascadeCreation:
         assert len(sample_cascade) == 4
 
     def test_remove_nonexistent_node(self, empty_cascade):
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(NodeNotFoundError, match="not found"):
             empty_cascade.remove_node("nonexistent")
 
 
@@ -104,26 +105,26 @@ class TestCascadeEdges:
 
     def test_add_edge_nonexistent_nodes(self, empty_cascade):
         exp, prom = make_contract("a", "b")
-        with pytest.raises(ValueError, match="must exist"):
+        with pytest.raises(NodeNotFoundError, match="must exist"):
             empty_cascade.add_edge("a", "b", expectation=exp, promise=prom)
 
     def test_add_edge_creates_cycle(self, sample_cascade):
         exp, prom = make_contract("e", "a")
-        with pytest.raises(ValueError, match="cycle"):
+        with pytest.raises(CycleError, match="cycle"):
             sample_cascade.add_edge("e", "a", expectation=exp, promise=prom)
 
     def test_add_edge_missing_expectation(self):
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.READY))
-        with pytest.raises(ValueError, match="expectation is required"):
+        with pytest.raises(ContractError, match="expectation is required"):
             cascade.add_edge("a", "b", expectation="", promise="some promise")
 
     def test_add_edge_missing_promise(self):
         cascade = Cascade()
         cascade.add_node(Node(id="a", state=NodeState.READY))
         cascade.add_node(Node(id="b", state=NodeState.READY))
-        with pytest.raises(ValueError, match="promise is required"):
+        with pytest.raises(ContractError, match="promise is required"):
             cascade.add_edge("a", "b", expectation="some expectation", promise="")
 
     def test_remove_edge(self, sample_cascade):
@@ -206,7 +207,7 @@ class TestTopologicalSort:
         cascade._adjacency["b"].add("a")
         cascade._reverse["a"].add("b")
 
-        with pytest.raises(ValueError, match="cycle"):
+        with pytest.raises(CycleError, match="cycle"):
             cascade.topological_sort()
 
 
@@ -238,7 +239,7 @@ class TestCycleDetection:
         cascade.add_edge("b", "c", expectation=exp2, promise=prom2)
 
         exp3, prom3 = make_contract("c", "a")
-        with pytest.raises(ValueError, match="cycle"):
+        with pytest.raises(CycleError, match="cycle"):
             cascade.add_edge("c", "a", expectation=exp3, promise=prom3)
 
         cascade._adjacency["c"].add("a")
@@ -275,7 +276,7 @@ class TestGetNodeView:
 
     def test_get_node_view_not_found(self):
         cascade = Cascade()
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(NodeNotFoundError, match="not found"):
             get_node_view(cascade, "nonexistent")
 
     def test_get_node_view_with_contracts(self):
