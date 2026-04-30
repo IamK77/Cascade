@@ -49,8 +49,7 @@ def rework(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
         if not params.get(field):
             return {"success": False, "message": f"Missing required parameter: {field}", "data": {}}
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.rework(
         source=params["source_node_id"],
@@ -62,9 +61,4 @@ def rework(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
         corrective_expectation=params["corrective_expectation"],
         corrective_promise=params["corrective_promise"],
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

@@ -32,13 +32,7 @@ def check_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, An
     if not task_id:
         return {"success": False, "message": "Missing required parameter: task_id", "data": {}}
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.check(task_id)
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

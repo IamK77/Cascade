@@ -37,8 +37,7 @@ def edit_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any
     if "node_id" not in params:
         return {"success": False, "message": "Missing required parameter: node_id", "data": {}}
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.edit(
         params["node_id"],
@@ -49,9 +48,4 @@ def edit_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any
         context_merge=params.get("context_merge", "merge"),
         reason=params.get("reason", ""),
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

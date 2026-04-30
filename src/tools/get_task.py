@@ -43,8 +43,7 @@ def get_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]
             "data": {},
         }
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client._claim_inner(
         agent_id,
@@ -52,9 +51,4 @@ def get_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]
         timeout=timeout,
         cancel_notifier=cancel_notifier,
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

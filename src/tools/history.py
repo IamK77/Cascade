@@ -31,8 +31,7 @@ def history(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
             - last_n (int, optional): Return only the last N events
             - summary (bool, optional): If True, return event count by type
     """
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.history(
         node_id=params.get("node_id", ""),
@@ -40,9 +39,4 @@ def history(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]:
         last_n=params.get("last_n", 0),
         summary=params.get("summary", False),
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

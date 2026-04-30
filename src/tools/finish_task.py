@@ -39,8 +39,7 @@ def finish_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
     artifacts = params.get("artifacts")
     should_cascade = params.get("cascade", False)
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     if is_release:
         r = client.release(task_id, reason=summary or "")
@@ -54,9 +53,4 @@ def finish_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
     else:
         r = client.fail(task_id, reason=summary or "", cascade=should_cascade)
 
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

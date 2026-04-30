@@ -108,13 +108,7 @@ def add_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]
             for dep_id in dependents
         }
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.add(node_id, deps=deps, dependents=deps_dependents)
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

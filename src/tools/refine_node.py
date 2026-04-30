@@ -49,8 +49,7 @@ def refine_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
     if not promise or not promise.strip():
         return {"success": False, "message": "Missing required parameter: promise", "data": {}}
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.refine(
         params["node_id"],
@@ -59,9 +58,4 @@ def refine_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
         promise,
         reason=params.get("reason", ""),
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

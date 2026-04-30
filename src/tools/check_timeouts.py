@@ -29,13 +29,7 @@ def check_timeouts(storage: StorageProtocol, params: dict[str, Any]) -> dict[str
             - default_timeout (float, optional): Timeout in seconds applied
               to ACTIVE tasks that don't have a per-task timeout set.
     """
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.check_timeouts(default_timeout=params.get("default_timeout"))
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

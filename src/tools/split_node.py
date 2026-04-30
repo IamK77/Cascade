@@ -51,13 +51,7 @@ def split_node(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, An
             }
         into.append(node_data["node_id"])
 
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client.split(params["parent_id"], into, reason=params.get("reason", ""))
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()

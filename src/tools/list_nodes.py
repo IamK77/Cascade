@@ -29,16 +29,10 @@ def list_nodes(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, An
             - state_filter (str, optional): Filter by state
             - include_pending_only (bool, optional): Only show PENDING nodes
     """
-    client = CascadeClient.__new__(CascadeClient)
-    client._storage = storage
+    client = CascadeClient(storage)
 
     r = client._nodes_inner(
         state_filter=params.get("state_filter"),
         include_pending_only=params.get("include_pending_only", False),
     )
-    return {
-        "success": r.success,
-        "message": r.message,
-        "data": r.data,
-        **({"code": r.code} if r.code else {}),
-    }
+    return r.to_dict()
