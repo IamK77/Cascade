@@ -88,36 +88,12 @@ class EventStore:
     """Append-only event log backed by JSONL file.
 
     Events are appended one per line. Reading loads all events.
-    The store is designed to be used alongside FileStorage.
-
-    Maintains a Lamport clock: each emit increments the counter.
-    Call ``observe(logical_ts)`` when receiving events from another
-    store to advance the clock past the observed timestamp.
+    The Lamport clock is owned by the storage layer (FileStorage),
+    not by EventStore. Callers pass logical_ts to emit().
     """
 
     def __init__(self, base_dir: Path | str):
-        self._base_dir = Path(base_dir)
-        self._path = self._base_dir / "events.jsonl"
-        self._clock_path = self._base_dir / "clock"
-        self._lamport: int = self._load_clock()
-
-    def _load_clock(self) -> int:
-        """Read persisted Lamport counter."""
-        try:
-            return int(self._clock_path.read_text(encoding="utf-8").strip())
-        except (OSError, ValueError):
-            return 0
-
-    def _save_clock(self) -> None:
-        """Persist current Lamport counter."""
-        self._clock_path.parent.mkdir(parents=True, exist_ok=True)
-        self._clock_path.write_text(str(self._lamport), encoding="utf-8")
-
-    def observe(self, remote_ts: int) -> None:
-        """Advance clock to at least ``remote_ts`` (Lamport rule on receive)."""
-        if remote_ts > self._lamport:
-            self._lamport = remote_ts
-            self._save_clock()
+        self._path = Path(base_dir) / "events.jsonl"
 
     def append(self, event: Event) -> None:
         """Append an event to the log."""
@@ -125,15 +101,13 @@ class EventStore:
         with open(self._path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
-    def emit(self, event_type: EventType, **data: Any) -> Event:
-        """Create, append, and return an event in one call."""
-        self._lamport += 1
-        self._save_clock()
+    def emit(self, event_type: EventType, logical_ts: int, **data: Any) -> Event:
+        """Create, append, and return an event."""
         event = Event(
             type=event_type,
             timestamp=time.time(),
             id=uuid.uuid4().hex,
-            logical_ts=self._lamport,
+            logical_ts=logical_ts,
             data=data,
         )
         self.append(event)

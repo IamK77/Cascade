@@ -23,7 +23,7 @@ class TestEventStore:
 
     def test_emit_and_read(self, temp_storage):
         store = temp_storage.events
-        store.emit(EventType.NODE_ADDED, node_id="test")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="test")
 
         events = store.read_all()
         assert len(events) == 1
@@ -35,9 +35,9 @@ class TestEventStore:
 
     def test_read_by_type(self, temp_storage):
         store = temp_storage.events
-        store.emit(EventType.NODE_ADDED, node_id="a")
-        store.emit(EventType.TASK_CLAIMED, node_id="a", agent_id="x")
-        store.emit(EventType.NODE_ADDED, node_id="b")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="a")
+        store.emit(EventType.TASK_CLAIMED, logical_ts=0, node_id="a", agent_id="x")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="b")
 
         claimed = store.read_by_type(EventType.TASK_CLAIMED)
         assert len(claimed) == 1
@@ -45,18 +45,18 @@ class TestEventStore:
 
     def test_read_by_node(self, temp_storage):
         store = temp_storage.events
-        store.emit(EventType.NODE_ADDED, node_id="a")
-        store.emit(EventType.NODE_ADDED, node_id="b")
-        store.emit(EventType.TASK_CLAIMED, node_id="a", agent_id="x")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="a")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="b")
+        store.emit(EventType.TASK_CLAIMED, logical_ts=0, node_id="a", agent_id="x")
 
         a_events = store.read_by_node("a")
         assert len(a_events) == 2  # added + claimed
 
     def test_count_and_summary(self, temp_storage):
         store = temp_storage.events
-        store.emit(EventType.NODE_ADDED, node_id="a")
-        store.emit(EventType.NODE_ADDED, node_id="b")
-        store.emit(EventType.TASK_CLAIMED, node_id="a", agent_id="x")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="a")
+        store.emit(EventType.NODE_ADDED, logical_ts=0, node_id="b")
+        store.emit(EventType.TASK_CLAIMED, logical_ts=0, node_id="a", agent_id="x")
 
         assert store.count == 3
         summary = store.summary()
@@ -67,6 +67,7 @@ class TestEventStore:
         store = temp_storage.events
         store.emit(
             EventType.REWORK_REQUESTED,
+            logical_ts=0,
             source_node_id="a",
             corrective_node_id="a_fix",
             reason="wrong",

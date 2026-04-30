@@ -71,9 +71,31 @@ class FileStorage:
         self.artifacts_dir = self.base_dir / "artifacts"
         self._file_lock = FileLock(self.base_dir / ".lock")
         self._thread_lock = threading.Lock()
+        self._lamport: int = self._recover_lamport()
         self.events = EventStore(self.base_dir)
         self.tokens = TokenStore(self.base_dir)
         self.ops = OpLog(self.base_dir)
+
+    def _recover_lamport(self) -> int:
+        """Read lamport from graph.json at startup."""
+        graph_path = self.base_dir / "graph.json"
+        if not graph_path.exists():
+            return 0
+        try:
+            data = json.loads(graph_path.read_text(encoding="utf-8"))
+            return int(data.get("lamport", 0))
+        except (json.JSONDecodeError, OSError, ValueError):
+            return 0
+
+    def next_lamport(self) -> int:
+        """Increment and return the Lamport counter."""
+        self._lamport += 1
+        return self._lamport
+
+    def observe(self, remote_ts: int) -> None:
+        """Advance Lamport clock past a remote timestamp."""
+        if remote_ts > self._lamport:
+            self._lamport = remote_ts
 
     @classmethod
     def project(cls, base_dir: Path | str | None = None) -> "FileStorage":
@@ -125,6 +147,7 @@ class FileStorage:
 
         graph_data: dict[str, Any] = {
             "epoch": cascade.epoch,
+            "lamport": self._lamport,
             "nodes": {},
             "edges": [],
         }
@@ -198,6 +221,7 @@ class FileStorage:
 
         cascade = Cascade()
         cascade.epoch = graph_data.get("epoch", 0)
+        self._lamport = graph_data.get("lamport", 0)
 
         # Load nodes
         for node_id, node_data in graph_data.get("nodes", {}).items():
