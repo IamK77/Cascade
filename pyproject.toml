@@ -1,6 +1,6 @@
 [project]
 name = "cascade-auto"
-version = "0.4.7"
+version = "0.4.8"
 description = "An agent factory with dynamic DAG scheduling for multi-agent task coordination"
 readme = "README.md"
 license = "Apache-2.0"
