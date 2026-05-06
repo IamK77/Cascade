@@ -31,9 +31,10 @@ On success, the CLI prints a **markdown briefing** to stdout (not JSON). Section
 - **Expects from you**: <what consumer needs>
 - **Promised to deliver**: <what upstream provided>
 - **Summary**: <upstream summary>
+- **Freshness**: <elapsed time> | <commits behind HEAD>
 - **Critical data**:
   ```json
-  {...}
+  {"key": "value", "produced_at": 1778050765.98, "git_ref": "a3f8c2e..."}
   ```
 - **Artifacts**: <full content>
 

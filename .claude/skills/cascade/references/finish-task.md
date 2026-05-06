@@ -102,28 +102,15 @@ When you complete a task with context:
 
 ### critical (Key-Value Pairs)
 
-Merged from all upstream COMPLETED tasks:
-```json
-{
-  "tech_stack": "Next.js",
-  "component_list": ["Button", "Input"],
-  "api_version": "v2"
-}
-```
-
-Later tasks can override earlier values for same keys.
+Each upstream ancestor's critical is delivered as a separate entry — no merging, no overwriting across sources. The framework also auto-injects `produced_at` (timestamp) and `git_ref` (HEAD commit) for freshness tracking.
 
 ### summary (Text)
 
-Concatenated from all upstream summaries:
-```
-[analyze] Requirements gathered...
-[design] UI design completed...
-```
+Each upstream's summary is a separate entry with provenance. Propagates within 2 hops.
 
 ### artifacts (Detailed Output)
 
-Full content from immediate upstream, accessible but not automatically merged.
+Full content, propagated indefinitely via content-addressable storage.
 
 ## Output
 
@@ -183,4 +170,4 @@ cascade finish-task --task deploy --fail --reason "Environment not ready"
 ## See Also
 
 - [get-task.md](get-task.md) - Claim a task first
-- [error-handling.md](../error-handling.md) - Recovery strategies
+- [concepts.md](concepts.md) - Error recovery strategies

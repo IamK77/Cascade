@@ -29,7 +29,7 @@ When a worker claims a task via `cascade get-task`, it receives an **upstream** 
       "promise": "Deliver requirements spec",
       "delivered": {
         "summary": "JWT auth + REST API",
-        "critical": {"auth": "JWT", "db": "PostgreSQL"}
+        "critical": {"auth": "JWT", "db": "PostgreSQL", "produced_at": 1778050765.98, "git_ref": "a3f8c2e..."}
       }
     },
     {
