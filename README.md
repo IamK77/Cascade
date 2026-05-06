@@ -52,9 +52,10 @@ cascade.add("design", deps={
 })
 
 # Agent claims a task — critical path first
-task = cascade.claim("agent-001")
+r = cascade.claim("agent-001")
 
 # Complete with context that flows to downstream agents
+# Framework auto-injects produced_at and git_ref into critical
 cascade.complete("analyze",
     summary="Requirements: JWT auth + REST API",
     critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
@@ -73,7 +74,12 @@ When `agent-002` claims `design`, it sees:
     "promise": "Deliver prioritized feature list",
     "delivered": {
       "summary": "Requirements: JWT auth + REST API",
-      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+      "critical": {
+        "auth_type": "JWT",
+        "endpoints": ["/users", "/posts"],
+        "produced_at": 1778050765.98,
+        "git_ref": "a3f8c2e..."
+      }
     }
   }]
 }
@@ -101,7 +107,7 @@ types → core → context → view → operations → tools → client
 
 ## Tools
 
-The typed Python API is `CascadeClient`. The underlying tool layer uses `(GraphStorage, dict) → dict` signatures for CLI and JSON boundaries.
+The typed Python API is `CascadeClient`. All methods return `Result`; typed projections via `TaskView.from_result()` and `NodeInfo.list_from_result()`. The underlying tool layer uses `(StorageProtocol, dict) → dict` signatures for CLI and JSON boundaries.
 
 | Category | Tools |
 |----------|-------|
@@ -138,7 +144,7 @@ Both use the `CancelNotifier` protocol for push notifications.
 ## Running Tests
 
 ```bash
-uv run pytest tests/        # 196 tests
+uv run pytest tests/        # 298 tests
 uv run ruff check src tests  # lint
 ```
 

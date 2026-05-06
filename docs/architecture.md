@@ -92,6 +92,17 @@ The propagator performs a BFS walk starting from the target node, traversing bac
 
 Source: `src/cascade/context/propagator.py` (`ContextPropagator.collect_context_at`)
 
+### Context Freshness
+
+On `complete()`, the framework auto-injects provenance into `critical`:
+
+- `produced_at` — Unix timestamp (always present)
+- `git_ref` — HEAD commit hash (present only inside a git repo)
+
+The view layer (`render_briefing`, `render_inspect`) renders a **Freshness** line from these fields: elapsed time + commits behind HEAD. This gives downstream agents a trust signal without requiring runtime verification — the authority is git itself.
+
+Source: `src/cascade/client.py` (`_get_git_ref`), `src/cascade/view.py` (`_render_freshness`)
+
 ## Cancellation Architecture
 
 One semantic (task cancellation), two implementations for different deployment models.

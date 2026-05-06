@@ -53,9 +53,10 @@ cascade.add("design", deps={
 })
 
 # エージェントがタスクを取得 — クリティカルパス優先
-task = cascade.claim("agent-001")
+r = cascade.claim("agent-001")
 
 # 下流エージェントに伝播するコンテキスト付きでタスクを完了
+# フレームワークが produced_at と git_ref を critical に自動注入
 cascade.complete("analyze",
     summary="Requirements: JWT auth + REST API",
     critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
@@ -74,7 +75,12 @@ cascade.complete("analyze",
     "promise": "Deliver prioritized feature list",
     "delivered": {
       "summary": "Requirements: JWT auth + REST API",
-      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+      "critical": {
+        "auth_type": "JWT",
+        "endpoints": ["/users", "/posts"],
+        "produced_at": 1778050765.98,
+        "git_ref": "a3f8c2e..."
+      }
     }
   }]
 }
@@ -102,7 +108,7 @@ types → core → context → view → operations → tools
 
 ## ツール
 
-型付きPython APIは `CascadeClient` です。基盤となるツール層は、CLIおよびJSON境界用に `(GraphStorage, dict) → dict` シグネチャを使用します。
+型付きPython APIは `CascadeClient` です。全メソッドが `Result` を返し、`TaskView.from_result()` と `NodeInfo.list_from_result()` で型付き投影を取得できます。基盤となるツール層は、CLIおよびJSON境界用に `(StorageProtocol, dict) → dict` シグネチャを使用します。
 
 | カテゴリ | ツール |
 |----------|-------|
@@ -139,7 +145,7 @@ types → core → context → view → operations → tools
 ## テストの実行
 
 ```bash
-uv run pytest tests/        # 196 tests
+uv run pytest tests/        # 298 tests
 uv run ruff check src tests  # lint
 ```
 

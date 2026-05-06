@@ -56,13 +56,15 @@ cascade.add("refactor_backend")
 ## 3. Claim and Complete Tasks
 
 ```python
-# Agent claims the highest-priority READY task (critical path first)
-task = cascade.claim("agent-001")
+from cascade.types import TaskView
 
-# task contains:
-# - task.upstream: each ancestor with contract + delivered context
-# - task.promises: what you owe to downstream
-# - task.id: the claimed task's node ID
+# Agent claims the highest-priority READY task (critical path first)
+r = cascade.claim("agent-001")
+# r is a Result — check r.success, r.data["task_id"], etc.
+
+# For typed access to upstream context and promises:
+task = TaskView.from_result(r)
+# task.id, task.upstream, task.promises, task.token
 
 # Complete with output that flows downstream
 cascade.complete("analyze",
@@ -73,6 +75,7 @@ cascade.complete("analyze",
         "database": "PostgreSQL",
     },
 )
+# Framework auto-injects produced_at and git_ref into critical
 ```
 
 ### Upstream View
@@ -91,7 +94,12 @@ When you claim a task, you see each ancestor's contribution separately:
       "promise": "Deliver prioritized feature list",
       "delivered": {
         "summary": "Requirements: JWT auth + REST API",
-        "critical": {"auth_type": "JWT", "database": "PostgreSQL"}
+        "critical": {
+          "auth_type": "JWT",
+          "database": "PostgreSQL",
+          "produced_at": 1778050765.98,
+          "git_ref": "a3f8c2e..."
+        }
       }
     }
   ]
@@ -113,6 +121,23 @@ Your output flows downstream through three channels:
 | `artifacts` | Full documents, code, specs | All descendants (file reference) |
 
 **Rule of thumb**: if downstream agents need to _use_ it programmatically, put it in `critical`. If they need to _read_ it, `summary`. If it's a full document, `artifacts`.
+
+### Context Freshness
+
+On `complete()`, the framework automatically injects provenance metadata into `critical`:
+
+| Key | Value | Present |
+|-----|-------|---------|
+| `produced_at` | Unix timestamp of completion | Always |
+| `git_ref` | HEAD commit hash at completion time | Only inside a git repo |
+
+The view layer renders a human-readable **Freshness** line in task briefings:
+
+```
+- **Freshness**: 2h 15m ago | 3 commits behind HEAD
+```
+
+Downstream agents can use `git_ref` to run `git diff {git_ref}..HEAD` and assess whether upstream context is still relevant. Outside a git repo, only the timestamp dimension is available.
 
 ### Contract Semantics
 
@@ -230,8 +255,11 @@ cascade.check_timeouts(default_timeout=1800)  # release stalled > 30min
 ### List tasks
 
 ```python
-cascade.nodes()                       # all
-cascade.nodes(state="READY")          # only ready
+from cascade.types import NodeInfo
+
+r = cascade.nodes()                         # Result with all nodes
+r = cascade.nodes(state="READY")            # filter by state
+nodes = NodeInfo.list_from_result(r)        # typed projection
 ```
 
 ### Event history
@@ -257,20 +285,22 @@ cascade.fail("core", cascade=True, reason="Critical failure in core module")
 
 ## 9. Framework Integration
 
-`CascadeClient` is the primary API for all Cascade operations. For LLM framework integration (Anthropic tool_use, OpenAI function calling, etc.), the underlying `(GraphStorage, dict) -> dict` tool layer provides a dict-based serialization boundary:
+`CascadeClient` is the primary API for all Cascade operations. All methods return `Result`. For LLM framework integration (Anthropic tool_use, OpenAI function calling, etc.), the underlying `(StorageProtocol, dict) -> dict` tool layer provides a dict-based serialization boundary:
 
 ```python
-from cascade import CascadeClient, Contract
+from cascade import CascadeClient, Contract, FileStorage
+from cascade.types import TaskView
 
 # Primary API — use this for application code
 cascade = CascadeClient()
 cascade.add("analyze")
-task = cascade.claim("agent-001")
+r = cascade.claim("agent-001")
+task = TaskView.from_result(r)
 
 # Lower-level tool layer — for framework integration
-from cascade import GraphStorage, get_task
+from tools.get_task import get_task
 
-storage = GraphStorage(".cascade")
+storage = FileStorage(".cascade")
 
 tools = [{
     "name": "claim_task",

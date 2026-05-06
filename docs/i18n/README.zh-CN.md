@@ -53,9 +53,10 @@ cascade.add("design", deps={
 })
 
 # 智能体认领任务 — 关键路径优先
-task = cascade.claim("agent-001")
+r = cascade.claim("agent-001")
 
 # 完成任务并传递上下文给下游智能体
+# 框架自动注入 produced_at 和 git_ref 到 critical
 cascade.complete("analyze",
     summary="Requirements: JWT auth + REST API",
     critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
@@ -74,7 +75,12 @@ cascade.complete("analyze",
     "promise": "Deliver prioritized feature list",
     "delivered": {
       "summary": "Requirements: JWT auth + REST API",
-      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+      "critical": {
+        "auth_type": "JWT",
+        "endpoints": ["/users", "/posts"],
+        "produced_at": 1778050765.98,
+        "git_ref": "a3f8c2e..."
+      }
     }
   }]
 }
@@ -102,7 +108,7 @@ types → core → context → view → operations → tools
 
 ## 工具
 
-类型化 Python API 是 `CascadeClient`。底层工具层使用 `(GraphStorage, dict) → dict` 签名，用于 CLI 和 JSON 边界。
+类型化 Python API 是 `CascadeClient`。所有方法返回 `Result`；通过 `TaskView.from_result()` 和 `NodeInfo.list_from_result()` 获取类型化投影。底层工具层使用 `(StorageProtocol, dict) → dict` 签名，用于 CLI 和 JSON 边界。
 
 | 类别 | 工具 |
 |----------|-------|
@@ -139,7 +145,7 @@ types → core → context → view → operations → tools
 ## 运行测试
 
 ```bash
-uv run pytest tests/        # 196 个测试
+uv run pytest tests/        # 298 个测试
 uv run ruff check src tests  # lint 检查
 ```
 

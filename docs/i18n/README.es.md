@@ -53,9 +53,10 @@ cascade.add("design", deps={
 })
 
 # El agente reclama una tarea — ruta crítica primero
-task = cascade.claim("agent-001")
+r = cascade.claim("agent-001")
 
 # Completar con contexto que fluye a los agentes downstream
+# El framework inyecta produced_at y git_ref en critical automáticamente
 cascade.complete("analyze",
     summary="Requirements: JWT auth + REST API",
     critical={"auth_type": "JWT", "endpoints": ["/users", "/posts"]},
@@ -74,7 +75,12 @@ Cuando `agent-002` reclama `design`, ve:
     "promise": "Deliver prioritized feature list",
     "delivered": {
       "summary": "Requirements: JWT auth + REST API",
-      "critical": {"auth_type": "JWT", "endpoints": ["/users", "/posts"]}
+      "critical": {
+        "auth_type": "JWT",
+        "endpoints": ["/users", "/posts"],
+        "produced_at": 1778050765.98,
+        "git_ref": "a3f8c2e..."
+      }
     }
   }]
 }
@@ -102,7 +108,7 @@ types → core → context → view → operations → tools
 
 ## Herramientas
 
-La API Python tipada es `CascadeClient`. La capa de herramientas subyacente usa firmas `(GraphStorage, dict) → dict` para los límites CLI y JSON.
+La API Python tipada es `CascadeClient`. Todos los métodos retornan `Result`; proyecciones tipadas vía `TaskView.from_result()` y `NodeInfo.list_from_result()`. La capa de herramientas subyacente usa firmas `(StorageProtocol, dict) → dict` para los límites CLI y JSON.
 
 | Categoría | Herramientas |
 |-----------|-------------|
@@ -139,7 +145,7 @@ Ambos usan el protocolo `CancelNotifier` para notificaciones push.
 ## Ejecutar Tests
 
 ```bash
-uv run pytest tests/        # 196 tests
+uv run pytest tests/        # 298 tests
 uv run ruff check src tests  # lint
 ```
 
