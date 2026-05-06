@@ -3,35 +3,25 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
-## [0.4.6] - 2026-04-30
+## [0.4.8] - 2026-05-06
 
 ### Added
 
+- Temporal query layer — show, diff, snapshot-at
+- Extract ContentStore protocol with local + git implementations
 - Event replay — rebuild graph state from event log
 - Idempotent operations via op_id
-
-### Miscellaneous
-
-- Bump to 0.4.6
-
-### Refactored
-
-- Extract _mutate transaction + move result types to types.py
-- Lamport owned by storage, not EventStore
-- Tighten types — TypedDict for view layer
-## [0.4.5] - 2026-04-30
-
-### Added
-
 - Distributed prep — event identity, storage protocol, fencing tokens
 
 ### Documentation
 
+- Update CHANGELOG.md for v0.4.6
 - Skill — promote Adapt table, level markers, collapse rules
 - Update CHANGELOG.md for v0.4.4
 
 ### Fixed
 
+- Split no longer triggers duplicate-promise warning
 - Use structured artifacts_ref field instead of string prefix detection
 - Remove save_node() — incomplete incremental persistence
 - Remove write-only agent_tasks from graph.json
@@ -39,9 +29,26 @@ Generated from [conventional commits](https://www.conventionalcommits.org/).
 - Let cancellation callback errors propagate
 - Let cascade remove propagate errors instead of swallowing them
 
+### Miscellaneous
+
+- Bump to 0.4.8
+- Bump to 0.4.7
+- Bump to 0.4.6
+
 ### Refactored
 
+- Unify client API — claim/nodes return Result, projections via types
+- Events reference content store instead of inlining artifacts
+- Clean up tools layer + organize test structure
+- Introduce exception hierarchy, replace bare ValueError
+- Extract _mutate transaction + move result types to types.py
+- Lamport owned by storage, not EventStore
+- Tighten types — TypedDict for view layer
 - Persist Lamport clock to dedicated file instead of log scan
+
+### Testing
+
+- Fix duplicate-promise warnings in test data
 ## [0.4.4] - 2026-04-28
 
 ### Documentation
