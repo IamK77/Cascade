@@ -181,7 +181,8 @@ class TestRenderInspect:
         out = render_inspect(graph, "a")
 
         assert "## Delivered" in out
-        assert "_produced_at" in out
+        assert "**Freshness**" in out
+        assert "produced_at" in out
         assert "**Summary**" not in out
 
     def test_inspect_includes_upstream_briefing(self, tmp_path):

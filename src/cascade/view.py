@@ -104,6 +104,9 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
         if getattr(ctx, "summary", ""):
             delivered.append(f"- **Summary**: {ctx.summary}")
         if getattr(ctx, "critical", None):
+            freshness = _render_freshness(ctx.critical)
+            if freshness:
+                delivered.append(f"- **Freshness**: {freshness}")
             delivered.append("- **Critical**:")
             delivered.append("  ```json")
             delivered.append(f"  {json.dumps(ctx.critical, indent=2, ensure_ascii=False)}")
@@ -160,8 +163,8 @@ def _commits_behind(git_ref: str) -> int | None:
 
 def _render_freshness(critical: dict[str, Any]) -> str:
     """Render freshness line from provenance metadata in critical."""
-    produced_at = critical.get("_produced_at")
-    git_ref = critical.get("_git_ref", "")
+    produced_at = critical.get("produced_at")
+    git_ref = critical.get("git_ref", "")
 
     parts: list[str] = []
     if produced_at:
@@ -212,14 +215,10 @@ def render_briefing(view: dict[str, Any]) -> str:
                 freshness = _render_freshness(delivered["critical"])
                 if freshness:
                     lines.append(f"- **Freshness**: {freshness}")
-                user_critical = {
-                    k: v for k, v in delivered["critical"].items() if not k.startswith("_")
-                }
-                if user_critical:
-                    lines.append("- **Critical data**:")
-                    lines.append("  ```json")
-                    lines.append(f"  {json.dumps(user_critical, indent=2, ensure_ascii=False)}")
-                    lines.append("  ```")
+                lines.append("- **Critical data**:")
+                lines.append("  ```json")
+                lines.append(f"  {json.dumps(delivered['critical'], indent=2, ensure_ascii=False)}")
+                lines.append("  ```")
             if delivered.get("artifacts"):
                 lines.append(f"- **Artifacts**: {delivered['artifacts']}")
 

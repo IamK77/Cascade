@@ -1090,10 +1090,10 @@ class CascadeClient:
                     if artifacts:
                         node.context.artifacts = str(artifacts)
 
-                    node.context.critical["_produced_at"] = time.time()
+                    node.context.critical["produced_at"] = time.time()
                     git_ref = _get_git_ref()
                     if git_ref:
-                        node.context.critical["_git_ref"] = git_ref
+                        node.context.critical["git_ref"] = git_ref
 
                     unblocked = tx.graph.notify_completion(task_id)
 
