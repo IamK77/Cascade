@@ -56,12 +56,13 @@ class TestWatch:
         time.sleep(0.3)  # let watch baseline
         client.claim("w1", "a")
         lines = _drain_then_terminate(proc)
-        assert len(lines) == 1
-        t = json.loads(lines[0])
-        assert t["node"] == "a"
-        assert t["from"] == "READY"
-        assert t["to"] == "ACTIVE"
-        assert t["agent"] == "w1"
+        events = [json.loads(line) for line in lines]
+        transitions = [e for e in events if e["type"] == "transition"]
+        assert len(transitions) == 1
+        assert transitions[0]["node"] == "a"
+        assert transitions[0]["from"] == "READY"
+        assert transitions[0]["to"] == "ACTIVE"
+        assert transitions[0]["agent"] == "w1"
 
     def test_emits_completion_and_unblocks(self, client, storage_dir):
         client.add("up")
@@ -71,10 +72,14 @@ class TestWatch:
         time.sleep(0.3)
         client.complete("up", summary="ok")
         lines = _drain_then_terminate(proc)
-        transitions = [json.loads(line) for line in lines]
+        events = [json.loads(line) for line in lines]
+        transitions = [e for e in events if e["type"] == "transition"]
         states = {t["node"]: (t["from"], t["to"]) for t in transitions}
         assert states["up"] == ("ACTIVE", "COMPLETED")
         assert states["down"] == ("PENDING", "READY")
+        ready_events = [e for e in events if e["type"] == "ready"]
+        assert len(ready_events) == 1
+        assert "down" in ready_events[0]["nodes"]
 
     def test_no_baseline_emit(self, client, storage_dir):
         client.add("a")
@@ -90,8 +95,9 @@ class TestWatch:
         time.sleep(0.3)
         client.add("second")
         lines = _drain_then_terminate(proc)
-        assert len(lines) == 1
-        t = json.loads(lines[0])
-        assert t["node"] == "second"
-        assert t["from"] is None
-        assert t["to"] == "READY"
+        events = [json.loads(line) for line in lines]
+        transitions = [e for e in events if e["type"] == "transition"]
+        assert len(transitions) == 1
+        assert transitions[0]["node"] == "second"
+        assert transitions[0]["from"] is None
+        assert transitions[0]["to"] == "READY"

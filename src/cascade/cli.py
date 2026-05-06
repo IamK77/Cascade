@@ -327,6 +327,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
 
             last_mtime = mtime
             now = _t.time()
+            has_changes = False
 
             for nid, entry in snap.items():
                 prev = last_snapshot.get(nid)
@@ -341,6 +342,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
                     if entry.get("agent_id"):
                         transition["agent"] = entry["agent_id"]
                     emit(transition)
+                    has_changes = True
                 elif prev["state"] != entry["state"]:
                     transition = {
                         "type": "transition",
@@ -352,6 +354,7 @@ def cmd_watch(args: argparse.Namespace) -> None:
                     if entry.get("agent_id"):
                         transition["agent"] = entry["agent_id"]
                     emit(transition)
+                    has_changes = True
 
             for nid, prev in last_snapshot.items():
                 if nid not in snap:
@@ -364,6 +367,11 @@ def cmd_watch(args: argparse.Namespace) -> None:
                             "ts": now,
                         }
                     )
+                    has_changes = True
+
+            ready = [nid for nid, entry in snap.items() if entry["state"] == "READY"]
+            if has_changes:
+                emit({"type": "ready", "nodes": ready, "ts": now})
 
             last_snapshot = snap
     except KeyboardInterrupt:
