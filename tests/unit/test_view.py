@@ -171,7 +171,7 @@ class TestRenderInspect:
         assert "_State: READY_" in out
         assert "## Delivered" not in out
 
-    def test_inspect_completed_without_context(self, tmp_path):
+    def test_inspect_completed_without_user_context(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("a")
         c.claim("w1", task_id="a")
@@ -181,7 +181,8 @@ class TestRenderInspect:
         out = render_inspect(graph, "a")
 
         assert "## Delivered" in out
-        assert "No context delivered" in out
+        assert "_produced_at" in out
+        assert "**Summary**" not in out
 
     def test_inspect_includes_upstream_briefing(self, tmp_path):
         c = _make_client(tmp_path)

@@ -20,6 +20,8 @@ not a graph primitive.
 """
 
 import json
+import subprocess
+import time
 from collections import deque
 from typing import Any
 
@@ -123,6 +125,61 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
     return "\n".join(parts)
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Format elapsed seconds as human-readable duration."""
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s ago"
+    if s < 3600:
+        m, sec = divmod(s, 60)
+        return f"{m}m {sec}s ago" if sec else f"{m}m ago"
+    if s < 86400:
+        h, remainder = divmod(s, 3600)
+        m = remainder // 60
+        return f"{h}h {m}m ago" if m else f"{h}h ago"
+    d, remainder = divmod(s, 86400)
+    h = remainder // 3600
+    return f"{d}d {h}h ago" if h else f"{d}d ago"
+
+
+def _commits_behind(git_ref: str) -> int | None:
+    """Count commits between git_ref and HEAD. Returns None on failure."""
+    try:
+        r = subprocess.run(
+            ["git", "rev-list", "--count", f"{git_ref}..HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode == 0:
+            return int(r.stdout.strip())
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        pass
+    return None
+
+
+def _render_freshness(critical: dict[str, Any]) -> str:
+    """Render freshness line from provenance metadata in critical."""
+    produced_at = critical.get("_produced_at")
+    git_ref = critical.get("_git_ref", "")
+
+    parts: list[str] = []
+    if produced_at:
+        elapsed = time.time() - float(produced_at)
+        if elapsed >= 0:
+            parts.append(_format_elapsed(elapsed))
+
+    if git_ref:
+        behind = _commits_behind(git_ref)
+        if behind is not None:
+            if behind == 0:
+                parts.append("at HEAD")
+            else:
+                parts.append(f"{behind} commits behind HEAD")
+
+    return " | ".join(parts) if parts else ""
+
+
 def render_briefing(view: dict[str, Any]) -> str:
     """Render a task view as a markdown briefing.
 
@@ -152,10 +209,17 @@ def render_briefing(view: dict[str, Any]) -> str:
             if delivered.get("summary"):
                 lines.append(f"- **Summary**: {delivered['summary']}")
             if delivered.get("critical"):
-                lines.append("- **Critical data**:")
-                lines.append("  ```json")
-                lines.append(f"  {json.dumps(delivered['critical'], indent=2, ensure_ascii=False)}")
-                lines.append("  ```")
+                freshness = _render_freshness(delivered["critical"])
+                if freshness:
+                    lines.append(f"- **Freshness**: {freshness}")
+                user_critical = {
+                    k: v for k, v in delivered["critical"].items() if not k.startswith("_")
+                }
+                if user_critical:
+                    lines.append("- **Critical data**:")
+                    lines.append("  ```json")
+                    lines.append(f"  {json.dumps(user_critical, indent=2, ensure_ascii=False)}")
+                    lines.append("  ```")
             if delivered.get("artifacts"):
                 lines.append(f"- **Artifacts**: {delivered['artifacts']}")
 

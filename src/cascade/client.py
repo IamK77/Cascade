@@ -30,6 +30,7 @@ lives here — tools and CLI are thin wrappers that delegate to this.
 
 from __future__ import annotations
 
+import subprocess
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -1080,15 +1081,19 @@ class CascadeClient:
                     node.claimed_at = None
                     node.timeout = None
 
-                    if summary or critical or artifacts:
-                        if node.context is None:
-                            node.context = Context()
-                        if summary:
-                            node.context.summary = summary
-                        if critical and isinstance(critical, dict):
-                            node.context.critical.update(critical)
-                        if artifacts:
-                            node.context.artifacts = str(artifacts)
+                    if node.context is None:
+                        node.context = Context()
+                    if summary:
+                        node.context.summary = summary
+                    if critical and isinstance(critical, dict):
+                        node.context.critical.update(critical)
+                    if artifacts:
+                        node.context.artifacts = str(artifacts)
+
+                    node.context.critical["_produced_at"] = time.time()
+                    git_ref = _get_git_ref()
+                    if git_ref:
+                        node.context.critical["_git_ref"] = git_ref
 
                     unblocked = tx.graph.notify_completion(task_id)
 
@@ -1714,6 +1719,22 @@ class CascadeClient:
 # ---------------------------------------------------------------------------
 # Helpers (module-private)
 # ---------------------------------------------------------------------------
+
+
+def _get_git_ref() -> str:
+    """Get current HEAD commit hash, or empty string if not in a git repo."""
+    try:
+        r = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    return ""
 
 
 def _update_context(
