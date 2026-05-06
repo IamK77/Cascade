@@ -90,13 +90,22 @@ class SplitOperation(NodeOperation):
             for dep in dependents:
                 c = outgoing_contracts[dep.id]
                 for new_id in new_node_ids:
-                    self._cascade.add_edge(new_id, dep.id, contract=c)
+                    self._cascade.add_edge(new_id, dep.id, contract=c, _skip_duplicate_warn=True)
                     affected_nodes.append(dep.id)
+
+            has_shared_promises = len(dependents) > 0 and len(new_node_ids) > 1
+
+            message = f"Node {parent_id} split into {len(new_nodes)} nodes"
+            if has_shared_promises:
+                message += (
+                    ". Tip: child nodes inherited identical promises to downstream"
+                    " — use edit_node to differentiate each child's deliverable."
+                )
 
             return OperationResult(
                 success=True,
                 affected_nodes=list(set(affected_nodes)),
-                message=f"Node {parent_id} split into {len(new_nodes)} nodes",
+                message=message,
                 data=SplitResult(parent_id=parent_id, new_node_ids=new_node_ids),
             )
         except ValueError as e:
