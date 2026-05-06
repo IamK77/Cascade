@@ -25,10 +25,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/autoseek/cascade"
-Repository = "https://github.com/autoseek/cascade"
-Issues = "https://github.com/autoseek/cascade/issues"
-Documentation = "https://github.com/autoseek/cascade/blob/main/docs/guide.md"
+Homepage = "https://github.com/autoseek-ai/Cascade"
+Repository = "https://github.com/autoseek-ai/Cascade"
+Issues = "https://github.com/autoseek-ai/Cascade/issues"
+Documentation = "https://github.com/autoseek-ai/Cascade/blob/main/docs/guide.md"
 
 [project.scripts]
 cascade = "cascade.cli:run"
