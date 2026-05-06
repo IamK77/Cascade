@@ -119,8 +119,8 @@ class TestContextFlow:
         client.add(
             "d",
             deps={
-                "b": Contract("Expect output from b", "Promise output to dependent"),
-                "c": Contract("Expect output from c", "Promise output to dependent"),
+                "b": Contract("Expect output from b", "b delivers branch B"),
+                "c": Contract("Expect output from c", "c delivers branch C"),
             },
         )
 

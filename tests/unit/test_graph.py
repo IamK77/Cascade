@@ -426,10 +426,10 @@ class TestGraphConnectivity:
         cascade.add_node(Node(id="b", state=NodeState.PENDING))
         cascade.add_node(Node(id="c", state=NodeState.PENDING))
         cascade.add_node(Node(id="d", state=NodeState.PENDING))
-        cascade.add_edge("a", "b", expectation="E", promise="P")
-        cascade.add_edge("a", "c", expectation="E", promise="P")
-        cascade.add_edge("b", "d", expectation="E", promise="P")
-        cascade.add_edge("c", "d", expectation="E", promise="P")
+        cascade.add_edge("a", "b", expectation="E", promise="a delivers to b")
+        cascade.add_edge("a", "c", expectation="E", promise="a delivers to c")
+        cascade.add_edge("b", "d", expectation="E", promise="b delivers to d")
+        cascade.add_edge("c", "d", expectation="E", promise="c delivers to d")
         assert cascade.is_connected()
 
     def test_disconnected_graph_not_connected(self):

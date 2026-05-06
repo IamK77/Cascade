@@ -175,18 +175,18 @@ class TestAddNode:
         client.add("root")
         client.add(
             "task_a",
-            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
+            deps={"root": Contract("Expect output from root", "Root delivers to task_a")},
         )
         client.add(
             "task_b",
-            deps={"root": Contract("Expect output from root", "Promise output to dependent")},
+            deps={"root": Contract("Expect output from root", "Root delivers to task_b")},
         )
 
         result = client.add(
             "new_task",
             deps={
-                "task_a": Contract("Expect output from task_a", "Promise output to dependent"),
-                "task_b": Contract("Expect output from task_b", "Promise output to dependent"),
+                "task_a": Contract("Expect output from task_a", "task_a delivers result"),
+                "task_b": Contract("Expect output from task_b", "task_b delivers result"),
             },
         )
         assert result.success is True
