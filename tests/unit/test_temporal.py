@@ -34,8 +34,8 @@ def populated_client(client: CascadeClient) -> CascadeClient:
     client.add("design", deps={"analyze": Contract("need spec", "deliver spec")})
     client.add("impl", deps={"design": Contract("need design", "deliver code")})
 
-    task = client.claim("agent-1")
-    assert task.id == "analyze"
+    r = client.claim("agent-1")
+    assert r.data["task_id"] == "analyze"
     client.complete(
         "analyze",
         agent_id="agent-1",
@@ -44,8 +44,8 @@ def populated_client(client: CascadeClient) -> CascadeClient:
         artifacts="full analysis document",
     )
 
-    task = client.claim("agent-2")
-    assert task.id == "design"
+    r = client.claim("agent-2")
+    assert r.data["task_id"] == "design"
     client.complete(
         "design",
         agent_id="agent-2",

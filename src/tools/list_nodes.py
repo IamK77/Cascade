@@ -31,8 +31,8 @@ def list_nodes(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, An
     """
     client = CascadeClient(storage)
 
-    r = client._nodes_inner(
-        state_filter=params.get("state_filter"),
+    r = client.nodes(
+        state=params.get("state_filter"),
         include_pending_only=params.get("include_pending_only", False),
     )
     return r.to_dict()

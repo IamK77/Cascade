@@ -9,12 +9,17 @@ def _make_client(tmp_path):
     return CascadeClient(str(tmp_path / ".cascade"))
 
 
+def _claim_view(client, agent_id, task_id=None):
+    """Claim and return task_info dict for render_briefing tests."""
+    r = client.claim(agent_id, task_id=task_id)
+    return r.data.get("task_info", {})
+
+
 class TestRenderBriefing:
     def test_minimal_task(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("root")
-        task = c.claim("w1", task_id="root")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w1", task_id="root"))
         assert "# Task: root" in md
         assert "## Upstream Context" not in md
         assert "## Promises to Downstream" not in md
@@ -27,8 +32,7 @@ class TestRenderBriefing:
         c.claim("w1", task_id="analyze")
         c.complete("analyze", summary="Done", critical={"db": "pg"})
 
-        task = c.claim("w2", task_id="design")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w2", task_id="design"))
 
         assert "## Upstream Context" in md
         assert "### analyze (direct dependency)" in md
@@ -48,8 +52,7 @@ class TestRenderBriefing:
         c.claim("w2", task_id="mid")
         c.complete("mid", summary="Mid done")
 
-        task = c.claim("w3", task_id="leaf")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w3", task_id="leaf"))
 
         assert "### mid (direct dependency)" in md
         assert "### root (ancestor, distance 2)" in md
@@ -59,8 +62,7 @@ class TestRenderBriefing:
         c.add("impl")
         c.add("integrate", deps={"impl": Contract("Need module", "Deliver implementation")})
 
-        task = c.claim("w1", task_id="impl")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w1", task_id="impl"))
 
         assert "## Promises to Downstream" in md
         assert "→ **integrate**: Deliver implementation" in md
@@ -82,8 +84,7 @@ class TestRenderBriefing:
         c.claim("w2", task_id="api")
         c.complete("api", summary="API done", critical={"endpoints": ["/users"]})
 
-        task = c.claim("w3", task_id="integrate")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w3", task_id="integrate"))
 
         assert "### auth (direct dependency)" in md
         assert "### api (direct dependency)" in md
@@ -98,8 +99,7 @@ class TestRenderBriefing:
         c.claim("w1", task_id="analyze")
         c.complete("analyze", artifacts="# Full Spec\n## Auth\nJWT based")
 
-        task = c.claim("w2", task_id="impl")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w2", task_id="impl"))
 
         assert "**Artifacts**:" in md
         assert "# Full Spec" in md
@@ -110,8 +110,7 @@ class TestRenderBriefing:
         c.add("b", deps={"a": Contract("E", "P")})
         c.add("c", deps={"b": Contract("E2", "P2")})
 
-        task = c.claim("w1", task_id="a")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w1", task_id="a"))
 
         assert "## Downstream Topology" in md
         assert "b" in md
@@ -120,8 +119,7 @@ class TestRenderBriefing:
         c = _make_client(tmp_path)
         c.add("standalone")
 
-        task = c.claim("w1", task_id="standalone")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w1", task_id="standalone"))
 
         assert "# Task: standalone" in md
         lines = [line for line in md.split("\n") if line.strip()]
@@ -135,8 +133,7 @@ class TestRenderBriefing:
         c.claim("w1", task_id="a")
         c.complete("a", critical={"endpoints": ["/auth", "/users"], "db": "PostgreSQL"})
 
-        task = c.claim("w2", task_id="b")
-        md = render_briefing(task.raw)
+        md = render_briefing(_claim_view(c, "w2", task_id="b"))
 
         assert "```json" in md
         assert '"/auth"' in md

@@ -30,14 +30,15 @@ class TestGetTask:
             deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        task = client.claim("agent_1")
-        assert task.state == "ACTIVE"
-        assert task.id == "task_a"
+        r = client.claim("agent_1")
+        assert r.success
+        assert r.data["state"] == "ACTIVE"
+        assert r.data["task_id"] == "task_a"
 
     def test_get_specific_task(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        task = client.claim("agent_1", "task_a")
-        assert task.id == "task_a"
+        r = client.claim("agent_1", "task_a")
+        assert r.data["task_id"] == "task_a"
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -49,7 +50,7 @@ class TestGetTask:
             "task_b",
             deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
-        result = client._claim_inner("agent_1", "task_b")
+        result = client.claim("agent_1", "task_b")
         assert result.success is False
 
     def test_agent_tracking(self, client: CascadeClient):
@@ -63,11 +64,11 @@ class TestGetTask:
             deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        task1 = client.claim("agent_1")
-        assert task1.id == "root"
+        result = client.claim("agent_1")
+        assert result.data["task_id"] == "root"
 
         # Second claim fails with ALREADY_HAS_ACTIVE — agent must finish first
-        result = client._claim_inner("agent_1")
+        result = client.claim("agent_1")
         assert result.success is False
         assert result.code == "ALREADY_HAS_ACTIVE"
         assert result.data.get("current_task") == "root"
@@ -77,12 +78,12 @@ class TestGetTask:
         client.claim("agent_1")
         client.complete("task_a")
 
-        result = client._claim_inner("agent_2")
+        result = client.claim("agent_2")
         assert result.success is False
 
     def test_agent_id_required(self, client: CascadeClient):
         client.add("task_a")
-        result = client._claim_inner("")
+        result = client.claim("")
         assert result.success is False
         assert "agent_id is required" in result.message
 
@@ -154,8 +155,8 @@ class TestFinishTask:
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.READY
 
-        task2 = client.claim("agent_2", "task_a")
-        assert task2.id == "task_a"
+        r2 = client.claim("agent_2", "task_a")
+        assert r2.data["task_id"] == "task_a"
 
 
 class TestAddNode:
@@ -353,8 +354,8 @@ class TestListNodes:
             deps={"root": Contract("Expect output from root", "Promise output to dependent")},
         )
 
-        nodes = client.nodes()
-        assert len(nodes) == 4
+        r = client.nodes()
+        assert r.data["count"] == 4
 
     def test_list_nodes_with_filter(self, client: CascadeClient):
         client.add("task_a")
@@ -363,8 +364,8 @@ class TestListNodes:
             deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        nodes = client.nodes(state="READY")
-        assert len(nodes) == 1
+        r = client.nodes(state="READY")
+        assert r.data["count"] == 1
 
 
 class TestCheckTimeouts:

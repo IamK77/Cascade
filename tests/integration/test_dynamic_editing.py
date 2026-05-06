@@ -19,8 +19,9 @@ These tests verify that the system remains consistent when
 nodes are split, refined, added, or removed mid-execution.
 """
 
-from cascade.client import CascadeClient, Contract
+from cascade.client import CascadeClient
 from cascade.core.state import NodeState
+from cascade.types import Contract, TaskView
 from cascade.view import get_node_view
 
 
@@ -179,7 +180,7 @@ class TestRefineDuringExecution:
         client.complete("a", summary="Done", critical={"from_a": True})
 
         # b should be READY and see a's context
-        task = client.claim("a2", "b")
+        task = TaskView.from_result(client.claim("a2", "b"))
         assert task.upstream[0]["delivered"]["critical"]["from_a"] is True
 
 
@@ -229,7 +230,7 @@ class TestAddNodeDuringExecution:
         assert result.success
 
         # Should be immediately READY and see a's context
-        task = client.claim("a2", "late_joiner")
+        task = TaskView.from_result(client.claim("a2", "late_joiner"))
         assert task.upstream[0]["delivered"]["critical"]["x"] == 1
 
 

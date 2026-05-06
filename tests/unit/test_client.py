@@ -18,13 +18,19 @@ from __future__ import annotations
 
 import pytest
 
-from cascade.client import CascadeClient, Contract, NodeInfo, Result, TaskView
+from cascade.client import CascadeClient
+from cascade.types import Contract, NodeInfo, Result, TaskView
 
 
 @pytest.fixture
 def client(temp_storage):
     """Create a CascadeClient backed by temp storage."""
     return CascadeClient(temp_storage.base_dir)
+
+
+def _nodes(client: CascadeClient, **kwargs) -> list[NodeInfo]:
+    """Helper: project nodes() Result into list[NodeInfo]."""
+    return NodeInfo.list_from_result(client.nodes(**kwargs))
 
 
 # ── add() ──────────────────────────────────────────────────────────────
@@ -39,7 +45,7 @@ class TestAdd:
     def test_add_basic(self, client: CascadeClient):
         r = client.add("a")
         assert r.success
-        nodes = client.nodes()
+        nodes = _nodes(client)
         assert len(nodes) == 1
         assert nodes[0].id == "a"
 
@@ -47,7 +53,7 @@ class TestAdd:
         client.add("a")
         r = client.add("b", deps={"a": Contract("Need spec", "Deliver spec")})
         assert r.success
-        nodes = client.nodes()
+        nodes = _nodes(client)
         assert len(nodes) == 2
 
     def test_add_duplicate_fails(self, client: CascadeClient):
@@ -60,7 +66,7 @@ class TestAddBatch:
     def test_batch_empty(self, client: CascadeClient):
         r = client.add_batch([])
         assert r.success
-        assert client.nodes() == []
+        assert _nodes(client) == []
 
     def test_batch_simple(self, client: CascadeClient):
         r = client.add_batch(
@@ -71,7 +77,7 @@ class TestAddBatch:
             ]
         )
         assert r.success
-        assert len(client.nodes()) == 3
+        assert len(_nodes(client)) == 3
         assert r.data["added"] == ["a", "b", "c"]
 
     def test_batch_with_internal_dependencies(self, client: CascadeClient):
@@ -84,7 +90,7 @@ class TestAddBatch:
             ]
         )
         assert r.success
-        nodes = {n.id: n for n in client.nodes()}
+        nodes = {n.id: n for n in _nodes(client)}
         assert nodes["a"].state == "READY"
         assert nodes["b"].state == "PENDING"
         assert nodes["c"].state == "PENDING"
@@ -100,7 +106,7 @@ class TestAddBatch:
         )
         assert not r.success
         assert "Batch failed at 'bad'" in r.message
-        assert client.nodes() == []
+        assert _nodes(client) == []
 
     def test_batch_missing_node_id(self, client: CascadeClient):
         r = client.add_batch([{"deps": {}}])
@@ -117,7 +123,7 @@ class TestAddBatch:
         )
         assert not r.success
         # neither b nor anything else added
-        assert len(client.nodes()) == 1
+        assert len(_nodes(client)) == 1
 
 
 # ── remove() ───────────────────────────────────────────────────────────
@@ -128,14 +134,14 @@ class TestRemove:
         client.add("a")
         r = client.remove("a")
         assert r.success
-        assert client.nodes() == []
+        assert _nodes(client) == []
 
     def test_remove_cascade(self, client: CascadeClient):
         client.add("a")
         client.add("b", deps={"a": Contract("need", "promise")})
         r = client.remove("a", cascade=True)
         assert r.success
-        assert client.nodes() == []
+        assert _nodes(client) == []
 
     def test_remove_active_node_blocked(self, client: CascadeClient):
         client.add("a")
@@ -156,7 +162,7 @@ class TestSplit:
         client.add("big")
         r = client.split("big", into=["part1", "part2"])
         assert r.success
-        ids = {n.id for n in client.nodes()}
+        ids = {n.id for n in _nodes(client)}
         assert "part1" in ids
         assert "part2" in ids
         assert "big" not in ids
@@ -210,8 +216,10 @@ class TestEdit:
 class TestClaim:
     def test_claim_specific_task(self, client: CascadeClient):
         client.add("a")
-        task = client.claim("w1", "a")
-        assert isinstance(task, TaskView)
+        r = client.claim("w1", "a")
+        assert isinstance(r, Result)
+        assert r.success
+        task = TaskView.from_result(r)
         assert task.id == "a"
         assert task.state == "ACTIVE"
 
@@ -219,28 +227,28 @@ class TestClaim:
         """Claiming without task_id picks the highest-priority READY node."""
         client.add("first")
         client.add("second")
-        task = client.claim("w1")
+        r = client.claim("w1")
+        task = TaskView.from_result(r)
         assert task.id in ("first", "second")
         assert task.state == "ACTIVE"
 
-    def test_claim_no_task_raises(self, client: CascadeClient):
-        with pytest.raises(RuntimeError):
-            client.claim("w1")
+    def test_claim_no_task_fails(self, client: CascadeClient):
+        r = client.claim("w1")
+        assert not r.success
 
-    def test_claim_pending_task_raises(self, client: CascadeClient):
+    def test_claim_pending_task_fails(self, client: CascadeClient):
         client.add("a")
         client.add("b", deps={"a": Contract("need", "promise")})
-        with pytest.raises(RuntimeError):
-            client.claim("w1", "b")
+        r = client.claim("w1", "b")
+        assert not r.success
 
     def test_claim_returns_upstream_context(self, client: CascadeClient):
         """After completing A, claiming B should see A's output in upstream."""
         client.add("a")
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
-        task_a = client.claim("w1", "a")
-        client.complete(task_a.id, summary="Done A", critical={"out": "42"})
-        task_b = client.claim("w2", "b")
-        # Upstream should contain A's context
+        client.claim("w1", "a")
+        client.complete("a", summary="Done A", critical={"out": "42"})
+        task_b = TaskView.from_result(client.claim("w2", "b"))
         assert len(task_b.upstream) > 0
         upstream_ids = [u.get("node_id") for u in task_b.upstream]
         assert "a" in upstream_ids
@@ -262,7 +270,7 @@ class TestClaim:
             return original(*args, **kwargs)
 
         monkeypatch.setattr(client, "_claim_locked", flaky)
-        r = client._claim_inner("w1", "a")
+        r = client.claim("w1", "a")
         assert r.success
         assert attempts["count"] == 3
 
@@ -278,7 +286,7 @@ class TestClaim:
             raise LockError("persistent contention")
 
         monkeypatch.setattr(client, "_claim_locked", always_fails)
-        r = client._claim_inner("w1", "a")
+        r = client.claim("w1", "a")
         assert not r.success
         assert "lock" in r.message.lower()
 
@@ -326,7 +334,7 @@ class TestComplete:
         client.add("a")
         client.claim("w1", "a")
         client.complete("a", summary="Done")
-        nodes = client.nodes(state="COMPLETED")
+        nodes = _nodes(client, state="COMPLETED")
         assert len(nodes) == 1
         assert nodes[0].id == "a"
 
@@ -342,7 +350,7 @@ class TestComplete:
         r = client.complete("a", agent_id="other-agent", summary="Done")
         assert not r.success
         assert "claimed by 'w1'" in r.message
-        nodes = client.nodes(state="ACTIVE")
+        nodes = _nodes(client, state="ACTIVE")
         assert len(nodes) == 1  # task still ACTIVE, not finished
 
 
@@ -363,8 +371,8 @@ class TestFail:
         r = client.fail("a", cascade=True, reason="Fatal error")
         assert r.success
         # Both nodes should be in a terminal state
-        remaining_ready = client.nodes(state="READY")
-        remaining_pending = client.nodes(state="PENDING")
+        remaining_ready = _nodes(client, state="READY")
+        remaining_pending = _nodes(client, state="PENDING")
         assert len(remaining_ready) == 0
         assert len(remaining_pending) == 0
 
@@ -384,16 +392,17 @@ class TestRelease:
         client.claim("w1", "a")
         r = client.release("a", reason="Need more info")
         assert r.success
-        nodes = client.nodes(state="READY")
+        nodes = _nodes(client, state="READY")
         assert any(n.id == "a" for n in nodes)
 
     def test_release_then_reclaim(self, client: CascadeClient):
         client.add("a")
         client.claim("w1", "a")
         client.release("a")
-        task = client.claim("w2", "a")
-        assert task.id == "a"
-        assert task.state == "ACTIVE"
+        r = client.claim("w2", "a")
+        assert r.success
+        assert r.data["task_id"] == "a"
+        assert r.data["state"] == "ACTIVE"
 
 
 # ── rework() ──────────────────────────────────────────────────────────
@@ -420,7 +429,7 @@ class TestRework:
             corrective_promise="Fix delivers corrected spec",
         )
         assert r.success
-        ids = {n.id for n in client.nodes()}
+        ids = {n.id for n in _nodes(client)}
         assert "a-fix" in ids
 
 
@@ -428,19 +437,26 @@ class TestRework:
 
 
 class TestNodes:
+    def test_returns_result(self, client: CascadeClient):
+        client.add("a")
+        r = client.nodes()
+        assert isinstance(r, Result)
+        assert r.success
+        assert r.data["count"] == 1
+
     def test_list_all(self, client: CascadeClient):
         client.add("a")
         client.add("b")
         client.add("c")
-        nodes = client.nodes()
+        nodes = _nodes(client)
         assert len(nodes) == 3
         assert all(isinstance(n, NodeInfo) for n in nodes)
 
     def test_filter_by_state(self, client: CascadeClient):
         client.add("a")
         client.add("b", deps={"a": Contract("need", "promise")})
-        ready = client.nodes(state="READY")
-        pending = client.nodes(state="PENDING")
+        ready = _nodes(client, state="READY")
+        pending = _nodes(client, state="PENDING")
         assert len(ready) == 1
         assert ready[0].id == "a"
         assert len(pending) == 1
@@ -449,17 +465,17 @@ class TestNodes:
     def test_pending_dependencies_count(self, client: CascadeClient):
         client.add("a")
         client.add("b", deps={"a": Contract("need", "promise")})
-        pending = client.nodes(state="PENDING")
+        pending = _nodes(client, state="PENDING")
         assert pending[0].pending_dependencies >= 1
 
     def test_empty_graph(self, client: CascadeClient):
-        nodes = client.nodes()
+        nodes = _nodes(client)
         assert nodes == []
 
     def test_active_node_includes_agent_and_duration(self, client: CascadeClient):
         client.add("a")
         client.claim("w1", "a")
-        active = client.nodes(state="ACTIVE")
+        active = _nodes(client, state="ACTIVE")
         assert len(active) == 1
         assert active[0].agent_id == "w1"
         assert active[0].active_seconds is not None
@@ -472,12 +488,12 @@ class TestNodes:
         import time as _t
 
         _t.sleep(0.05)
-        active = client.nodes(state="ACTIVE")
+        active = _nodes(client, state="ACTIVE")
         assert active[0].stale is True
 
     def test_non_active_node_no_active_metadata(self, client: CascadeClient):
         client.add("a")
-        ready = client.nodes(state="READY")
+        ready = _nodes(client, state="READY")
         assert ready[0].agent_id is None
         assert ready[0].active_seconds is None
 
@@ -512,7 +528,7 @@ class TestCheckTimeouts:
         time.sleep(0.02)  # Wait for timeout to expire
         r = client.check_timeouts()
         assert r.success
-        ready = client.nodes(state="READY")
+        ready = _nodes(client, state="READY")
         assert any(n.id == "a" for n in ready)
 
     def test_timeout_with_default(self, client: CascadeClient):
@@ -554,8 +570,7 @@ class TestContextFlow:
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
         client.claim("w1", "a")
         client.complete("a", summary="Analysis complete: found 3 issues")
-        task_b = client.claim("w2", "b")
-        # Upstream delivered context contains the summary
+        task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:
             delivered = u.get("delivered", {})
@@ -570,7 +585,7 @@ class TestContextFlow:
         client.add("b", deps={"a": Contract("Need data", "Deliver data")})
         client.claim("w1", "a")
         client.complete("a", critical={"api_endpoint": "/v1/users"})
-        task_b = client.claim("w2", "b")
+        task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:
             delivered = u.get("delivered", {})

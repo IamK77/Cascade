@@ -213,6 +213,25 @@ class TaskView:
     raw: dict[str, Any] = field(default_factory=dict)
     token: int | None = None
 
+    @classmethod
+    def from_result(cls, result: "Result") -> "TaskView":
+        """Project a claim Result into a typed TaskView.
+
+        Raises:
+            RuntimeError: If the Result represents a failure.
+        """
+        if not result.success:
+            raise RuntimeError(result.message)
+        info = result.data.get("task_info", {})
+        return cls(
+            id=result.data["task_id"],
+            state=result.data["state"],
+            upstream=info.get("upstream", []),
+            promises=info.get("promises", []),
+            raw=info,
+            token=result.data.get("token"),
+        )
+
 
 @dataclass
 class NodeInfo:
@@ -224,6 +243,21 @@ class NodeInfo:
     agent_id: str | None = None
     active_seconds: float | None = None
     stale: bool = False
+
+    @classmethod
+    def list_from_result(cls, result: "Result") -> list["NodeInfo"]:
+        """Project a nodes Result into a typed list."""
+        return [
+            cls(
+                id=n["id"],
+                state=n["state"],
+                pending_dependencies=n.get("pending_dependencies", 0),
+                agent_id=n.get("agent_id"),
+                active_seconds=n.get("active_seconds"),
+                stale=n.get("stale", False),
+            )
+            for n in result.data.get("nodes", [])
+        ]
 
 
 @dataclass

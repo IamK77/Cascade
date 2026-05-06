@@ -53,9 +53,7 @@ from cascade.types import (
     Context,
     Contract,
     ErrorCode,
-    NodeInfo,
     Result,
-    TaskView,
 )
 from cascade.view import get_node_view
 
@@ -710,7 +708,7 @@ class CascadeClient:
         *,
         timeout: float | None = None,
         cancel_notifier: CancelNotifier | None = None,
-    ) -> TaskView:
+    ) -> Result:
         """Claim a task to work on.
 
         Args:
@@ -720,34 +718,8 @@ class CascadeClient:
             cancel_notifier: Push notification on cancellation.
 
         Returns:
-            TaskView with task info, upstream context, and promises.
-
-        Raises:
-            RuntimeError: If no task available or claim fails.
-        """
-        r = self._claim_inner(agent_id, task_id, timeout=timeout, cancel_notifier=cancel_notifier)
-        if not r.success:
-            raise RuntimeError(r.message)
-
-        info = r.data.get("task_info", {})
-        return TaskView(
-            id=r.data["task_id"],
-            state=r.data["state"],
-            upstream=info.get("upstream", []),
-            promises=info.get("promises", []),
-            raw=info,
-            token=r.data.get("token"),
-        )
-
-    def _claim_inner(
-        self,
-        agent_id: str,
-        task_id: str | None = None,
-        *,
-        timeout: float | None = None,
-        cancel_notifier: CancelNotifier | None = None,
-    ) -> Result:
-        """Internal claim logic returning a Result (used by tool wrappers).
+            Result with data containing task_id, state, task_info, token.
+            Use Result.task_view() for typed access.
 
         Retries on lock contention with exponential backoff (3 attempts total),
         since concurrent get-task calls from parallel workers are a primary use case.
@@ -1351,32 +1323,18 @@ class CascadeClient:
 
     # -- Query --------------------------------------------------------------
 
-    def nodes(self, state: str | None = None) -> list[NodeInfo]:
+    def nodes(
+        self,
+        *,
+        state: str | None = None,
+        include_pending_only: bool = False,
+    ) -> Result:
         """List all tasks in the DAG.
 
         Args:
             state: Filter by state (e.g. "READY", "ACTIVE").
+            include_pending_only: Only show PENDING nodes.
         """
-        r = self._nodes_inner(state_filter=state)
-        return [
-            NodeInfo(
-                id=n["id"],
-                state=n["state"],
-                pending_dependencies=n.get("pending_dependencies", 0),
-                agent_id=n.get("agent_id"),
-                active_seconds=n.get("active_seconds"),
-                stale=n.get("stale", False),
-            )
-            for n in r.data.get("nodes", [])
-        ]
-
-    def _nodes_inner(
-        self,
-        *,
-        state_filter: str | None = None,
-        include_pending_only: bool = False,
-    ) -> Result:
-        """Internal list_nodes logic returning a Result (used by tool wrappers)."""
         try:
             with self._storage.lock():
                 graph = self._storage.load() or Cascade()
@@ -1386,7 +1344,7 @@ class CascadeClient:
 
                 now = time.time()
                 for nid, node in graph.nodes.items():
-                    if state_filter and node.state.name != state_filter:
+                    if state and node.state.name != state:
                         continue
                     if include_pending_only and node.state.name != "PENDING":
                         continue

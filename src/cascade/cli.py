@@ -125,7 +125,7 @@ def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
 
 def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
     client = CascadeClient(args.storage)
-    r = client._claim_inner(
+    r = client.claim(
         args.agent,
         args.task if hasattr(args, "task") and args.task else None,
         timeout=args.timeout if hasattr(args, "timeout") and args.timeout else None,
@@ -384,8 +384,8 @@ def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
 
 def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
     client = CascadeClient(args.storage)
-    r = client._nodes_inner(
-        state_filter=args.state if hasattr(args, "state") and args.state else None,
+    r = client.nodes(
+        state=args.state if hasattr(args, "state") and args.state else None,
         include_pending_only=args.pending_only if hasattr(args, "pending_only") else False,
     )
     return _result_to_dict(r)

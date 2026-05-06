@@ -45,7 +45,7 @@ def get_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, Any]
 
     client = CascadeClient(storage)
 
-    r = client._claim_inner(
+    r = client.claim(
         agent_id,
         task_id,
         timeout=timeout,

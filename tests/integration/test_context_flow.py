@@ -18,7 +18,8 @@ The most critical integration test: does an agent's output actually
 reach downstream agents through context propagation?
 """
 
-from cascade.client import CascadeClient, Contract
+from cascade.client import CascadeClient
+from cascade.types import Contract, TaskView
 
 
 def find_entry(upstream: list, node_id: str) -> dict:
@@ -40,7 +41,7 @@ class TestContextFlow:
         client.claim("agent-1", "a")
         client.complete("a", summary="Analysis found 3 API endpoints")
 
-        task = client.claim("agent-2", "b")
+        task = TaskView.from_result(client.claim("agent-2", "b"))
         up = task.upstream
 
         assert len(up) == 1
@@ -75,7 +76,7 @@ class TestContextFlow:
             critical={"implementation_lang": "python"},
         )
 
-        task = client.claim("agent-3", "c")
+        task = TaskView.from_result(client.claim("agent-3", "c"))
         up = task.upstream
 
         b_entry = find_entry(up, "b")
@@ -132,7 +133,7 @@ class TestContextFlow:
         client.claim("a3", "c")
         client.complete("c", summary="Branch C done", critical={"branch": "C"})
 
-        task = client.claim("a4", "d")
+        task = TaskView.from_result(client.claim("a4", "d"))
         up = task.upstream
 
         b_entry = find_entry(up, "b")
@@ -158,6 +159,6 @@ class TestContextFlow:
         client.claim("a1", "a")
         client.complete("a", summary="Old-style result param")
 
-        task = client.claim("a2", "b")
+        task = TaskView.from_result(client.claim("a2", "b"))
         up = task.upstream
         assert up[0]["delivered"]["summary"] == "Old-style result param"
