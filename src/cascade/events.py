@@ -72,6 +72,7 @@ class Event:
     id: str = ""
     logical_ts: int = 0
     data: dict[str, Any] = field(default_factory=dict)
+    trace_id: str = ""
     prev_hash: str = ""
     hash: str = ""
 
@@ -83,6 +84,8 @@ class Event:
             "logical_ts": self.logical_ts,
             "data": self.data,
         }
+        if self.trace_id:
+            d["trace_id"] = self.trace_id
         if self.prev_hash:
             d["prev_hash"] = self.prev_hash
         if self.hash:
@@ -97,6 +100,7 @@ class Event:
             id=d.get("id", ""),
             logical_ts=d.get("logical_ts", 0),
             data=d.get("data", {}),
+            trace_id=d.get("trace_id", ""),
             prev_hash=d.get("prev_hash", ""),
             hash=d.get("hash", ""),
         )
@@ -136,7 +140,9 @@ class EventStore:
         with open(self._path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
-    def emit(self, event_type: EventType, logical_ts: int, **data: Any) -> Event:
+    def emit(
+        self, event_type: EventType, logical_ts: int, *, trace_id: str = "", **data: Any
+    ) -> Event:
         """Create, hash-chain, append, and return an event."""
         event_id = uuid.uuid4().hex
         timestamp = time.time()
@@ -147,6 +153,8 @@ class EventStore:
             "logical_ts": logical_ts,
             "data": data,
         }
+        if trace_id:
+            content["trace_id"] = trace_id
         event_hash = _compute_hash(content, self._last_hash)
         event = Event(
             type=event_type,
@@ -154,6 +162,7 @@ class EventStore:
             id=event_id,
             logical_ts=logical_ts,
             data=data,
+            trace_id=trace_id,
             prev_hash=self._last_hash,
             hash=event_hash,
         )
@@ -195,6 +204,10 @@ class EventStore:
     def read_by_type(self, event_type: EventType) -> list[Event]:
         """Read events of a specific type."""
         return [e for e in self.read_all() if e.type == event_type]
+
+    def read_by_trace(self, trace_id: str) -> list[Event]:
+        """Read all events sharing a trace_id (one operation's event chain)."""
+        return [e for e in self.read_all() if e.trace_id == trace_id]
 
     def read_by_node(self, node_id: str) -> list[Event]:
         """Read events related to a specific node."""

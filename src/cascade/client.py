@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -71,9 +72,15 @@ class _Tx:
         self._storage = storage
         self._op_id = op_id
         self._dirty = False
+        self._trace_id = uuid.uuid4().hex
 
     def emit(self, event_type: EventType, **data: Any) -> None:
-        self._storage.events.emit(event_type, logical_ts=self._storage.next_lamport(), **data)
+        self._storage.events.emit(
+            event_type,
+            logical_ts=self._storage.next_lamport(),
+            trace_id=self._trace_id,
+            **data,
+        )
         self._dirty = True
 
     def save(self) -> None:
@@ -1580,6 +1587,8 @@ class CascadeClient:
                     entry["id"] = event.id
                 if event.logical_ts:
                     entry["logical_ts"] = event.logical_ts
+                if event.trace_id:
+                    entry["trace_id"] = event.trace_id
                 formatted.append(entry)
 
             return Result(
@@ -1616,16 +1625,20 @@ class CascadeClient:
                 if content is not None:
                     data["context"]["artifacts_content"] = content
 
+            result_data: dict[str, Any] = {
+                "id": event.id,
+                "type": event.type.value,
+                "timestamp": ts,
+                "logical_ts": event.logical_ts,
+                "data": data,
+            }
+            if event.trace_id:
+                result_data["trace_id"] = event.trace_id
+
             return Result(
                 success=True,
                 message=f"Event at logical_ts={logical_ts}",
-                data={
-                    "id": event.id,
-                    "type": event.type.value,
-                    "timestamp": ts,
-                    "logical_ts": event.logical_ts,
-                    "data": data,
-                },
+                data=result_data,
             )
 
         except Exception as e:
@@ -1661,6 +1674,8 @@ class CascadeClient:
                 }
                 if event.id:
                     entry["id"] = event.id
+                if event.trace_id:
+                    entry["trace_id"] = event.trace_id
                 formatted.append(entry)
 
             nodes_changed: set[str] = set()
