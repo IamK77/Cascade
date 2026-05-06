@@ -32,7 +32,9 @@ Why the separation: if the orchestrator claims tasks, it blocks on execution and
 ```
 1. Build initial DAG (add-nodes)
 2. Dispatch workers for READY tasks (Agent calls)
-3. Monitor via `cascade watch` — react to transitions
+   └─ Use isolation: "worktree" when multiple workers edit the same repo.
+      Without it, parallel workers overwrite each other's files.
+3. Monitor via `cascade watch` or `list-nodes` polling — react to transitions
    ├─ COMPLETED → inspect output, dispatch next wave
    ├─ FAILED → diagnose, rework or remove
    └─ Stalled (no transition for too long) → check-timeouts
@@ -63,6 +65,8 @@ When workers complete or fail, branch on what you observe:
 | Worker completes but output is wrong | Use `rework` — do NOT edit the completed node's context directly |
 | Worker stalls (no finish after timeout) | Run `check-timeouts`; inspect the released task, then re-dispatch or split |
 | Graph feels stuck (nothing READY) | `list-nodes` — look for cycles of PENDING or forgotten ACTIVE tasks |
+| Workers edit the same files concurrently | Dispatch with `isolation: "worktree"` — each worker gets an isolated git worktree. Without it, parallel writes corrupt each other |
+| Worker finishes but never called `finish-task` | Work is done but DAG is stuck. Orchestrator should `finish-task --release` and re-dispatch with a stricter prompt emphasizing the cascade protocol |
 
 ## Installation
 
