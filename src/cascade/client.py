@@ -613,6 +613,17 @@ class CascadeClient:
             reason: Why -- recorded in event log.
             op_id: Idempotency key.
         """
+        if critical and isinstance(critical, dict):
+            reserved = _RESERVED_CRITICAL_KEYS & critical.keys()
+            if reserved:
+                return Result(
+                    success=False,
+                    message=(
+                        f"Reserved critical keys cannot be set by user: {sorted(reserved)}. "
+                        f"These are managed by the framework for provenance tracking."
+                    ),
+                    code=ErrorCode.INVALID_INPUT,
+                )
         cached = self._cached_op(op_id)
         if cached is not None:
             return cached
@@ -1076,6 +1087,18 @@ class CascadeClient:
                     )
 
                 elif is_success:
+                    if critical and isinstance(critical, dict):
+                        reserved = _RESERVED_CRITICAL_KEYS & critical.keys()
+                        if reserved:
+                            return Result(
+                                success=False,
+                                message=(
+                                    f"Reserved critical keys cannot be set by user: {sorted(reserved)}. "
+                                    f"These are managed by the framework for provenance tracking."
+                                ),
+                                code=ErrorCode.INVALID_INPUT,
+                            )
+
                     node.update_state(NodeState.COMPLETED)
                     node.agent_id = None
                     node.claimed_at = None
@@ -1719,6 +1742,9 @@ class CascadeClient:
 # ---------------------------------------------------------------------------
 # Helpers (module-private)
 # ---------------------------------------------------------------------------
+
+
+_RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref"})
 
 
 def _get_git_ref() -> str:
