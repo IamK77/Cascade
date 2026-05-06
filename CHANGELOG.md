@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.9] - 2026-05-06
+
+### Added
+
+- Context freshness — auto-embed provenance on complete
+
+### Documentation
+
+- Update for v0.4.8 — Result API, context freshness, StorageProtocol
+- Update CHANGELOG.md for v0.4.8
+
+### Fixed
+
+- Render_inspect shows Freshness, drop _ prefix convention
+
+### Miscellaneous
+
+- Bump to 0.4.9
 ## [0.4.8] - 2026-05-06
 
 ### Added
