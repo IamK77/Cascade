@@ -23,6 +23,7 @@ object per line). It provides:
 - Debugging: replay events to reproduce issues
 """
 
+import hashlib
 import json
 import time
 import uuid
@@ -51,11 +52,19 @@ class EventType(Enum):
     NODE_CANCELLED = "node_cancelled"
 
 
+def _compute_hash(event_dict: dict[str, Any], prev_hash: str) -> str:
+    """Compute SHA-256 hash of event content chained with prev_hash."""
+    canonical = json.dumps(event_dict, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256((canonical + prev_hash).encode("utf-8")).hexdigest()
+
+
 @dataclass(frozen=True)
 class Event:
     """A single event in the log.
 
     Immutable record of something that happened to the graph.
+    hash and prev_hash form a verifiable chain — tampering with
+    any event breaks all subsequent hashes.
     """
 
     type: EventType
@@ -63,15 +72,22 @@ class Event:
     id: str = ""
     logical_ts: int = 0
     data: dict[str, Any] = field(default_factory=dict)
+    prev_hash: str = ""
+    hash: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "id": self.id,
             "type": self.type.value,
             "timestamp": self.timestamp,
             "logical_ts": self.logical_ts,
             "data": self.data,
         }
+        if self.prev_hash:
+            d["prev_hash"] = self.prev_hash
+        if self.hash:
+            d["hash"] = self.hash
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Event":
@@ -81,6 +97,8 @@ class Event:
             id=d.get("id", ""),
             logical_ts=d.get("logical_ts", 0),
             data=d.get("data", {}),
+            prev_hash=d.get("prev_hash", ""),
+            hash=d.get("hash", ""),
         )
 
 
@@ -90,10 +108,27 @@ class EventStore:
     Events are appended one per line. Reading loads all events.
     The Lamport clock is owned by the storage layer (FileStorage),
     not by EventStore. Callers pass logical_ts to emit().
+
+    Each event carries prev_hash (hash of the preceding event) and
+    hash (SHA-256 of its own content + prev_hash), forming a
+    tamper-evident chain. verify_chain() checks integrity.
     """
 
     def __init__(self, base_dir: Path | str):
         self._path = Path(base_dir) / "events.jsonl"
+        self._last_hash: str = self._recover_last_hash()
+
+    def _recover_last_hash(self) -> str:
+        """Read the last event's hash from the log."""
+        if not self._path.exists():
+            return ""
+        last_hash = ""
+        with open(self._path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    last_hash = json.loads(line).get("hash", "")
+        return last_hash
 
     def append(self, event: Event) -> None:
         """Append an event to the log."""
@@ -102,15 +137,28 @@ class EventStore:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
     def emit(self, event_type: EventType, logical_ts: int, **data: Any) -> Event:
-        """Create, append, and return an event."""
+        """Create, hash-chain, append, and return an event."""
+        event_id = uuid.uuid4().hex
+        timestamp = time.time()
+        content: dict[str, Any] = {
+            "id": event_id,
+            "type": event_type.value,
+            "timestamp": timestamp,
+            "logical_ts": logical_ts,
+            "data": data,
+        }
+        event_hash = _compute_hash(content, self._last_hash)
         event = Event(
             type=event_type,
-            timestamp=time.time(),
-            id=uuid.uuid4().hex,
+            timestamp=timestamp,
+            id=event_id,
             logical_ts=logical_ts,
             data=data,
+            prev_hash=self._last_hash,
+            hash=event_hash,
         )
         self.append(event)
+        self._last_hash = event_hash
         return event
 
     def read_all(self) -> list[Event]:
@@ -179,3 +227,36 @@ class EventStore:
             key = event.type.value
             counts[key] = counts.get(key, 0) + 1
         return counts
+
+    def verify_chain(self) -> tuple[bool, str]:
+        """Verify the hash chain integrity of the event log.
+
+        Returns (True, "") if valid, or (False, description) on first break.
+        Events without hashes (pre-chain legacy) are skipped.
+        """
+        events = self.read_all()
+        prev_hash = ""
+        for i, event in enumerate(events):
+            if not event.hash:
+                continue
+            if event.prev_hash != prev_hash:
+                return False, (
+                    f"Event #{i} (logical_ts={event.logical_ts}): "
+                    f"prev_hash mismatch — expected {prev_hash[:12]}..., "
+                    f"got {event.prev_hash[:12]}..."
+                )
+            content = {
+                "id": event.id,
+                "type": event.type.value,
+                "timestamp": event.timestamp,
+                "logical_ts": event.logical_ts,
+                "data": event.data,
+            }
+            expected = _compute_hash(content, prev_hash)
+            if event.hash != expected:
+                return False, (
+                    f"Event #{i} (logical_ts={event.logical_ts}): "
+                    f"hash mismatch — content was tampered"
+                )
+            prev_hash = event.hash
+        return True, ""
