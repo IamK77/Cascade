@@ -39,6 +39,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from cascade import tips
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
@@ -52,6 +53,7 @@ from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
 from cascade.types import (
+    RESERVED_CRITICAL_KEYS,
     Context,
     Contract,
     ErrorCode,
@@ -573,12 +575,12 @@ class CascadeClient:
                 tx.graph.add_edge(dep_id, node_id, expectation=expectation, promise=promise)
                 new_state = tx.graph.nodes[node_id].state
 
-                tips: list[str] = []
-                if old_state == NodeState.READY and new_state == NodeState.PENDING:
-                    tips.append(
-                        f"node '{node_id}' was READY, now PENDING"
-                        f" — blocked until '{dep_id}' completes."
-                    )
+                refine_tips = tips.on_refine(
+                    node_id=node_id,
+                    dep_id=dep_id,
+                    old_state=old_state.name,
+                    new_state=new_state.name,
+                )
 
                 tx.emit(
                     EventType.NODE_REFINED,
@@ -591,7 +593,9 @@ class CascadeClient:
                 return tx.ok(
                     Result(
                         success=True,
-                        message=_append_tips(f"Node {node_id} now depends on {dep_id}", tips),
+                        message=tips.append_tips(
+                            f"Node {node_id} now depends on {dep_id}", refine_tips
+                        ),
                         data={
                             "node_id": node_id,
                             "dependency_id": dep_id,
@@ -630,7 +634,7 @@ class CascadeClient:
             op_id: Idempotency key.
         """
         if critical and isinstance(critical, dict):
-            reserved = _RESERVED_CRITICAL_KEYS & critical.keys()
+            reserved = RESERVED_CRITICAL_KEYS & critical.keys()
             if reserved:
                 return Result(
                     success=False,
@@ -915,37 +919,18 @@ class CascadeClient:
             )
             tx.save()
 
-            tips: list[str] = []
-            upstream = task_info.get("upstream", [])
-            for u in upstream:
-                delivered = u.get("delivered", {})
-                crit = delivered.get("critical", {})
-                user_critical = {k: v for k, v in crit.items() if k not in _RESERVED_CRITICAL_KEYS}
-                has_user_context = bool(
-                    delivered.get("summary") or user_critical or delivered.get("artifacts")
-                )
-                if u.get("state") == "COMPLETED" and not has_user_context:
-                    tips.append(
-                        f"upstream '{u['node_id']}' delivered no context"
-                        " — you may need to inspect its output directly."
-                    )
-
             released_events = self._storage.events.read_by_node(task_id)
-            if any(e.type == EventType.TASK_RELEASED for e in released_events):
-                tips.append(
-                    "this task was previously released by another agent"
-                    " — check history for the reason."
-                )
+            was_released = any(e.type == EventType.TASK_RELEASED for e in released_events)
 
-            promises = task_info.get("promises", [])
-            if len(promises) > 1:
-                tips.append(
-                    f"you have {len(promises)} promises to downstream — ensure all are addressed."
-                )
+            claim_tips = tips.on_claim(
+                upstream=task_info.get("upstream", []),
+                promises=task_info.get("promises", []),
+                was_previously_released=was_released,
+            )
 
             return Result(
                 success=True,
-                message=_append_tips(f"Task {task_id} assigned (state: ACTIVE)", tips),
+                message=tips.append_tips(f"Task {task_id} assigned (state: ACTIVE)", claim_tips),
                 data={
                     "task_id": task_id,
                     "state": "ACTIVE",
@@ -1141,7 +1126,7 @@ class CascadeClient:
 
                 elif is_success:
                     if critical and isinstance(critical, dict):
-                        reserved = _RESERVED_CRITICAL_KEYS & critical.keys()
+                        reserved = RESERVED_CRITICAL_KEYS & critical.keys()
                         if reserved:
                             return Result(
                                 success=False,
@@ -1173,19 +1158,22 @@ class CascadeClient:
 
                     unblocked = tx.graph.notify_completion(task_id)
 
-                    tips = []
-                    if not summary and not critical and not artifacts:
-                        has_dependents = len(tx.graph.get_dependents(task_id)) > 0
-                        if has_dependents:
-                            tips.append(
-                                "no context delivered — downstream agents will"
-                                " receive nothing from this node."
-                            )
+                    node_promises = tx.graph.get_node_promises(task_id)
+                    complete_tips = tips.on_complete(
+                        summary=summary,
+                        critical=critical or {},
+                        artifacts=artifacts,
+                        promises=[
+                            {"to_node": p["to_node"], "promise": p["promise"]}
+                            for p in node_promises
+                        ],
+                        has_dependents=len(tx.graph.get_dependents(task_id)) > 0,
+                    )
 
                     message = f"Task {task_id} completed"
                     if unblocked:
                         message += f", unblocked: {unblocked}"
-                    message = _append_tips(message, tips)
+                    message = tips.append_tips(message, complete_tips)
 
                     self._storage.tokens.cleanup(task_id)
                     ctx_data: dict[str, Any] = {}
@@ -1240,11 +1228,12 @@ class CascadeClient:
                         message += f" (cascaded to {len(affected) - 1} dependent tasks)"
                     if summary:
                         message += f": {summary}"
-                    if should_cascade and len(affected) > 1:
-                        message = _append_tips(
-                            message,
-                            ["use list-nodes to review affected scope."],
-                        )
+
+                    fail_tips = tips.on_fail(
+                        cascade=should_cascade,
+                        affected_count=len(affected),
+                    )
+                    message = tips.append_tips(message, fail_tips)
 
                     self._storage.tokens.cleanup(task_id)
                     tx.emit(
@@ -1399,13 +1388,11 @@ class CascadeClient:
 
                 message = result.message
                 if result.success:
-                    message = _append_tips(
-                        message,
-                        [
-                            f"your task '{active_node.id}' is now PENDING until"
-                            f" '{corrective}' completes — you cannot reclaim until then."
-                        ],
+                    rework_tips = tips.on_rework(
+                        active_node_id=active_node.id,
+                        corrective_node_id=corrective,
                     )
+                    message = tips.append_tips(message, rework_tips)
 
                 return Result(
                     success=result.success,
@@ -1828,17 +1815,6 @@ class CascadeClient:
 # ---------------------------------------------------------------------------
 # Helpers (module-private)
 # ---------------------------------------------------------------------------
-
-
-_RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref"})
-
-
-def _append_tips(message: str, tips: list[str]) -> str:
-    """Append tips to a result message if any exist."""
-    if not tips:
-        return message
-    tip_text = " ".join(f"Tip: {t}" for t in tips)
-    return f"{message}. {tip_text}"
 
 
 def _get_git_ref() -> str:

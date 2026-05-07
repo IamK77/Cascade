@@ -1,0 +1,147 @@
+# Copyright 2026 Hangzhou Autoseek Information Technology Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Structured tips — contextual guidance at operation boundaries.
+
+Each phase (claim, complete, fail, refine, rework) has one public
+function that returns a list of tips. Tips carry a level:
+
+- ADVISORY: helpful hint, included in the result message.
+- REQUIRED: gate — the operation is rejected unless satisfied.
+
+Dependency rule: tips.py → (nothing in cascade/)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from cascade.types import RESERVED_CRITICAL_KEYS
+
+
+class TipLevel(Enum):
+    ADVISORY = "advisory"
+    REQUIRED = "required"
+
+
+@dataclass(frozen=True, slots=True)
+class Tip:
+    message: str
+    level: TipLevel = TipLevel.ADVISORY
+
+
+# ---------------------------------------------------------------------------
+# Phase evaluators
+# ---------------------------------------------------------------------------
+
+
+def on_claim(
+    *,
+    upstream: list[dict[str, Any]],
+    promises: list[dict[str, Any]],
+    was_previously_released: bool,
+) -> list[Tip]:
+    tips: list[Tip] = []
+
+    for u in upstream:
+        delivered = u.get("delivered", {})
+        crit = delivered.get("critical", {})
+        user_critical = {k: v for k, v in crit.items() if k not in RESERVED_CRITICAL_KEYS}
+        has_context = bool(delivered.get("summary") or user_critical or delivered.get("artifacts"))
+        if u.get("state") == "COMPLETED" and not has_context:
+            tips.append(
+                Tip(
+                    f"upstream '{u['node_id']}' delivered no context"
+                    " — you may need to inspect its output directly."
+                )
+            )
+
+    if was_previously_released:
+        tips.append(
+            Tip(
+                "this task was previously released by another agent — check history for the reason."
+            )
+        )
+
+    if len(promises) > 1:
+        tips.append(
+            Tip(f"you have {len(promises)} promises to downstream — ensure all are addressed.")
+        )
+
+    return tips
+
+
+def on_complete(
+    *,
+    summary: str,
+    critical: dict[str, Any],
+    artifacts: str,
+    promises: list[dict[str, Any]],
+    has_dependents: bool,
+) -> list[Tip]:
+    tips: list[Tip] = []
+
+    if not summary and not critical and not artifacts and has_dependents:
+        tips.append(
+            Tip("no context delivered — downstream agents will receive nothing from this node.")
+        )
+
+    return tips
+
+
+def on_fail(*, cascade: bool, affected_count: int) -> list[Tip]:
+    tips: list[Tip] = []
+
+    if cascade and affected_count > 1:
+        tips.append(Tip("use list-nodes to review affected scope."))
+
+    return tips
+
+
+def on_refine(*, node_id: str, dep_id: str, old_state: str, new_state: str) -> list[Tip]:
+    tips: list[Tip] = []
+
+    if old_state == "READY" and new_state == "PENDING":
+        tips.append(
+            Tip(f"node '{node_id}' was READY, now PENDING — blocked until '{dep_id}' completes.")
+        )
+
+    return tips
+
+
+def on_rework(*, active_node_id: str, corrective_node_id: str) -> list[Tip]:
+    return [
+        Tip(
+            f"your task '{active_node_id}' is now PENDING until"
+            f" '{corrective_node_id}' completes — you cannot reclaim until then."
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+
+def has_required(tips: list[Tip]) -> bool:
+    return any(t.level == TipLevel.REQUIRED for t in tips)
+
+
+def append_tips(message: str, tips: list[Tip]) -> str:
+    if not tips:
+        return message
+    tip_text = " ".join(f"Tip: {t.message}" for t in tips)
+    return f"{message}. {tip_text}"

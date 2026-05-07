@@ -308,3 +308,6 @@ class ErrorCode:
     INVALID_INPUT = "INVALID_INPUT"
     STALE_TOKEN = "STALE_TOKEN"
     INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref"})
