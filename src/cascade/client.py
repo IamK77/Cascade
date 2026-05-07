@@ -633,7 +633,7 @@ class CascadeClient:
             reason: Why -- recorded in event log.
             op_id: Idempotency key.
         """
-        if critical and isinstance(critical, dict):
+        if critical:
             reserved = RESERVED_CRITICAL_KEYS & critical.keys()
             if reserved:
                 return Result(
@@ -1132,7 +1132,7 @@ class CascadeClient:
                     )
 
                 elif is_success:
-                    if critical and isinstance(critical, dict):
+                    if critical:
                         reserved = RESERVED_CRITICAL_KEYS & critical.keys()
                         if reserved:
                             return Result(
@@ -1173,7 +1173,7 @@ class CascadeClient:
                         node.context = Context()
                     if summary:
                         node.context.summary = summary
-                    if critical and isinstance(critical, dict):
+                    if critical:
                         node.context.critical.update(critical)
                     if artifacts:
                         node.context.artifacts = str(artifacts)
@@ -1647,7 +1647,7 @@ class CascadeClient:
             else:
                 events = event_store.read_all()
 
-            if last_n and isinstance(last_n, int) and last_n > 0:
+            if last_n > 0:
                 events = events[-last_n:]
 
             formatted = []
@@ -1875,14 +1875,14 @@ def _update_context(
         if artifacts:
             ctx.artifacts = str(artifacts)
     elif merge_mode == "append":
-        if critical is not None and isinstance(critical, dict):
+        if critical is not None:
             ctx.critical.update(critical)
         if summary:
             ctx.summary = (ctx.summary + "\n" + summary).strip()
         if artifacts:
             ctx.artifacts = str(artifacts)
     else:  # merge (default)
-        if critical is not None and isinstance(critical, dict):
+        if critical is not None:
             ctx.critical.update(critical)
         if summary:
             if ctx.summary:

@@ -100,12 +100,12 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
     view = get_node_view(cascade, node_id)
     parts = [render_briefing(view), f"state: {node.state.name}"]
 
-    ctx = getattr(node, "context", None)
+    ctx = node.context
     delivered: list[str] = []
     if ctx:
-        if getattr(ctx, "summary", ""):
+        if ctx.summary:
             delivered.append(f"  summary: {ctx.summary}")
-        if getattr(ctx, "critical", None):
+        if ctx.critical:
             freshness = _render_freshness(ctx.critical)
             if freshness:
                 delivered.append(f"  freshness: {freshness}")
@@ -114,7 +114,7 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
             }
             if user_critical:
                 delivered.append(f"  critical: {json.dumps(user_critical, ensure_ascii=False)}")
-        if getattr(ctx, "artifacts", ""):
+        if ctx.artifacts:
             delivered.append(f"  artifacts:\n{_block(ctx.artifacts)}")
 
     if delivered:
