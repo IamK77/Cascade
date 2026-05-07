@@ -258,13 +258,15 @@ class EventStore:
                     f"prev_hash mismatch — expected {prev_hash[:12]}..., "
                     f"got {event.prev_hash[:12]}..."
                 )
-            content = {
+            content: dict[str, Any] = {
                 "id": event.id,
                 "type": event.type.value,
                 "timestamp": event.timestamp,
                 "logical_ts": event.logical_ts,
                 "data": event.data,
             }
+            if event.trace_id:
+                content["trace_id"] = event.trace_id
             expected = _compute_hash(content, prev_hash)
             if event.hash != expected:
                 return False, (

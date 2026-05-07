@@ -512,6 +512,23 @@ def cmd_snapshot_at(args: argparse.Namespace) -> dict[str, Any]:
     return _result_to_dict(r)
 
 
+def cmd_verify_chain(args: argparse.Namespace) -> dict[str, Any]:
+    client = CascadeClient(args.storage)
+    event_count = client.storage.events.count
+    valid, msg = client.storage.events.verify_chain()
+    if valid:
+        return {
+            "success": True,
+            "message": f"Hash chain valid: {event_count} events verified",
+            "data": {"events_verified": event_count},
+        }
+    return {
+        "success": False,
+        "message": msg,
+        "data": {"events_total": event_count},
+    }
+
+
 # ---------------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------------
@@ -672,6 +689,10 @@ def main() -> None:
     p = sub.add_parser("snapshot-at", help="Rebuild graph state at a logical timestamp")
     p.add_argument("--ts", type=int, required=True, help="Logical timestamp to replay to")
     p.set_defaults(func=cmd_snapshot_at)
+
+    # verify-chain
+    p = sub.add_parser("verify-chain", help="Verify event log hash chain integrity")
+    p.set_defaults(func=cmd_verify_chain)
 
     args = parser.parse_args()
     if not args.command:
