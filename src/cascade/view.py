@@ -28,9 +28,7 @@ from typing import Any
 from cascade.context.propagator import ContextPropagator
 from cascade.core.cascade import Cascade
 from cascade.errors import NodeNotFoundError
-from cascade.types import DeliveredContext, UpstreamEntry
-
-_FRAMEWORK_CRITICAL_KEYS = frozenset({"produced_at", "git_ref", "deliverables"})
+from cascade.types import DeliveredContext, Provenance, UpstreamEntry
 
 
 def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
@@ -69,6 +67,8 @@ def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
             delivered["critical"] = entry.critical
         if entry.artifacts:
             delivered["artifacts"] = entry.artifacts
+        if entry.provenance:
+            delivered["provenance"] = entry.provenance.to_dict()
         if delivered:
             item["delivered"] = delivered
 
@@ -105,15 +105,12 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
     if ctx:
         if ctx.summary:
             delivered.append(f"  summary: {ctx.summary}")
-        if ctx.critical:
-            freshness = _render_freshness(ctx.critical)
+        if ctx.provenance:
+            freshness = _render_freshness_from_provenance(ctx.provenance)
             if freshness:
                 delivered.append(f"  freshness: {freshness}")
-            user_critical = {
-                k: v for k, v in ctx.critical.items() if k not in _FRAMEWORK_CRITICAL_KEYS
-            }
-            if user_critical:
-                delivered.append(f"  critical: {json.dumps(user_critical, ensure_ascii=False)}")
+        if ctx.critical:
+            delivered.append(f"  critical: {json.dumps(ctx.critical, ensure_ascii=False)}")
         if ctx.artifacts:
             delivered.append(f"  artifacts:\n{_block(ctx.artifacts)}")
 
@@ -167,17 +164,13 @@ def _commits_behind(git_ref: str) -> int | None:
     return None
 
 
-def _render_freshness(critical: dict[str, Any]) -> str:
-    """Render freshness line from provenance metadata in critical."""
-    produced_at = critical.get("produced_at")
-    git_ref = critical.get("git_ref", "")
-
+def _freshness_parts(produced_at: float, git_ref: str) -> list[str]:
+    """Build freshness parts from provenance fields."""
     parts: list[str] = []
     if produced_at:
-        elapsed = time.time() - float(produced_at)
+        elapsed = time.time() - produced_at
         if elapsed >= 0:
             parts.append(_format_elapsed(elapsed))
-
     if git_ref:
         behind = _commits_behind(git_ref)
         if behind is not None:
@@ -185,7 +178,18 @@ def _render_freshness(critical: dict[str, Any]) -> str:
                 parts.append("at HEAD")
             else:
                 parts.append(f"{behind} commits behind HEAD")
+    return parts
 
+
+def _render_freshness_from_provenance(prov: "Provenance") -> str:
+    """Render freshness from a typed Provenance object."""
+    parts = _freshness_parts(prov.produced_at, prov.git_ref)
+    return " | ".join(parts) if parts else ""
+
+
+def _render_freshness_from_prov_dict(prov: dict[str, Any]) -> str:
+    """Render freshness from a serialized provenance dict."""
+    parts = _freshness_parts(float(prov.get("produced_at", 0)), str(prov.get("git_ref", "")))
     return " | ".join(parts) if parts else ""
 
 
@@ -210,23 +214,21 @@ def render_briefing(view: dict[str, Any]) -> str:
             lines.append(f"  {nid} promised: {entry['promise']}")
 
         delivered = entry.get("delivered", {})
-        deliverables = delivered.get("critical", {}).get("deliverables", {})
-        if isinstance(deliverables, dict):
+        prov = delivered.get("provenance", {})
+        deliverables = prov.get("deliverables", {})
+        if deliverables:
             delivered_text = deliverables.get(view["id"], "")
             if delivered_text:
                 lines.append(f"  {nid} delivered: {delivered_text}")
 
         if delivered.get("summary"):
             lines.append(f"  summary: {delivered['summary']}")
-        if delivered.get("critical"):
-            freshness = _render_freshness(delivered["critical"])
+        if prov:
+            freshness = _render_freshness_from_prov_dict(prov)
             if freshness:
                 lines.append(f"  freshness: {freshness}")
-            user_critical = {
-                k: v for k, v in delivered["critical"].items() if k not in _FRAMEWORK_CRITICAL_KEYS
-            }
-            if user_critical:
-                lines.append(f"  critical: {json.dumps(user_critical, ensure_ascii=False)}")
+        if delivered.get("critical"):
+            lines.append(f"  critical: {json.dumps(delivered['critical'], ensure_ascii=False)}")
         if delivered.get("artifacts"):
             lines.append(f"  artifacts:\n{_block(delivered['artifacts'])}")
 

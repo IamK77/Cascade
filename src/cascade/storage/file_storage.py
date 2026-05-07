@@ -34,7 +34,7 @@ from cascade.events import EventStore
 from cascade.storage.content import ContentStore, LocalContentStore
 from cascade.storage.op_log import OpLog
 from cascade.storage.token_store import TokenStore
-from cascade.types import Context, Contract
+from cascade.types import Context, Contract, Provenance
 
 
 class StorageScope(Enum):
@@ -179,6 +179,8 @@ class FileStorage:
                 if node.context.artifacts:
                     ref = self.content.put(node.context.artifacts)
                     ctx_data["artifacts_ref"] = ref
+                if node.context.provenance:
+                    ctx_data["provenance"] = node.context.provenance.to_dict()
                 if ctx_data:
                     node_data["context"] = ctx_data
 
@@ -241,10 +243,14 @@ class FileStorage:
                 if artifacts_ref:
                     artifacts = self.content.get(artifacts_ref) or ""
 
+                prov_data = ctx_data.get("provenance")
+                provenance = Provenance.from_dict(prov_data) if prov_data else None
+
                 context = Context(
                     critical=ctx_data.get("critical", {}),
                     summary=ctx_data.get("summary", ""),
                     artifacts=artifacts,
+                    provenance=provenance,
                 )
 
             node = Node(

@@ -30,7 +30,7 @@ from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.errors import CascadeError
 from cascade.operations.base import NodeOperation, OperationResult
-from cascade.types import Context, Contract
+from cascade.types import Context, Contract, Provenance
 
 
 @dataclass(frozen=True)
@@ -124,7 +124,7 @@ class ReworkOperation(NodeOperation):
             # 1. Create corrective node with feedback as context
             corrective_context = Context(
                 summary=reason,
-                critical={"rework_source": source_node_id, "rework_reason": reason},
+                provenance=Provenance(rework_source=source_node_id, rework_reason=reason),
             )
             corrective_node = Node(
                 id=corrective_node_id,

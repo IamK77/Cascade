@@ -84,6 +84,48 @@ class TokenStatus:
 
 
 # ---------------------------------------------------------------------------
+# Provenance — framework-managed metadata, separate from user data.
+# ---------------------------------------------------------------------------
+@dataclass(slots=True)
+class Provenance:
+    """Framework-managed metadata attached to a node's output.
+
+    Never set by agents directly — managed by the framework at completion.
+    Separated from critical (user KV data) to keep the trust boundary clean.
+    """
+
+    produced_at: float = 0.0
+    git_ref: str = ""
+    deliverables: dict[str, str] = field(default_factory=dict)
+    rework_source: str = ""
+    rework_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        d: dict[str, Any] = {}
+        if self.produced_at:
+            d["produced_at"] = self.produced_at
+        if self.git_ref:
+            d["git_ref"] = self.git_ref
+        if self.deliverables:
+            d["deliverables"] = self.deliverables
+        if self.rework_source:
+            d["rework_source"] = self.rework_source
+        if self.rework_reason:
+            d["rework_reason"] = self.rework_reason
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "Provenance":
+        return cls(
+            produced_at=float(d.get("produced_at", 0.0)),
+            git_ref=str(d.get("git_ref", "")),
+            deliverables=d.get("deliverables") or {},
+            rework_source=str(d.get("rework_source", "")),
+            rework_reason=str(d.get("rework_reason", "")),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Context entry — upstream contribution with provenance.
 # ---------------------------------------------------------------------------
 @dataclass(slots=True)
@@ -104,16 +146,18 @@ class ContextEntry:
     summary: str = ""
     critical: ContextKV = field(default_factory=dict)
     artifacts: str = ""
+    provenance: Provenance | None = None
 
 
 @dataclass
 class Context:
     """Context carried by a node — its own output, not inherited data.
 
-    Three fields:
-    - critical: KV data (propagation distance owned by ContextPropagator).
+    Four fields:
+    - critical: User KV data (propagation distance owned by ContextPropagator).
     - summary: Brief description of what the node accomplished.
     - artifacts: Content string (persisted to file by storage layer).
+    - provenance: Framework-managed metadata (produced_at, git_ref, deliverables).
 
     Context is never merged across nodes. Multi-source collection
     produces list[ContextEntry] via ContextPropagator, keeping each
@@ -123,6 +167,7 @@ class Context:
     critical: ContextKV = field(default_factory=dict)
     summary: str = ""
     artifacts: str = ""
+    provenance: Provenance | None = None
 
     def describe(self) -> str:
         """Generate human-readable description."""
@@ -168,6 +213,7 @@ class DeliveredContext(TypedDict, total=False):
     summary: str
     critical: ContextKV
     artifacts: str
+    provenance: dict[str, Any]
 
 
 class UpstreamEntry(TypedDict, total=False):
@@ -310,6 +356,3 @@ class ErrorCode:
     STALE_TOKEN = "STALE_TOKEN"
     UNADDRESSED_PROMISES = "UNADDRESSED_PROMISES"
     INTERNAL_ERROR = "INTERNAL_ERROR"
-
-
-RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref", "deliverables"})

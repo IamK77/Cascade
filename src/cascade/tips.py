@@ -29,8 +29,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from cascade.types import RESERVED_CRITICAL_KEYS
-
 
 class TipLevel(Enum):
     ADVISORY = "advisory"
@@ -61,9 +59,9 @@ def on_claim(
     for u in upstream:
         nid = u.get("node_id", "")
         delivered = u.get("delivered", {})
-        crit = delivered.get("critical", {})
-        user_critical = {k: v for k, v in crit.items() if k not in RESERVED_CRITICAL_KEYS}
-        has_context = bool(delivered.get("summary") or user_critical or delivered.get("artifacts"))
+        has_context = bool(
+            delivered.get("summary") or delivered.get("critical") or delivered.get("artifacts")
+        )
 
         if u.get("state") == "COMPLETED" and not has_context:
             tips.append(
@@ -73,8 +71,9 @@ def on_claim(
                 )
             )
 
-        deliverables = crit.get("deliverables", {})
-        if isinstance(deliverables, dict):
+        prov = delivered.get("provenance", {})
+        deliverables = prov.get("deliverables", {})
+        if deliverables:
             delivered_text = deliverables.get(task_id, "")
             if delivered_text and u.get("promise"):
                 verify_lines.append(

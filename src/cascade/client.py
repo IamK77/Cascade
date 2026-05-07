@@ -53,10 +53,10 @@ from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
 from cascade.storage.token_store import CancelNotifier
 from cascade.types import (
-    RESERVED_CRITICAL_KEYS,
     Context,
     Contract,
     ErrorCode,
+    Provenance,
     Result,
 )
 from cascade.view import get_node_view
@@ -633,17 +633,6 @@ class CascadeClient:
             reason: Why -- recorded in event log.
             op_id: Idempotency key.
         """
-        if critical:
-            reserved = RESERVED_CRITICAL_KEYS & critical.keys()
-            if reserved:
-                return Result(
-                    success=False,
-                    message=(
-                        f"Reserved critical keys cannot be set by user: {sorted(reserved)}. "
-                        f"These are managed by the framework for provenance tracking."
-                    ),
-                    code=ErrorCode.INVALID_INPUT,
-                )
         cached = self._cached_op(op_id)
         if cached is not None:
             return cached
@@ -1132,18 +1121,6 @@ class CascadeClient:
                     )
 
                 elif is_success:
-                    if critical:
-                        reserved = RESERVED_CRITICAL_KEYS & critical.keys()
-                        if reserved:
-                            return Result(
-                                success=False,
-                                message=(
-                                    f"Reserved critical keys cannot be set by user: {sorted(reserved)}. "
-                                    f"These are managed by the framework for provenance tracking."
-                                ),
-                                code=ErrorCode.INVALID_INPUT,
-                            )
-
                     node_promises = tx.graph.get_node_promises(task_id)
                     complete_tips = tips.on_complete(
                         summary=summary,
@@ -1177,13 +1154,14 @@ class CascadeClient:
                         node.context.critical.update(critical)
                     if artifacts:
                         node.context.artifacts = str(artifacts)
-                    if deliverables:
-                        node.context.critical["deliverables"] = deliverables
 
-                    node.context.critical["produced_at"] = time.time()
+                    prov = Provenance(produced_at=time.time())
                     git_ref = _get_git_ref()
                     if git_ref:
-                        node.context.critical["git_ref"] = git_ref
+                        prov.git_ref = git_ref
+                    if deliverables:
+                        prov.deliverables = deliverables
+                    node.context.provenance = prov
 
                     unblocked = tx.graph.notify_completion(task_id)
 

@@ -49,9 +49,9 @@ class ContextPropagator:
         """Find nodes whose output has been superseded by a rework corrective."""
         superseded: set[str] = set()
         for node in self._cascade.nodes.values():
-            if node.context and node.context.critical:
-                source = node.context.critical.get("rework_source")
-                if source and isinstance(source, str):
+            if node.context and node.context.provenance:
+                source = node.context.provenance.rework_source
+                if source:
                     superseded.add(source)
         return superseded
 
@@ -86,7 +86,9 @@ class ContextPropagator:
                     entry_summary = node.context.summary if distance <= SUMMARY_MAX_DISTANCE else ""
                     entry_artifacts = node.context.artifacts
 
-                    if entry_critical or entry_summary or entry_artifacts:
+                    entry_provenance = node.context.provenance
+
+                    if entry_critical or entry_summary or entry_artifacts or entry_provenance:
                         expectation = ""
                         promise = ""
                         if distance == 1:
@@ -106,6 +108,7 @@ class ContextPropagator:
                                 summary=entry_summary,
                                 critical=entry_critical,
                                 artifacts=entry_artifacts,
+                                provenance=entry_provenance,
                             )
                         )
 

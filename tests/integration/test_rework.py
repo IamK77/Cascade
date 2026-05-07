@@ -83,7 +83,8 @@ class TestReworkOperation:
         # Corrective node has feedback as context
         assert cascade.nodes["A_fix"].context is not None
         assert "edge case X" in cascade.nodes["A_fix"].context.summary
-        assert cascade.nodes["A_fix"].context.critical["rework_source"] == "A"
+        assert cascade.nodes["A_fix"].context.provenance is not None
+        assert cascade.nodes["A_fix"].context.provenance.rework_source == "A"
 
         # Corrective node depends on A (can see original output)
         deps = [d.id for d in cascade.get_dependencies("A_fix")]
