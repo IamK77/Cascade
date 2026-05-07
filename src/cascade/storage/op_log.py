@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 
-class OpLog:
+class FileOpLog:
     """Persists op_id → result mappings to .cascade/ops.json."""
 
     def __init__(self, base_dir: Path | str):

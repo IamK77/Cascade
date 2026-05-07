@@ -62,7 +62,7 @@ class CallbackNotifier:
         self._callback(token)
 
 
-class TokenStore:
+class FileTokenStore:
     """Manages task claim tokens in .cascade/tokens/.
 
     Each ACTIVE task has a token file. The token tracks whether the

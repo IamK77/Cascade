@@ -106,16 +106,12 @@ class Event:
         )
 
 
-class EventStore:
+class FileEventStore:
     """Append-only event log backed by JSONL file.
 
-    Events are appended one per line. Reading loads all events.
-    The Lamport clock is owned by the storage layer (FileStorage),
-    not by EventStore. Callers pass logical_ts to emit().
-
-    Each event carries prev_hash (hash of the preceding event) and
-    hash (SHA-256 of its own content + prev_hash), forming a
-    tamper-evident chain. verify_chain() checks integrity.
+    Core methods (emit, read_all, clear, count, verify_chain) are
+    file-specific. Query methods (read_by_node, read_range, etc.)
+    are provided by EventStoreQueries and delegate to read_all().
     """
 
     def __init__(self, base_dir: Path | str):
@@ -123,7 +119,6 @@ class EventStore:
         self._last_hash: str = self._recover_last_hash()
 
     def _recover_last_hash(self) -> str:
-        """Read the last event's hash from the log."""
         if not self._path.exists():
             return ""
         last_hash = ""
@@ -135,7 +130,6 @@ class EventStore:
         return last_hash
 
     def append(self, event: Event) -> None:
-        """Append an event to the log."""
         self._path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
@@ -143,7 +137,6 @@ class EventStore:
     def emit(
         self, event_type: EventType, logical_ts: int, *, trace_id: str = "", **data: Any
     ) -> Event:
-        """Create, hash-chain, append, and return an event."""
         event_id = uuid.uuid4().hex
         timestamp = time.time()
         content: dict[str, Any] = {
@@ -171,7 +164,6 @@ class EventStore:
         return event
 
     def read_all(self) -> list[Event]:
-        """Read all events from the log."""
         if not self._path.exists():
             return []
         events = []
@@ -182,71 +174,19 @@ class EventStore:
                     events.append(Event.from_dict(json.loads(line)))
         return events
 
-    def read_since(self, since: float) -> list[Event]:
-        """Read events after a given timestamp."""
-        return [e for e in self.read_all() if e.timestamp > since]
-
-    def read_at(self, logical_ts: int) -> Event | None:
-        """Read the event at a specific logical timestamp."""
-        for e in self.read_all():
-            if e.logical_ts == logical_ts:
-                return e
-        return None
-
-    def read_range(self, from_ts: int, to_ts: int) -> list[Event]:
-        """Read events within a logical timestamp range (inclusive)."""
-        return [e for e in self.read_all() if from_ts <= e.logical_ts <= to_ts]
-
-    def read_until(self, until_ts: int) -> list[Event]:
-        """Read events up to and including a logical timestamp."""
-        return [e for e in self.read_all() if e.logical_ts <= until_ts]
-
-    def read_by_type(self, event_type: EventType) -> list[Event]:
-        """Read events of a specific type."""
-        return [e for e in self.read_all() if e.type == event_type]
-
-    def read_by_trace(self, trace_id: str) -> list[Event]:
-        """Read all events sharing a trace_id (one operation's event chain)."""
-        return [e for e in self.read_all() if e.trace_id == trace_id]
-
-    def read_by_node(self, node_id: str) -> list[Event]:
-        """Read events related to a specific node."""
-        return [
-            e
-            for e in self.read_all()
-            if e.data.get("node_id") == node_id
-            or e.data.get("source_node_id") == node_id
-            or e.data.get("corrective_node_id") == node_id
-            or node_id in e.data.get("new_node_ids", [])
-        ]
-
     def clear(self) -> None:
-        """Clear all events (for testing)."""
         if self._path.exists():
             self._path.unlink()
+        self._last_hash = ""
 
     @property
     def count(self) -> int:
-        """Number of events in the log."""
         if not self._path.exists():
             return 0
         with open(self._path, encoding="utf-8") as f:
             return sum(1 for line in f if line.strip())
 
-    def summary(self) -> dict[str, int]:
-        """Count events by type."""
-        counts: dict[str, int] = {}
-        for event in self.read_all():
-            key = event.type.value
-            counts[key] = counts.get(key, 0) + 1
-        return counts
-
     def verify_chain(self) -> tuple[bool, str]:
-        """Verify the hash chain integrity of the event log.
-
-        Returns (True, "") if valid, or (False, description) on first break.
-        Events without hashes (pre-chain legacy) are skipped.
-        """
         events = self.read_all()
         prev_hash = ""
         for i, event in enumerate(events):
@@ -275,3 +215,41 @@ class EventStore:
                 )
             prev_hash = event.hash
         return True, ""
+
+    def read_since(self, since: float) -> list[Event]:
+        return [e for e in self.read_all() if e.timestamp > since]
+
+    def read_at(self, logical_ts: int) -> Event | None:
+        for e in self.read_all():
+            if e.logical_ts == logical_ts:
+                return e
+        return None
+
+    def read_range(self, from_ts: int, to_ts: int) -> list[Event]:
+        return [e for e in self.read_all() if from_ts <= e.logical_ts <= to_ts]
+
+    def read_until(self, until_ts: int) -> list[Event]:
+        return [e for e in self.read_all() if e.logical_ts <= until_ts]
+
+    def read_by_type(self, event_type: EventType) -> list[Event]:
+        return [e for e in self.read_all() if e.type == event_type]
+
+    def read_by_trace(self, trace_id: str) -> list[Event]:
+        return [e for e in self.read_all() if e.trace_id == trace_id]
+
+    def read_by_node(self, node_id: str) -> list[Event]:
+        return [
+            e
+            for e in self.read_all()
+            if e.data.get("node_id") == node_id
+            or e.data.get("source_node_id") == node_id
+            or e.data.get("corrective_node_id") == node_id
+            or node_id in e.data.get("new_node_ids", [])
+        ]
+
+    def summary(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for event in self.read_all():
+            key = event.type.value
+            counts[key] = counts.get(key, 0) + 1
+        return counts

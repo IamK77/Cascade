@@ -30,10 +30,11 @@ from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
 from cascade.errors import LockError
-from cascade.events import EventStore
+from cascade.events import FileEventStore
 from cascade.storage.content import ContentStore, LocalContentStore
-from cascade.storage.op_log import OpLog
-from cascade.storage.token_store import TokenStore
+from cascade.storage.op_log import FileOpLog
+from cascade.storage.protocol import EventStoreProtocol, OpLogProtocol, TokenStoreProtocol
+from cascade.storage.token_store import FileTokenStore
 from cascade.types import Context, Contract, Provenance
 
 
@@ -71,9 +72,9 @@ class FileStorage:
         self._file_lock = FileLock(self.base_dir / ".lock")
         self._thread_lock = threading.Lock()
         self._lamport: int = self._recover_lamport()
-        self.events = EventStore(self.base_dir)
-        self.tokens = TokenStore(self.base_dir)
-        self.ops = OpLog(self.base_dir)
+        self.events: EventStoreProtocol = FileEventStore(self.base_dir)
+        self.tokens: TokenStoreProtocol = FileTokenStore(self.base_dir)
+        self.ops: OpLogProtocol = FileOpLog(self.base_dir)
         self.content = content or LocalContentStore(self.base_dir)
 
     def _recover_lamport(self) -> int:

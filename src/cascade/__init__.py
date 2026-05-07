@@ -35,7 +35,7 @@ from cascade.errors import (
 from cascade.storage.content import ContentStore, GitContentStore, LocalContentStore
 from cascade.storage.file_storage import FileStorage
 from cascade.storage.protocol import StorageProtocol
-from cascade.storage.token_store import CancelNotifier, FileNotifier, TokenStore
+from cascade.storage.token_store import CancelNotifier, FileNotifier
 from cascade.types import (
     Context,
     ContextEntry,
