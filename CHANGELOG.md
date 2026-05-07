@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.11] - 2026-05-07
+
+### Documentation
+
+- Update CHANGELOG.md for v0.4.10
+
+### Miscellaneous
+
+- Bump to 0.4.11
+
+### Refactored
+
+- Protocol-ize storage sub-components for distributed backends
 ## [0.4.10] - 2026-05-07
 
 ### Added
