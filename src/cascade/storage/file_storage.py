@@ -17,6 +17,7 @@
 import json
 import os
 import threading
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
@@ -76,7 +77,7 @@ class FileStorage:
         self.content = content or LocalContentStore(self.base_dir)
 
     def _recover_lamport(self) -> int:
-        """Read lamport from graph.json at startup."""
+        """Read lamport/HLC from graph.json at startup."""
         graph_path = self.base_dir / "graph.json"
         if not graph_path.exists():
             return 0
@@ -87,14 +88,19 @@ class FileStorage:
             return 0
 
     def next_lamport(self) -> int:
-        """Increment and return the Lamport counter."""
-        self._lamport += 1
+        """Hybrid Logical Clock: max(physical_time_ms, last) + 1.
+
+        Backward compatible with pure Lamport — still a monotonically
+        increasing integer. But values now embed physical time, enabling
+        causal ordering across distributed instances.
+        """
+        physical_ms = int(time.time() * 1000)
+        self._lamport = max(physical_ms, self._lamport) + 1
         return self._lamport
 
     def observe(self, remote_ts: int) -> None:
-        """Advance Lamport clock past a remote timestamp."""
-        if remote_ts > self._lamport:
-            self._lamport = remote_ts
+        """Advance HLC past a remote timestamp."""
+        self._lamport = max(self._lamport, remote_ts)
 
     @classmethod
     def project(cls, base_dir: Path | str | None = None) -> "FileStorage":
