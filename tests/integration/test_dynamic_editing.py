@@ -19,6 +19,8 @@ These tests verify that the system remains consistent when
 nodes are split, refined, added, or removed mid-execution.
 """
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient
 from cascade.core.state import NodeState
 from cascade.types import Contract, TaskView
@@ -78,11 +80,12 @@ class TestSplitDuringExecution:
         client.split("b", into=["b1", "b2"])
 
         # Now complete a
-        client.claim("agent-1", "a")
+        _t = claim_token(client, "agent-1", "a")
         client.complete(
             "a",
             summary="Analysis complete",
             critical={"result": "data from a"},
+            token=_t,
         )
 
         # b1 and b2 should now be READY
@@ -100,11 +103,12 @@ class TestSplitDuringExecution:
         )
 
         # Complete a with context
-        client.claim("agent-1", "a")
+        _t = claim_token(client, "agent-1", "a")
         client.complete(
             "a",
             summary="Found 3 bugs",
             critical={"bug_count": 3, "severity": "high"},
+            token=_t,
         )
 
         # Split b into b1, b2
@@ -176,8 +180,8 @@ class TestRefineDuringExecution:
         client.refine("b", "a", expectation="E", promise="P")
 
         # Complete a
-        client.claim("a1", "a")
-        client.complete("a", summary="Done", critical={"from_a": True})
+        _t = claim_token(client, "a1", "a")
+        client.complete("a", summary="Done", critical={"from_a": True}, token=_t)
 
         # b should be READY and see a's context
         task = TaskView.from_result(client.claim("a2", "b"))
@@ -219,8 +223,8 @@ class TestAddNodeDuringExecution:
     def test_add_node_depending_on_completed(self, client: CascadeClient):
         """Add a node that depends on an already-completed task -> immediately READY."""
         client.add("a")
-        client.claim("a1", "a")
-        client.complete("a", summary="Done", critical={"x": 1})
+        _t = claim_token(client, "a1", "a")
+        client.complete("a", summary="Done", critical={"x": 1}, token=_t)
 
         # Add new node depending on completed a
         result = client.add(
@@ -289,7 +293,7 @@ class TestCombinedDynamicEditing:
         )
 
         # 2. Agent starts analyze
-        client.claim("a1", "analyze")
+        _t = claim_token(client, "a1", "analyze")
 
         # 3. Split implement while analyze is running
         client.split("implement", into=["impl_auth", "impl_api"])
@@ -299,6 +303,7 @@ class TestCombinedDynamicEditing:
             "analyze",
             summary="Found auth and API requirements",
             critical={"needs_auth": True, "api_version": "v2"},
+            token=_t,
         )
 
         # 5. Both impl nodes should be READY
@@ -307,11 +312,12 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["impl_auth"].state == NodeState.READY
             assert cascade.nodes["impl_api"].state == NodeState.READY
 
-        # Agents pick them up
-        client.claim("a2", "impl_auth")
-        client.claim("a3", "impl_api")
+        # Agent picks up impl_auth and completes it
+        _t2 = claim_token(client, "a2", "impl_auth")
+        client.complete("impl_auth", summary="Auth module done", token=_t2)
 
         # 6. impl_api agent discovers it needs a schema task first
+        #    Adding design_schema as dependency of impl_api makes impl_api PENDING
         client.add(
             "design_schema",
             dependents={
@@ -319,19 +325,18 @@ class TestCombinedDynamicEditing:
             },
         )
 
-        # impl_api should still be ACTIVE (refine only affects PENDING/READY)
+        # impl_api should be PENDING (now depends on design_schema)
         with temp_storage.lock():
             cascade = temp_storage.load()
-            assert cascade.nodes["impl_api"].state == NodeState.ACTIVE
+            assert cascade.nodes["impl_api"].state == NodeState.PENDING
 
-        # 7. Complete everything
-        client.complete("impl_auth", summary="Auth module done")
+        # 7. Complete design_schema first (impl_api depends on it)
+        _t4 = claim_token(client, "a4", "design_schema")
+        client.complete("design_schema", summary="Schema designed", token=_t4)
 
-        # design_schema is READY (no deps)
-        client.claim("a4", "design_schema")
-        client.complete("design_schema", summary="Schema designed")
-
-        client.complete("impl_api", summary="API module done")
+        # Now impl_api is READY again — claim and complete it
+        _t3 = claim_token(client, "a3", "impl_api")
+        client.complete("impl_api", summary="API module done", token=_t3)
 
         # test should now be READY (all deps completed)
         with temp_storage.lock():
@@ -339,8 +344,8 @@ class TestCombinedDynamicEditing:
             assert cascade.nodes["test"].state == NodeState.READY
 
         # Complete test
-        client.claim("a5", "test")
-        client.complete("test", summary="All tests pass")
+        _t5 = claim_token(client, "a5", "test")
+        client.complete("test", summary="All tests pass", token=_t5)
 
         # Everything should be COMPLETED
         with temp_storage.lock():

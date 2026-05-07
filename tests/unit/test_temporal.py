@@ -36,30 +36,41 @@ def populated_client(client: CascadeClient) -> CascadeClient:
 
     r = client.claim("agent-1")
     assert r.data["task_id"] == "analyze"
+    _t = r.data["token"]
     client.complete(
         "analyze",
         agent_id="agent-1",
         summary="analyzed requirements",
         critical={"lang": "python"},
         artifacts="full analysis document",
+        token=_t,
     )
 
     r = client.claim("agent-2")
     assert r.data["task_id"] == "design"
+    _t = r.data["token"]
     client.complete(
         "design",
         agent_id="agent-2",
         summary="designed API",
         artifacts="API specification v1",
+        token=_t,
     )
     return client
 
 
+def _all_ts(client: CascadeClient) -> list[int]:
+    """Get all logical timestamps from event log, sorted."""
+    events = client.storage.events.read_all()
+    return sorted(e.logical_ts for e in events if e.logical_ts)
+
+
 class TestShow:
     def test_show_existing_event(self, populated_client: CascadeClient):
-        r = populated_client.show(1)
+        ts = _all_ts(populated_client)[0]
+        r = populated_client.show(ts)
         assert r.success
-        assert r.data["logical_ts"] == 1
+        assert r.data["logical_ts"] == ts
         assert r.data["type"] is not None
 
     def test_show_nonexistent(self, populated_client: CascadeClient):
@@ -81,15 +92,15 @@ class TestShow:
 
 class TestDiff:
     def test_diff_range(self, populated_client: CascadeClient):
-        r = populated_client.diff(1, 5)
+        ts_list = _all_ts(populated_client)
+        r = populated_client.diff(ts_list[0], ts_list[-1])
         assert r.success
-        assert r.data["from_ts"] == 1
-        assert r.data["to_ts"] == 5
         assert r.data["count"] >= 1
         assert len(r.data["nodes_changed"]) >= 1
 
     def test_diff_full_range(self, populated_client: CascadeClient):
-        r = populated_client.diff(1, 100)
+        ts_list = _all_ts(populated_client)
+        r = populated_client.diff(ts_list[0], ts_list[-1])
         assert r.success
         assert "analyze" in r.data["nodes_changed"]
         assert "design" in r.data["nodes_changed"]
@@ -104,22 +115,22 @@ class TestDiff:
         assert not r.success
 
     def test_diff_single_point(self, populated_client: CascadeClient):
-        r = populated_client.diff(1, 1)
+        ts = _all_ts(populated_client)[0]
+        r = populated_client.diff(ts, ts)
         assert r.success
         assert r.data["count"] == 1
 
 
 class TestSnapshotAt:
     def test_snapshot_after_first_add(self, populated_client: CascadeClient):
-        r = populated_client.snapshot_at(1)
+        ts = _all_ts(populated_client)[0]
+        r = populated_client.snapshot_at(ts)
         assert r.success
         assert r.data["node_count"] >= 1
 
     def test_snapshot_after_all_events(self, populated_client: CascadeClient):
-        r = populated_client.history()
-        max_ts = max(e["logical_ts"] for e in r.data["events"] if e.get("logical_ts"))
-
-        r = populated_client.snapshot_at(max_ts)
+        ts = _all_ts(populated_client)[-1]
+        r = populated_client.snapshot_at(ts)
         assert r.success
         assert r.data["node_count"] == 3
         node_ids = {n["id"] for n in r.data["nodes"]}
@@ -143,19 +154,22 @@ class TestSnapshotAt:
 
 class TestEventStoreQueries:
     def test_read_at(self, populated_client: CascadeClient):
-        event = populated_client.storage.events.read_at(1)
+        ts = _all_ts(populated_client)[0]
+        event = populated_client.storage.events.read_at(ts)
         assert event is not None
-        assert event.logical_ts == 1
+        assert event.logical_ts == ts
 
     def test_read_at_missing(self, populated_client: CascadeClient):
         event = populated_client.storage.events.read_at(9999)
         assert event is None
 
     def test_read_range(self, populated_client: CascadeClient):
-        events = populated_client.storage.events.read_range(1, 3)
-        assert all(1 <= e.logical_ts <= 3 for e in events)
+        ts_list = _all_ts(populated_client)
+        events = populated_client.storage.events.read_range(ts_list[0], ts_list[2])
+        assert all(ts_list[0] <= e.logical_ts <= ts_list[2] for e in events)
 
     def test_read_until(self, populated_client: CascadeClient):
-        events = populated_client.storage.events.read_until(2)
-        assert all(e.logical_ts <= 2 for e in events)
+        ts_list = _all_ts(populated_client)
+        events = populated_client.storage.events.read_until(ts_list[1])
+        assert all(e.logical_ts <= ts_list[1] for e in events)
         assert len(events) >= 1

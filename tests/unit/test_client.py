@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import pytest
+from conftest import claim_token
 
 from cascade.client import CascadeClient
 from cascade.types import Contract, NodeInfo, Result, TaskView
@@ -246,8 +247,8 @@ class TestClaim:
         """After completing A, claiming B should see A's output in upstream."""
         client.add("a")
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
-        client.claim("w1", "a")
-        client.complete("a", summary="Done A", critical={"out": "42"})
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", summary="Done A", critical={"out": "42"}, token=_t)
         task_b = TaskView.from_result(client.claim("w2", "b"))
         assert len(task_b.upstream) > 0
         upstream_ids = [u.get("node_id") for u in task_b.upstream]
@@ -297,57 +298,58 @@ class TestClaim:
 class TestComplete:
     def test_complete_basic(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", summary="Done")
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", summary="Done", token=_t)
         assert r.success
 
     def test_complete_with_summary(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", summary="Analysis done")
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", summary="Analysis done", token=_t)
         assert r.success
 
     def test_complete_with_critical(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", critical={"lang": "python", "version": "3.12"})
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", critical={"lang": "python", "version": "3.12"}, token=_t)
         assert r.success
 
     def test_complete_with_artifacts(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", artifacts="def hello(): pass")
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", artifacts="def hello(): pass", token=_t)
         assert r.success
 
     def test_complete_with_all_context(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
+        _t = claim_token(client, "w1", "a")
         r = client.complete(
             "a",
             summary="Implemented feature",
             critical={"api": "/v1/data"},
             artifacts="class DataService: ...",
+            token=_t,
         )
         assert r.success
 
     def test_complete_transitions_to_done(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        client.complete("a", summary="Done")
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", summary="Done", token=_t)
         nodes = _nodes(client, state="COMPLETED")
         assert len(nodes) == 1
         assert nodes[0].id == "a"
 
     def test_complete_with_correct_agent_id(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", agent_id="w1", summary="Done")
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", agent_id="w1", summary="Done", token=_t)
         assert r.success
 
     def test_complete_with_wrong_agent_id_rejected(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.complete("a", agent_id="other-agent", summary="Done")
+        _t = claim_token(client, "w1", "a")
+        r = client.complete("a", agent_id="other-agent", summary="Done", token=_t)
         assert not r.success
         assert "claimed by 'w1'" in r.message
         nodes = _nodes(client, state="ACTIVE")
@@ -360,15 +362,15 @@ class TestComplete:
 class TestFail:
     def test_fail_basic(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.fail("a", reason="Out of memory")
+        _t = claim_token(client, "w1", "a")
+        r = client.fail("a", reason="Out of memory", token=_t)
         assert r.success
 
     def test_fail_with_cascade(self, client: CascadeClient):
         client.add("a")
         client.add("b", deps={"a": Contract("need", "promise")})
-        client.claim("w1", "a")
-        r = client.fail("a", cascade=True, reason="Fatal error")
+        _t = claim_token(client, "w1", "a")
+        r = client.fail("a", cascade=True, reason="Fatal error", token=_t)
         assert r.success
         # Both nodes should be in a terminal state
         remaining_ready = _nodes(client, state="READY")
@@ -378,8 +380,8 @@ class TestFail:
 
     def test_fail_without_reason(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.fail("a")
+        _t = claim_token(client, "w1", "a")
+        r = client.fail("a", token=_t)
         assert r.success
 
 
@@ -389,16 +391,16 @@ class TestFail:
 class TestRelease:
     def test_release_basic(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        r = client.release("a", reason="Need more info")
+        _t = claim_token(client, "w1", "a")
+        r = client.release("a", reason="Need more info", token=_t)
         assert r.success
         nodes = _nodes(client, state="READY")
         assert any(n.id == "a" for n in nodes)
 
     def test_release_then_reclaim(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        client.release("a")
+        _t = claim_token(client, "w1", "a")
+        client.release("a", token=_t)
         r = client.claim("w2", "a")
         assert r.success
         assert r.data["task_id"] == "a"
@@ -414,8 +416,8 @@ class TestRework:
         client.add("a")
         client.add("b", deps={"a": Contract("Need spec", "Deliver spec")})
         # Complete A
-        client.claim("w1", "a")
-        client.complete("a", summary="Spec v1")
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", summary="Spec v1", token=_t)
         # Claim B and request rework
         client.claim("w2", "b")
         r = client.rework(
@@ -568,8 +570,8 @@ class TestContextFlow:
         """Complete A with summary, claim B should see it in upstream."""
         client.add("a")
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
-        client.claim("w1", "a")
-        client.complete("a", summary="Analysis complete: found 3 issues")
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", summary="Analysis complete: found 3 issues", token=_t)
         task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:
@@ -583,8 +585,8 @@ class TestContextFlow:
         """Complete A with critical KV, claim B should see it."""
         client.add("a")
         client.add("b", deps={"a": Contract("Need data", "Deliver data")})
-        client.claim("w1", "a")
-        client.complete("a", critical={"api_endpoint": "/v1/users"})
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", critical={"api_endpoint": "/v1/users"}, token=_t)
         task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:

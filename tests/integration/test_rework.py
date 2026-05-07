@@ -14,6 +14,8 @@
 
 """Tests for the rework mechanism -- upstream feedback via forward derivation."""
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient, Contract
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
@@ -215,8 +217,8 @@ class TestReworkTool:
         )
 
         # Complete root
-        client.claim("agent-1", "root")
-        client.complete("root")
+        _t = claim_token(client, "agent-1", "root")
+        client.complete("root", token=_t)
 
         # Agent 2 picks up task_b
         client.claim("agent-2", "task_b")

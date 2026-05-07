@@ -1063,12 +1063,21 @@ class CascadeClient:
         should_cascade: bool = False,
     ) -> Result:
         """Internal finish logic shared by complete/fail/release."""
+        if token is None:
+            return Result(
+                success=False,
+                message=(
+                    "Fencing token is required. "
+                    "Call get-task first to claim the task and receive a token."
+                ),
+                code=ErrorCode.STALE_TOKEN,
+            )
         cached = self._cached_op(op_id)
         if cached is not None:
             return cached
         try:
             with self._mutate(op_id) as tx:
-                if token is not None and token < tx.graph.epoch:
+                if token < tx.graph.epoch:
                     return Result(
                         success=False,
                         message=(

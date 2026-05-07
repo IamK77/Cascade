@@ -10,6 +10,7 @@ import sys
 import time
 
 import pytest
+from conftest import claim_token
 
 from cascade import CascadeClient, Contract  # noqa: F401
 
@@ -67,10 +68,10 @@ class TestWatch:
     def test_emits_completion_and_unblocks(self, client, storage_dir):
         client.add("up")
         client.add("down", deps={"up": Contract("E", "P")})
-        client.claim("w1", "up")
+        _t = claim_token(client, "w1", "up")
         proc = _start_watch(storage_dir)
         time.sleep(0.3)
-        client.complete("up", summary="ok")
+        client.complete("up", summary="ok", token=_t)
         lines = _drain_then_terminate(proc)
         events = [json.loads(line) for line in lines]
         transitions = [e for e in events if e["type"] == "transition"]

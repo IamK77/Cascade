@@ -33,6 +33,13 @@ def client(temp_storage):
     return CascadeClient(temp_storage.base_dir)
 
 
+def claim_token(client: CascadeClient, agent_id: str, task_id: str | None = None) -> int:
+    """Claim a task and return its fencing token."""
+    r = client.claim(agent_id, task_id)
+    assert r.success, r.message
+    return r.data["token"]
+
+
 @pytest.fixture
 def temp_storage():
     """Create a temporary FileStorage for testing."""

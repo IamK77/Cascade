@@ -16,6 +16,8 @@
 
 import time
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient, Contract
 from cascade.core.state import NodeState
 
@@ -75,8 +77,8 @@ class TestGetTask:
 
     def test_no_available_tasks(self, client: CascadeClient):
         client.add("task_a")
-        client.claim("agent_1")
-        client.complete("task_a")
+        _t = claim_token(client, "agent_1")
+        client.complete("task_a", token=_t)
 
         result = client.claim("agent_2")
         assert result.success is False
@@ -98,8 +100,8 @@ class TestFinishTask:
             deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        client.claim("agent_1", "task_a")
-        result = client.complete("task_a", summary="Task completed successfully")
+        _t = claim_token(client, "agent_1", "task_a")
+        result = client.complete("task_a", summary="Task completed successfully", token=_t)
         assert result.success is True
 
         with temp_storage.lock():
@@ -110,9 +112,9 @@ class TestFinishTask:
 
     def test_fail_task(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        client.claim("agent_1", "task_a")
+        _t = claim_token(client, "agent_1", "task_a")
 
-        result = client.fail("task_a", reason="Something went wrong")
+        result = client.fail("task_a", reason="Something went wrong", token=_t)
         assert result.success is True
 
         with temp_storage.lock():
@@ -130,8 +132,8 @@ class TestFinishTask:
             deps={"task_a": Contract("Expect output from task_a", "Promise output to dependent")},
         )
 
-        client.claim("agent_1", "task_a")
-        result = client.fail("task_a", cascade=True)
+        _t = claim_token(client, "agent_1", "task_a")
+        result = client.fail("task_a", cascade=True, token=_t)
         assert result.success is True
 
         with temp_storage.lock():
@@ -142,13 +144,13 @@ class TestFinishTask:
 
     def test_release_task(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        client.claim("agent_1", "task_a")
+        _t = claim_token(client, "agent_1", "task_a")
 
         with temp_storage.lock():
             cascade = temp_storage.load()
             assert cascade.nodes["task_a"].state == NodeState.ACTIVE
 
-        result = client.release("task_a", reason="Need more information")
+        result = client.release("task_a", reason="Need more information", token=_t)
         assert result.success is True
 
         with temp_storage.lock():

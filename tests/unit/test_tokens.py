@@ -16,6 +16,8 @@
 
 import time
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient
 from cascade.context.cancellation import CancellationToken
 from cascade.storage.token_store import (
@@ -132,15 +134,15 @@ class TestTokenIntegration:
 
     def test_finish_complete_cleans_token(self, client: CascadeClient, temp_storage):
         client.add("a")
-        client.claim("w1", "a")
-        client.complete("a", summary="done")
+        _t = claim_token(client, "w1", "a")
+        client.complete("a", summary="done", token=_t)
 
         assert temp_storage.tokens.check("a") is None
 
     def test_finish_release_invalidates_token(self, client: CascadeClient, temp_storage):
         client.add("a")
-        client.claim("w1", "a")
-        client.release("a")
+        _t = claim_token(client, "w1", "a")
+        client.release("a", token=_t)
 
         token = temp_storage.tokens.check("a")
         assert not token.valid
@@ -181,16 +183,16 @@ class TestActiveProtection:
 
     def test_can_remove_after_release(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        client.release("a")
+        _t = claim_token(client, "w1", "a")
+        client.release("a", token=_t)
 
         r = client.remove("a")
         assert r.success
 
     def test_can_split_after_release(self, client: CascadeClient):
         client.add("a")
-        client.claim("w1", "a")
-        client.release("a")
+        _t = claim_token(client, "w1", "a")
+        client.release("a", token=_t)
 
         r = client.split("a", into=["a1", "a2"])
         assert r.success

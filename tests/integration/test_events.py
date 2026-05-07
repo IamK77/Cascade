@@ -14,6 +14,8 @@
 
 """Tests for event sourcing -- event store and CascadeClient integration."""
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient, Contract
 from cascade.events import EventType
 
@@ -98,16 +100,16 @@ class TestEventIntegration:
 
     def test_complete_emits_event(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        client.claim("agent-1", "task_a")
-        client.complete("task_a")
+        _t = claim_token(client, "agent-1", "task_a")
+        client.complete("task_a", token=_t)
 
         events = temp_storage.events.read_by_type(EventType.TASK_COMPLETED)
         assert len(events) == 1
 
     def test_fail_emits_event(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        client.claim("agent-1", "task_a")
-        client.fail("task_a", reason="broke")
+        _t = claim_token(client, "agent-1", "task_a")
+        client.fail("task_a", reason="broke", token=_t)
 
         events = temp_storage.events.read_by_type(EventType.TASK_FAILED)
         assert len(events) == 1
@@ -115,8 +117,8 @@ class TestEventIntegration:
 
     def test_release_emits_event(self, client: CascadeClient, temp_storage):
         client.add("task_a")
-        client.claim("agent-1", "task_a")
-        client.release("task_a", reason="stuck")
+        _t = claim_token(client, "agent-1", "task_a")
+        client.release("task_a", reason="stuck", token=_t)
 
         events = temp_storage.events.read_by_type(EventType.TASK_RELEASED)
         assert len(events) == 1
@@ -125,8 +127,8 @@ class TestEventIntegration:
         """End-to-end: add -> claim -> complete -> claim next."""
         client.add("a")
         client.add("b", deps={"a": Contract("E", "P")})
-        client.claim("agent-1")
-        client.complete("a")
+        _t = claim_token(client, "agent-1")
+        client.complete("a", token=_t)
         client.claim("agent-2", "b")
 
         all_events = temp_storage.events.read_all()

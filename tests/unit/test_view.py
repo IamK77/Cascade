@@ -1,5 +1,7 @@
 """Tests for view.py — get_node_view, render_briefing, render_inspect."""
 
+from conftest import claim_token
+
 from cascade import CascadeClient, Contract
 from cascade.core.cascade import Cascade
 from cascade.view import render_briefing, render_inspect
@@ -29,8 +31,8 @@ class TestRenderBriefing:
         c.add("analyze")
         c.add("design", deps={"analyze": Contract("Need spec", "Deliver spec")})
 
-        c.claim("w1", task_id="analyze")
-        c.complete("analyze", summary="Done", critical={"db": "pg"})
+        _t = claim_token(c, "w1", "analyze")
+        c.complete("analyze", summary="Done", critical={"db": "pg"}, token=_t)
 
         md = render_briefing(_claim_view(c, "w2", task_id="design"))
 
@@ -47,10 +49,10 @@ class TestRenderBriefing:
         c.add("mid", deps={"root": Contract("E1", "P1")})
         c.add("leaf", deps={"mid": Contract("E2", "P2")})
 
-        c.claim("w1", task_id="root")
-        c.complete("root", summary="Root done", critical={"key": "val"})
-        c.claim("w2", task_id="mid")
-        c.complete("mid", summary="Mid done")
+        _t = claim_token(c, "w1", "root")
+        c.complete("root", summary="Root done", critical={"key": "val"}, token=_t)
+        _t = claim_token(c, "w2", "mid")
+        c.complete("mid", summary="Mid done", token=_t)
 
         md = render_briefing(_claim_view(c, "w3", task_id="leaf"))
 
@@ -79,10 +81,10 @@ class TestRenderBriefing:
             },
         )
 
-        c.claim("w1", task_id="auth")
-        c.complete("auth", summary="Auth done", critical={"type": "JWT"})
-        c.claim("w2", task_id="api")
-        c.complete("api", summary="API done", critical={"endpoints": ["/users"]})
+        _t = claim_token(c, "w1", "auth")
+        c.complete("auth", summary="Auth done", critical={"type": "JWT"}, token=_t)
+        _t = claim_token(c, "w2", "api")
+        c.complete("api", summary="API done", critical={"endpoints": ["/users"]}, token=_t)
 
         md = render_briefing(_claim_view(c, "w3", task_id="integrate"))
 
@@ -96,8 +98,8 @@ class TestRenderBriefing:
         c.add("analyze")
         c.add("impl", deps={"analyze": Contract("E", "P")})
 
-        c.claim("w1", task_id="analyze")
-        c.complete("analyze", artifacts="# Full Spec\n## Auth\nJWT based")
+        _t = claim_token(c, "w1", "analyze")
+        c.complete("analyze", artifacts="# Full Spec\n## Auth\nJWT based", token=_t)
 
         md = render_briefing(_claim_view(c, "w2", task_id="impl"))
 
@@ -130,8 +132,8 @@ class TestRenderBriefing:
         c.add("a")
         c.add("b", deps={"a": Contract("E", "P")})
 
-        c.claim("w1", task_id="a")
-        c.complete("a", critical={"endpoints": ["/auth", "/users"], "db": "PostgreSQL"})
+        _t = claim_token(c, "w1", "a")
+        c.complete("a", critical={"endpoints": ["/auth", "/users"], "db": "PostgreSQL"}, token=_t)
 
         md = render_briefing(_claim_view(c, "w2", task_id="b"))
 
@@ -150,8 +152,8 @@ class TestRenderInspect:
     def test_inspect_completed_shows_delivered(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("a")
-        c.claim("w1", task_id="a")
-        c.complete("a", summary="Done", critical={"k": "v"}, artifacts="# Spec")
+        _t = claim_token(c, "w1", "a")
+        c.complete("a", summary="Done", critical={"k": "v"}, artifacts="# Spec", token=_t)
 
         graph = c._storage.load()
         out = render_inspect(graph, "a")
@@ -174,8 +176,8 @@ class TestRenderInspect:
     def test_inspect_completed_without_user_context(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("a")
-        c.claim("w1", task_id="a")
-        c.complete("a")  # no summary/critical/artifacts
+        _t = claim_token(c, "w1", "a")
+        c.complete("a", token=_t)  # no summary/critical/artifacts
 
         graph = c._storage.load()
         out = render_inspect(graph, "a")
@@ -189,8 +191,8 @@ class TestRenderInspect:
         c = _make_client(tmp_path)
         c.add("up")
         c.add("down", deps={"up": Contract("E", "P")})
-        c.claim("w1", task_id="up")
-        c.complete("up", summary="Up done", critical={"x": 1})
+        _t = claim_token(c, "w1", "up")
+        c.complete("up", summary="Up done", critical={"x": 1}, token=_t)
 
         graph = c._storage.load()
         out = render_inspect(graph, "down")

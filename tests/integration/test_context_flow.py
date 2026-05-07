@@ -18,6 +18,8 @@ The most critical integration test: does an agent's output actually
 reach downstream agents through context propagation?
 """
 
+from conftest import claim_token
+
 from cascade.client import CascadeClient
 from cascade.types import Contract, TaskView
 
@@ -38,8 +40,8 @@ class TestContextFlow:
             deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
 
-        client.claim("agent-1", "a")
-        client.complete("a", summary="Analysis found 3 API endpoints")
+        _t = claim_token(client, "agent-1", "a")
+        client.complete("a", summary="Analysis found 3 API endpoints", token=_t)
 
         task = TaskView.from_result(client.claim("agent-2", "b"))
         up = task.upstream
@@ -62,18 +64,20 @@ class TestContextFlow:
             deps={"b": Contract("Expect output from b", "Promise output to dependent")},
         )
 
-        client.claim("agent-1", "a")
+        _t = claim_token(client, "agent-1", "a")
         client.complete(
             "a",
             summary="Found endpoints",
             critical={"api_endpoints": ["/users", "/auth"], "schema_version": 2},
+            token=_t,
         )
 
-        client.claim("agent-2", "b")
+        _t = claim_token(client, "agent-2", "b")
         client.complete(
             "b",
             summary="Implementation done",
             critical={"implementation_lang": "python"},
+            token=_t,
         )
 
         task = TaskView.from_result(client.claim("agent-3", "c"))
@@ -92,8 +96,8 @@ class TestContextFlow:
         """finish_task creates context if node has none -- no silent dropping."""
         client.add("a")
 
-        client.claim("agent-1", "a")
-        client.complete("a", summary="This must not be silently dropped")
+        _t = claim_token(client, "agent-1", "a")
+        client.complete("a", summary="This must not be silently dropped", token=_t)
 
         with temp_storage.lock():
             cascade = temp_storage.load()
@@ -124,14 +128,14 @@ class TestContextFlow:
             },
         )
 
-        client.claim("a1", "a")
-        client.complete("a", critical={"root_data": "shared"})
+        _t = claim_token(client, "a1", "a")
+        client.complete("a", critical={"root_data": "shared"}, token=_t)
 
-        client.claim("a2", "b")
-        client.complete("b", summary="Branch B done", critical={"branch": "B"})
+        _t = claim_token(client, "a2", "b")
+        client.complete("b", summary="Branch B done", critical={"branch": "B"}, token=_t)
 
-        client.claim("a3", "c")
-        client.complete("c", summary="Branch C done", critical={"branch": "C"})
+        _t = claim_token(client, "a3", "c")
+        client.complete("c", summary="Branch C done", critical={"branch": "C"}, token=_t)
 
         task = TaskView.from_result(client.claim("a4", "d"))
         up = task.upstream
@@ -156,8 +160,8 @@ class TestContextFlow:
             deps={"a": Contract("Expect output from a", "Promise output to dependent")},
         )
 
-        client.claim("a1", "a")
-        client.complete("a", summary="Old-style result param")
+        _t = claim_token(client, "a1", "a")
+        client.complete("a", summary="Old-style result param", token=_t)
 
         task = TaskView.from_result(client.claim("a2", "b"))
         up = task.upstream
