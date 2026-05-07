@@ -3,6 +3,44 @@
 All notable changes to this project will be documented in this file.
 Generated from [conventional commits](https://www.conventionalcommits.org/).
 
+## [0.4.10] - 2026-05-07
+
+### Added
+
+- Downstream verification tip — claim prompts delivery review
+- Deliverables gate and compact briefing format
+- Extract tips module — structured guidance at operation boundaries
+- Hybrid logical clock replaces pure Lamport counter
+- Rework supersession — skip context from reworked nodes
+- Mandatory fencing token on finish operations
+- Verify-chain CLI command for event log integrity audit
+- Opencode-compatible cascade skill with self-claim worker pool
+- Watch emits ready_tasks after each transition batch
+- Actionable tips across all operations
+- Trace_id — correlate events within a single operation
+- Event hash chain — tamper-evident event log
+- Reject reserved critical keys (produced_at, git_ref)
+
+### Documentation
+
+- Skill — add worktree isolation guidance and protocol compliance recovery
+- Align skill with agentskills.io spec + enrich content
+- Update CHANGELOG.md for v0.4.9
+
+### Fixed
+
+- Correct repo URL from autoseek/cascade to autoseek-ai/Cascade
+
+### Miscellaneous
+
+- Bump to 0.4.10
+
+### Refactored
+
+- Expose Cascade internal APIs, seal encapsulation boundary
+- Replace hand-rolled utilities with stdlib
+- Separate provenance from critical — framework metadata gets its own type
+- Remove redundant runtime type checks
 ## [0.4.9] - 2026-05-06
 
 ### Added
