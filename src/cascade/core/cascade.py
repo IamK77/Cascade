@@ -25,6 +25,8 @@ Design invariants:
 import warnings
 from collections import deque
 from dataclasses import dataclass, field
+from graphlib import CycleError as GraphlibCycleError
+from graphlib import TopologicalSorter
 
 from cascade.core.node import Node
 from cascade.core.state import NodeState
@@ -395,22 +397,14 @@ class Cascade:
     # ------------------------------------------------------------------
 
     def topological_sort(self) -> list[str]:
-        """Perform topological sort using Kahn's algorithm."""
-        in_degree = {nid: len(self._reverse[nid]) for nid in self.nodes}
-        queue = deque([nid for nid, deg in in_degree.items() if deg == 0])
-        result: list[str] = []
-
-        while queue:
-            node_id = queue.popleft()
-            result.append(node_id)
-            for dependent in self._adjacency[node_id]:
-                in_degree[dependent] -= 1
-                if in_degree[dependent] == 0:
-                    queue.append(dependent)
-
-        if len(result) != len(self.nodes):
+        """Topological sort via graphlib.TopologicalSorter."""
+        sorter = TopologicalSorter[str]()
+        for nid in self.nodes:
+            sorter.add(nid, *self._reverse[nid])
+        try:
+            return list(sorter.static_order())
+        except GraphlibCycleError:
             raise CycleError("Graph contains a cycle")
-        return result
 
     def _would_create_cycle(self, from_id: str, to_id: str) -> bool:
         return self._has_path(to_id, from_id)

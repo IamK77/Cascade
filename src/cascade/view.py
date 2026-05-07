@@ -23,6 +23,7 @@ import json
 import subprocess
 import time
 from collections import deque
+from textwrap import indent
 from typing import Any
 
 from cascade.context.propagator import ContextPropagator
@@ -112,7 +113,7 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
         if ctx.critical:
             delivered.append(f"  critical: {json.dumps(ctx.critical, ensure_ascii=False)}")
         if ctx.artifacts:
-            delivered.append(f"  artifacts:\n{_block(ctx.artifacts)}")
+            delivered.append(f"  artifacts:\n{indent(ctx.artifacts, '    |')}")
 
     if delivered:
         parts.append("")
@@ -124,11 +125,6 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
         parts.append("  (no context delivered)")
 
     return "\n".join(parts)
-
-
-def _block(text: str, prefix: str = "    |") -> str:
-    """Render text as an indented block with | prefix on every line."""
-    return "\n".join(prefix + line for line in text.split("\n"))
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -230,7 +226,7 @@ def render_briefing(view: dict[str, Any]) -> str:
         if delivered.get("critical"):
             lines.append(f"  critical: {json.dumps(delivered['critical'], ensure_ascii=False)}")
         if delivered.get("artifacts"):
-            lines.append(f"  artifacts:\n{_block(delivered['artifacts'])}")
+            lines.append(f"  artifacts:\n{indent(delivered['artifacts'], '    |')}")
 
     promises = view.get("promises", [])
     if promises:
