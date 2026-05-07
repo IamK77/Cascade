@@ -152,7 +152,7 @@ class ReworkOperation(NodeOperation):
             # 4. Release requester: ACTIVE → READY (via state machine),
             #    then _update_readiness detects pending dep → PENDING
             requester.update_state(NodeState.READY)
-            self._cascade._update_readiness(requesting_node_id)
+            self._cascade.recompute_readiness(requesting_node_id)
 
             return OperationResult(
                 success=True,

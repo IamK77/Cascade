@@ -82,7 +82,7 @@ def to_mermaid(
     lines.append("")
 
     # Edges
-    for (from_id, to_id), contract in cascade._contracts.items():
+    for (from_id, to_id), contract in cascade.contracts.items():
         if from_id in critical_set and to_id in critical_set:
             arrow = "==>"  # thick arrow for critical path
         else:

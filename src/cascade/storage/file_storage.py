@@ -187,7 +187,7 @@ class FileStorage:
             graph_data["nodes"][node_id] = node_data
 
         # Save edges with contracts
-        for (from_id, to_id), contract in cascade._contracts.items():
+        for (from_id, to_id), contract in cascade.contracts.items():
             edge_data: dict[str, str] = {
                 "from": from_id,
                 "to": to_id,
@@ -273,7 +273,7 @@ class FileStorage:
             promise = edge.get("promise", "")
 
             if from_id in cascade.nodes and to_id in cascade.nodes:
-                cascade._restore_edge(
+                cascade.restore_edge(
                     from_id,
                     to_id,
                     Contract(expectation=expectation, promise=promise),

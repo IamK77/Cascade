@@ -76,11 +76,11 @@ def verify(
                 f"node {nid}: agent {r_node.agent_id} (replay) vs {s_node.agent_id} (snapshot)"
             )
 
-    for edge_key in replayed._contracts:
-        if edge_key not in snapshot._contracts:
+    for edge_key in replayed.contracts:
+        if edge_key not in snapshot.contracts:
             diffs.append(f"edge {edge_key}: exists in replay but not in snapshot")
-    for edge_key in snapshot._contracts:
-        if edge_key not in replayed._contracts:
+    for edge_key in snapshot.contracts:
+        if edge_key not in replayed.contracts:
             diffs.append(f"edge {edge_key}: exists in snapshot but not in replay")
 
     return diffs

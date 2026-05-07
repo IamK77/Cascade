@@ -41,7 +41,7 @@ class Cascade:
     Public fields:
         nodes — node lookup by ID (read/write for state mutations).
 
-    Internal fields (use methods instead of direct access):
+    Internal fields:
         _adjacency — forward edges: who depends on me.
         _reverse   — backward edges: who I depend on.
         _contracts — edge contracts indexed by (from_id, to_id).
@@ -107,7 +107,7 @@ class Cascade:
         self._adjacency[node.id] = set()
         self._reverse[node.id] = set()
         # Normalize: a node with no edges is READY, not PENDING.
-        self._update_readiness(node.id)
+        self.recompute_readiness(node.id)
 
     def remove_node(self, node_id: str) -> None:
         """Remove a node and all its edges from the graph."""
@@ -170,7 +170,7 @@ class Cascade:
         self._adjacency[from_id].add(to_id)
         self._reverse[to_id].add(from_id)
         self._contracts[edge_key] = edge_contract
-        self._update_readiness(to_id)
+        self.recompute_readiness(to_id)
 
         if not _skip_duplicate_warn:
             existing_promises = [
@@ -191,9 +191,9 @@ class Cascade:
             self._adjacency[from_id].discard(to_id)
             self._reverse[to_id].discard(from_id)
             self._contracts.pop((from_id, to_id), None)
-            self._update_readiness(to_id)
+            self.recompute_readiness(to_id)
 
-    def _restore_edge(self, from_id: str, to_id: str, contract: Contract) -> None:
+    def restore_edge(self, from_id: str, to_id: str, contract: Contract) -> None:
         """Restore an edge during deserialization.
 
         Skips cycle detection (the saved graph is assumed acyclic) but
@@ -203,31 +203,26 @@ class Cascade:
         self._adjacency[from_id].add(to_id)
         self._reverse[to_id].add(from_id)
         self._contracts[(from_id, to_id)] = contract
-        self._update_readiness(to_id)
+        self.recompute_readiness(to_id)
 
     # ------------------------------------------------------------------
-    # Contract access (encapsulated — _contracts is not public)
+    # Contract access
     # ------------------------------------------------------------------
+
+    @property
+    def contracts(self) -> dict[EdgeId, Contract]:
+        """All edge contracts, indexed by (from_id, to_id)."""
+        return self._contracts
 
     def get_contract(self, from_id: str, to_id: str) -> Contract | None:
         """Get the contract for an edge, or None if the edge doesn't exist."""
         return self._contracts.get((from_id, to_id))
 
-    def get_edge_metadata(self, from_id: str, to_id: str) -> dict[str, str | None]:
-        """Get metadata for an edge as a dict (backward-compatible).
-
-        Prefer get_contract() for new code.
-        """
-        contract = self._contracts.get((from_id, to_id))
-        if contract:
-            return {"expectation": contract.expectation, "promise": contract.promise}
-        return {"expectation": None, "promise": None}
-
     # ------------------------------------------------------------------
     # Readiness management — centralized
     # ------------------------------------------------------------------
 
-    def _update_readiness(self, node_id: str) -> None:
+    def recompute_readiness(self, node_id: str) -> None:
         """Recompute PENDING/READY state for a node.
 
         Only touches non-terminal, non-ACTIVE nodes — explicit states
@@ -261,7 +256,7 @@ class Cascade:
             if dependent is None:
                 continue
             old_state = dependent.state
-            self._update_readiness(dependent_id)
+            self.recompute_readiness(dependent_id)
             if old_state == NodeState.PENDING and dependent.state == NodeState.READY:
                 unblocked.append(dependent_id)
         return unblocked
