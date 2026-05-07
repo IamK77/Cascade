@@ -25,7 +25,20 @@ from typing import Any
 
 from cascade import __version__
 from cascade.client import CascadeClient
+from cascade.storage.protocol import StorageProtocol
 from cascade.types import Contract, Result
+
+
+def _make_storage(args: argparse.Namespace) -> StorageProtocol | str:
+    """Build a storage backend from CLI args."""
+    redis_url: str | None = getattr(args, "redis_url", None)
+    if redis_url:
+        from cascade.storage.redis_storage import RedisStorage
+
+        namespace = getattr(args, "namespace", "default") or "default"
+        return RedisStorage(url=redis_url, namespace=namespace)
+    storage_path: str = args.storage
+    return storage_path
 
 
 def _result_to_dict(r: Result) -> dict[str, Any]:
@@ -51,7 +64,7 @@ def output(result: dict[str, Any] | str) -> None:
 
 
 def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     dep_ids = [d.strip() for d in (args.deps or "").split(",") if d.strip()]
     dependent_ids = [d.strip() for d in (args.dependents or "").split(",") if d.strip()]
 
@@ -124,7 +137,7 @@ def cmd_add_node(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.claim(
         args.agent,
         args.task if hasattr(args, "task") and args.task else None,
@@ -144,7 +157,7 @@ def cmd_get_task(args: argparse.Namespace) -> dict[str, Any] | str:
 
 
 def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     agent_id = args.agent if hasattr(args, "agent") and args.agent else None
     token = args.token if hasattr(args, "token") and args.token is not None else None
 
@@ -265,7 +278,7 @@ def cmd_add_nodes(args: argparse.Namespace) -> dict[str, Any]:
         nid, deps, dependents = parsed
         specs.append({"node_id": nid, "deps": deps, "dependents": dependents})
 
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.add_batch(specs)
     return _result_to_dict(r)
 
@@ -273,63 +286,48 @@ def cmd_add_nodes(args: argparse.Namespace) -> dict[str, Any]:
 def cmd_watch(args: argparse.Namespace) -> None:
     """Stream node state transitions to stdout as JSONL.
 
-    Watches graph.json directly via mtime polling. On each change,
-    diffs current vs previous snapshot and emits one transition per
-    node whose state changed. Initial snapshot is the baseline — no
-    transitions emitted at startup. Press Ctrl-C to exit.
+    Polls the storage backend (file mtime or Redis load) and emits
+    one transition per node whose state changed. Initial snapshot is
+    the baseline — no transitions emitted at startup. Ctrl-C to exit.
     """
     import time as _t
-    from pathlib import Path
 
-    # Defense-in-depth: when stdout is a pipe Python defaults to block-buffering.
-    # Per-print flush=True handles the common case; line_buffering ensures any
-    # forgotten path still flushes on newline so consumers see lines immediately.
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[union-attr]
 
-    graph_path = Path(args.storage) / "graph.json"
+    storage_backend = _make_storage(args)
+    client = CascadeClient(storage_backend)
 
     def read_snapshot() -> dict[str, dict[str, Any]] | None:
-        try:
-            data = json.loads(graph_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
+        graph = client.storage.load()
+        if graph is None:
             return None
         result: dict[str, dict[str, Any]] = {}
-        for nid, node in (data.get("nodes") or {}).items():
-            entry: dict[str, Any] = {"state": node.get("state")}
-            if node.get("agent_id"):
-                entry["agent_id"] = node["agent_id"]
+        for nid, node in graph.nodes.items():
+            entry: dict[str, Any] = {"state": node.state.name}
+            if node.agent_id:
+                entry["agent_id"] = node.agent_id
             result[nid] = entry
         return result
 
     def emit(transition: dict[str, Any]) -> None:
         print(json.dumps(transition, ensure_ascii=False), flush=True)
 
-    last_mtime = 0.0
     last_snapshot: dict[str, dict[str, Any]] = {}
 
-    if graph_path.exists():
-        last_mtime = graph_path.stat().st_mtime
-        snap = read_snapshot()
-        if snap is not None:
-            last_snapshot = snap
+    snap = read_snapshot()
+    if snap is not None:
+        last_snapshot = snap
 
     try:
         while True:
-            try:
-                mtime = graph_path.stat().st_mtime if graph_path.exists() else 0.0
-            except OSError:
-                mtime = 0.0
-
-            if mtime == last_mtime:
-                _t.sleep(0.05)
-                continue
+            _t.sleep(0.05)
 
             snap = read_snapshot()
             if snap is None:
-                _t.sleep(0.05)
+                continue
+            if snap == last_snapshot:
                 continue
 
-            last_mtime = mtime
             now = _t.time()
             has_changes = False
 
@@ -386,7 +384,7 @@ def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
     from cascade.core.cascade import Cascade
     from cascade.view import render_inspect
 
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     with client._storage.lock():
         graph = client._storage.load() or Cascade()
         if args.task not in graph.nodes:
@@ -395,7 +393,7 @@ def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
 
 
 def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.nodes(
         state=args.state if hasattr(args, "state") and args.state else None,
         include_pending_only=args.pending_only if hasattr(args, "pending_only") else False,
@@ -404,7 +402,7 @@ def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_split_node(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     children = [c.strip() for c in args.children.split(",") if c.strip()]
     r = client.split(
         args.parent,
@@ -415,7 +413,7 @@ def cmd_split_node(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.refine(
         args.node,
         args.dep,
@@ -427,7 +425,7 @@ def cmd_refine_node(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_remove_node(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.remove(
         args.node,
         cascade=args.cascade,
@@ -437,7 +435,7 @@ def cmd_remove_node(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     critical = None
     if args.critical:
         try:
@@ -457,7 +455,7 @@ def cmd_edit_node(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_rework(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.rework(
         args.source,
         args.corrective,
@@ -472,13 +470,13 @@ def cmd_rework(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_check_task(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.check(args.task)
     return _result_to_dict(r)
 
 
 def cmd_check_timeouts(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.check_timeouts(
         default_timeout=args.default_timeout
         if hasattr(args, "default_timeout") and args.default_timeout
@@ -488,7 +486,7 @@ def cmd_check_timeouts(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.history(
         node_id=args.node or "",
         event_type=args.type or "",
@@ -499,25 +497,25 @@ def cmd_history(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def cmd_show(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.show(args.ts)
     return _result_to_dict(r)
 
 
 def cmd_diff(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.diff(args.from_ts, args.to_ts)
     return _result_to_dict(r)
 
 
 def cmd_snapshot_at(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     r = client.snapshot_at(args.ts)
     return _result_to_dict(r)
 
 
 def cmd_verify_chain(args: argparse.Namespace) -> dict[str, Any]:
-    client = CascadeClient(args.storage)
+    client = CascadeClient(_make_storage(args))
     event_count = client.storage.events.count
     valid, msg = client.storage.events.verify_chain()
     if valid:
@@ -544,7 +542,11 @@ def main() -> None:
         description="Cascade — multi-agent task coordination via DAG",
     )
     parser.add_argument("--version", "-V", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("--storage", "-s", default=".cascade", help="Storage directory")
+    parser.add_argument(
+        "--storage", "-s", default=".cascade", help="Storage directory (file backend)"
+    )
+    parser.add_argument("--redis-url", help="Redis URL (e.g. redis://localhost:6379/0)")
+    parser.add_argument("--namespace", default="default", help="Redis key namespace")
     sub = parser.add_subparsers(dest="command", help="Commands")
 
     # add-node

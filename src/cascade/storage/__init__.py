@@ -26,3 +26,10 @@ __all__ = [
     "StorageProtocol",
     "StorageScope",
 ]
+
+try:
+    from cascade.storage.redis_storage import RedisStorage
+
+    __all__ += ["RedisStorage"]
+except ImportError:
+    pass

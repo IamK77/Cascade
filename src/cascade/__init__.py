@@ -102,3 +102,10 @@ __all__ = [
     "StorageProtocol",
     "LockError",
 ]
+
+try:
+    from cascade.storage.redis_storage import RedisStorage
+
+    __all__ += ["RedisStorage"]
+except ImportError:
+    pass

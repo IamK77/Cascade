@@ -22,20 +22,17 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from filelock import FileLock, Timeout
 
 from cascade.core.cascade import Cascade
-from cascade.core.node import Node
-from cascade.core.state import NodeState
 from cascade.errors import LockError
 from cascade.events import FileEventStore
+from cascade.storage._serde import deserialize_graph, serialize_graph
 from cascade.storage.content import ContentStore, LocalContentStore
 from cascade.storage.op_log import FileOpLog
 from cascade.storage.protocol import EventStoreProtocol, OpLogProtocol, TokenStoreProtocol
 from cascade.storage.token_store import FileTokenStore
-from cascade.types import Context, Contract, Provenance
 
 
 class StorageScope(Enum):
@@ -149,54 +146,7 @@ class FileStorage:
     def save(self, cascade: Cascade) -> None:
         """Save the Cascade to storage."""
         self.base_dir.mkdir(parents=True, exist_ok=True)
-
-        graph_data: dict[str, Any] = {
-            "epoch": cascade.epoch,
-            "lamport": self._lamport,
-            "nodes": {},
-            "edges": [],
-        }
-
-        for node_id, node in cascade.nodes.items():
-            node_data: dict[str, Any] = {
-                "id": node.id,
-                "state": node.state.name,
-            }
-
-            if node.agent_id:
-                node_data["agent_id"] = node.agent_id
-
-            if node.claimed_at is not None:
-                node_data["claimed_at"] = node.claimed_at
-            if node.timeout is not None:
-                node_data["timeout"] = node.timeout
-
-            if node.context:
-                ctx_data: dict[str, Any] = {}
-                if node.context.critical:
-                    ctx_data["critical"] = node.context.critical
-                if node.context.summary:
-                    ctx_data["summary"] = node.context.summary
-                if node.context.artifacts:
-                    ref = self.content.put(node.context.artifacts)
-                    ctx_data["artifacts_ref"] = ref
-                if node.context.provenance:
-                    ctx_data["provenance"] = node.context.provenance.to_dict()
-                if ctx_data:
-                    node_data["context"] = ctx_data
-
-            graph_data["nodes"][node_id] = node_data
-
-        # Save edges with contracts
-        for (from_id, to_id), contract in cascade.contracts.items():
-            edge_data: dict[str, str] = {
-                "from": from_id,
-                "to": to_id,
-                "expectation": contract.expectation,
-                "promise": contract.promise,
-            }
-            graph_data["edges"].append(edge_data)
-
+        graph_data = serialize_graph(cascade, self._lamport, self.content)
         graph_path = self.base_dir / "graph.json"
         self._atomic_write(graph_path, json.dumps(graph_data, indent=2, ensure_ascii=False))
 
@@ -226,60 +176,7 @@ class FileStorage:
         except json.JSONDecodeError:
             return None
 
-        cascade = Cascade()
-        cascade.epoch = graph_data.get("epoch", 0)
-        self._lamport = graph_data.get("lamport", 0)
-
-        # Load nodes
-        for node_id, node_data in graph_data.get("nodes", {}).items():
-            state = NodeState[node_data.get("state", "PENDING")]
-            agent_id = node_data.get("agent_id")
-
-            context = None
-            if "context" in node_data:
-                ctx_data = node_data["context"]
-                artifacts = ""
-
-                artifacts_ref = ctx_data.get("artifacts_ref", "")
-                if artifacts_ref:
-                    artifacts = self.content.get(artifacts_ref) or ""
-
-                prov_data = ctx_data.get("provenance")
-                provenance = Provenance.from_dict(prov_data) if prov_data else None
-
-                context = Context(
-                    critical=ctx_data.get("critical", {}),
-                    summary=ctx_data.get("summary", ""),
-                    artifacts=artifacts,
-                    provenance=provenance,
-                )
-
-            node = Node(
-                id=node_id,
-                state=state,
-                context=context,
-                agent_id=agent_id,
-                claimed_at=node_data.get("claimed_at"),
-                timeout=node_data.get("timeout"),
-            )
-            cascade.add_node(node)
-
-        # Load edges via _restore_edge — skips cycle detection but
-        # recomputes readiness, so PENDING/READY states are always
-        # derived from the graph rather than blindly trusted from JSON.
-        for edge in graph_data.get("edges", []):
-            from_id = edge.get("from")
-            to_id = edge.get("to")
-            expectation = edge.get("expectation", "")
-            promise = edge.get("promise", "")
-
-            if from_id in cascade.nodes and to_id in cascade.nodes:
-                cascade.restore_edge(
-                    from_id,
-                    to_id,
-                    Contract(expectation=expectation, promise=promise),
-                )
-
+        cascade, self._lamport = deserialize_graph(graph_data, self.content)
         return cascade
 
     # ------------------------------------------------------------------
