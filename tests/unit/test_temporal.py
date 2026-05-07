@@ -17,6 +17,7 @@
 from pathlib import Path
 
 import pytest
+from conftest import auto_deliverables
 
 from cascade.client import CascadeClient
 from cascade.types import Contract
@@ -44,6 +45,7 @@ def populated_client(client: CascadeClient) -> CascadeClient:
         critical={"lang": "python"},
         artifacts="full analysis document",
         token=_t,
+        deliverables=auto_deliverables(client, "analyze"),
     )
 
     r = client.claim("agent-2")
@@ -55,6 +57,7 @@ def populated_client(client: CascadeClient) -> CascadeClient:
         summary="designed API",
         artifacts="API specification v1",
         token=_t,
+        deliverables=auto_deliverables(client, "design"),
     )
     return client
 

@@ -40,6 +40,18 @@ def claim_token(client: CascadeClient, agent_id: str, task_id: str | None = None
     return r.data["token"]
 
 
+def auto_deliverables(client: CascadeClient, task_id: str) -> dict[str, str] | None:
+    """Generate deliverables for all promises a node has to downstream."""
+    with client.storage.lock():
+        graph = client.storage.load()
+    if graph is None:
+        return None
+    promises = graph.get_node_promises(task_id)
+    if not promises:
+        return None
+    return {p["to_node"]: f"Delivered for {p['to_node']}" for p in promises}
+
+
 @pytest.fixture
 def temp_storage():
     """Create a temporary FileStorage for testing."""

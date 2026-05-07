@@ -37,6 +37,7 @@ def finish_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
     summary = params.get("summary") or params.get("result")  # 'result' for backward compat
     critical = params.get("critical")
     artifacts = params.get("artifacts")
+    deliverables = params.get("deliverables")
     should_cascade = params.get("cascade", False)
 
     client = CascadeClient(storage)
@@ -49,6 +50,7 @@ def finish_task(storage: StorageProtocol, params: dict[str, Any]) -> dict[str, A
             summary=summary or "",
             critical=critical,
             artifacts=artifacts or "",
+            deliverables=deliverables,
         )
     else:
         r = client.fail(task_id, reason=summary or "", cascade=should_cascade)

@@ -16,7 +16,7 @@
 
 import time
 
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade.client import CascadeClient, Contract
 from cascade.core.state import NodeState
@@ -101,7 +101,12 @@ class TestFinishTask:
         )
 
         _t = claim_token(client, "agent_1", "task_a")
-        result = client.complete("task_a", summary="Task completed successfully", token=_t)
+        result = client.complete(
+            "task_a",
+            summary="Task completed successfully",
+            token=_t,
+            deliverables=auto_deliverables(client, "task_a"),
+        )
         assert result.success is True
 
         with temp_storage.lock():

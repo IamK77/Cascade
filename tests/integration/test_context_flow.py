@@ -18,7 +18,7 @@ The most critical integration test: does an agent's output actually
 reach downstream agents through context propagation?
 """
 
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade.client import CascadeClient
 from cascade.types import Contract, TaskView
@@ -41,7 +41,12 @@ class TestContextFlow:
         )
 
         _t = claim_token(client, "agent-1", "a")
-        client.complete("a", summary="Analysis found 3 API endpoints", token=_t)
+        client.complete(
+            "a",
+            summary="Analysis found 3 API endpoints",
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
 
         task = TaskView.from_result(client.claim("agent-2", "b"))
         up = task.upstream
@@ -70,6 +75,7 @@ class TestContextFlow:
             summary="Found endpoints",
             critical={"api_endpoints": ["/users", "/auth"], "schema_version": 2},
             token=_t,
+            deliverables=auto_deliverables(client, "a"),
         )
 
         _t = claim_token(client, "agent-2", "b")
@@ -78,6 +84,7 @@ class TestContextFlow:
             summary="Implementation done",
             critical={"implementation_lang": "python"},
             token=_t,
+            deliverables=auto_deliverables(client, "b"),
         )
 
         task = TaskView.from_result(client.claim("agent-3", "c"))
@@ -129,13 +136,30 @@ class TestContextFlow:
         )
 
         _t = claim_token(client, "a1", "a")
-        client.complete("a", critical={"root_data": "shared"}, token=_t)
+        client.complete(
+            "a",
+            critical={"root_data": "shared"},
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
 
         _t = claim_token(client, "a2", "b")
-        client.complete("b", summary="Branch B done", critical={"branch": "B"}, token=_t)
+        client.complete(
+            "b",
+            summary="Branch B done",
+            critical={"branch": "B"},
+            token=_t,
+            deliverables=auto_deliverables(client, "b"),
+        )
 
         _t = claim_token(client, "a3", "c")
-        client.complete("c", summary="Branch C done", critical={"branch": "C"}, token=_t)
+        client.complete(
+            "c",
+            summary="Branch C done",
+            critical={"branch": "C"},
+            token=_t,
+            deliverables=auto_deliverables(client, "c"),
+        )
 
         task = TaskView.from_result(client.claim("a4", "d"))
         up = task.upstream
@@ -161,7 +185,12 @@ class TestContextFlow:
         )
 
         _t = claim_token(client, "a1", "a")
-        client.complete("a", summary="Old-style result param", token=_t)
+        client.complete(
+            "a",
+            summary="Old-style result param",
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
 
         task = TaskView.from_result(client.claim("a2", "b"))
         up = task.upstream

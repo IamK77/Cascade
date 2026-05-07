@@ -20,7 +20,7 @@ function that returns a list of tips. Tips carry a level:
 - ADVISORY: helpful hint, included in the result message.
 - REQUIRED: gate — the operation is rejected unless satisfied.
 
-Dependency rule: tips.py → (nothing in cascade/)
+Dependency rule: tips.py → types.py
 """
 
 from __future__ import annotations
@@ -76,10 +76,13 @@ def on_claim(
             )
         )
 
-    if len(promises) > 1:
-        tips.append(
-            Tip(f"you have {len(promises)} promises to downstream — ensure all are addressed.")
-        )
+    if promises:
+        lines: list[str] = []
+        for p in promises:
+            lines.append(
+                f'{p["to_node"]} expects: "{p["expectation"]}" — You promise: "{p["promise"]}"'
+            )
+        tips.append(Tip("\n".join(lines)))
 
     return tips
 
@@ -90,6 +93,7 @@ def on_complete(
     critical: dict[str, Any],
     artifacts: str,
     promises: list[dict[str, Any]],
+    deliverables: dict[str, str] | None,
     has_dependents: bool,
 ) -> list[Tip]:
     tips: list[Tip] = []
@@ -98,6 +102,35 @@ def on_complete(
         tips.append(
             Tip("no context delivered — downstream agents will receive nothing from this node.")
         )
+
+    if promises:
+        if deliverables is None:
+            lines = [f'  → {p["to_node"]}: "{p["promise"]}"' for p in promises]
+            tips.append(
+                Tip(
+                    f"Cannot complete: {len(promises)} promise(s) require delivery confirmation.\n"
+                    + "\n".join(lines)
+                    + "\nResubmit with a deliverable for each promise.",
+                    level=TipLevel.REQUIRED,
+                )
+            )
+        else:
+            promised_targets = {p["to_node"] for p in promises}
+            delivered_targets = set(deliverables.keys())
+            missing = promised_targets - delivered_targets
+            if missing:
+                lines = []
+                for p in promises:
+                    if p["to_node"] in missing:
+                        lines.append(f'  → {p["to_node"]}: "{p["promise"]}"')
+                tips.append(
+                    Tip(
+                        f"Missing deliverables for {len(missing)} promise(s):\n"
+                        + "\n".join(lines)
+                        + "\nResubmit with a deliverable for each promise.",
+                        level=TipLevel.REQUIRED,
+                    )
+                )
 
     return tips
 
@@ -138,6 +171,10 @@ def on_rework(*, active_node_id: str, corrective_node_id: str) -> list[Tip]:
 
 def has_required(tips: list[Tip]) -> bool:
     return any(t.level == TipLevel.REQUIRED for t in tips)
+
+
+def required_messages(tips: list[Tip]) -> list[str]:
+    return [t.message for t in tips if t.level == TipLevel.REQUIRED]
 
 
 def append_tips(message: str, tips: list[Tip]) -> str:

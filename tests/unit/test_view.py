@@ -1,6 +1,6 @@
 """Tests for view.py — get_node_view, render_briefing, render_inspect."""
 
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade import CascadeClient, Contract
 from cascade.core.cascade import Cascade
@@ -22,9 +22,9 @@ class TestRenderBriefing:
         c = _make_client(tmp_path)
         c.add("root")
         md = render_briefing(_claim_view(c, "w1", task_id="root"))
-        assert "# Task: root" in md
-        assert "## Upstream Context" not in md
-        assert "## Promises to Downstream" not in md
+        assert "Task: root" in md
+        assert "[upstream:" not in md
+        assert "[promises]" not in md
 
     def test_upstream_context(self, tmp_path):
         c = _make_client(tmp_path)
@@ -32,15 +32,20 @@ class TestRenderBriefing:
         c.add("design", deps={"analyze": Contract("Need spec", "Deliver spec")})
 
         _t = claim_token(c, "w1", "analyze")
-        c.complete("analyze", summary="Done", critical={"db": "pg"}, token=_t)
+        c.complete(
+            "analyze",
+            summary="Done",
+            critical={"db": "pg"},
+            token=_t,
+            deliverables=auto_deliverables(c, "analyze"),
+        )
 
         md = render_briefing(_claim_view(c, "w2", task_id="design"))
 
-        assert "## Upstream Context" in md
-        assert "### analyze (direct dependency)" in md
-        assert "**Expects from you**: Need spec" in md
-        assert "**Promised to deliver**: Deliver spec" in md
-        assert "**Summary**: Done" in md
+        assert "[upstream: analyze, direct]" in md
+        assert "you expected: Need spec" in md
+        assert "analyze promised: Deliver spec" in md
+        assert "summary: Done" in md
         assert '"db": "pg"' in md
 
     def test_ancestor_distance_2(self, tmp_path):
@@ -50,14 +55,20 @@ class TestRenderBriefing:
         c.add("leaf", deps={"mid": Contract("E2", "P2")})
 
         _t = claim_token(c, "w1", "root")
-        c.complete("root", summary="Root done", critical={"key": "val"}, token=_t)
+        c.complete(
+            "root",
+            summary="Root done",
+            critical={"key": "val"},
+            token=_t,
+            deliverables=auto_deliverables(c, "root"),
+        )
         _t = claim_token(c, "w2", "mid")
-        c.complete("mid", summary="Mid done", token=_t)
+        c.complete("mid", summary="Mid done", token=_t, deliverables=auto_deliverables(c, "mid"))
 
         md = render_briefing(_claim_view(c, "w3", task_id="leaf"))
 
-        assert "### mid (direct dependency)" in md
-        assert "### root (ancestor, distance 2)" in md
+        assert "[upstream: mid, direct]" in md
+        assert "[upstream: root, distance 2]" in md
 
     def test_promises_to_downstream(self, tmp_path):
         c = _make_client(tmp_path)
@@ -66,8 +77,9 @@ class TestRenderBriefing:
 
         md = render_briefing(_claim_view(c, "w1", task_id="impl"))
 
-        assert "## Promises to Downstream" in md
-        assert "→ **integrate**: Deliver implementation" in md
+        assert "[promises]" in md
+        assert "integrate expects: Need module" in md
+        assert "you promise: Deliver implementation" in md
 
     def test_fan_in_multiple_upstream(self, tmp_path):
         c = _make_client(tmp_path)
@@ -82,14 +94,26 @@ class TestRenderBriefing:
         )
 
         _t = claim_token(c, "w1", "auth")
-        c.complete("auth", summary="Auth done", critical={"type": "JWT"}, token=_t)
+        c.complete(
+            "auth",
+            summary="Auth done",
+            critical={"type": "JWT"},
+            token=_t,
+            deliverables=auto_deliverables(c, "auth"),
+        )
         _t = claim_token(c, "w2", "api")
-        c.complete("api", summary="API done", critical={"endpoints": ["/users"]}, token=_t)
+        c.complete(
+            "api",
+            summary="API done",
+            critical={"endpoints": ["/users"]},
+            token=_t,
+            deliverables=auto_deliverables(c, "api"),
+        )
 
         md = render_briefing(_claim_view(c, "w3", task_id="integrate"))
 
-        assert "### auth (direct dependency)" in md
-        assert "### api (direct dependency)" in md
+        assert "[upstream: auth, direct]" in md
+        assert "[upstream: api, direct]" in md
         assert "Auth done" in md
         assert "API done" in md
 
@@ -99,11 +123,16 @@ class TestRenderBriefing:
         c.add("impl", deps={"analyze": Contract("E", "P")})
 
         _t = claim_token(c, "w1", "analyze")
-        c.complete("analyze", artifacts="# Full Spec\n## Auth\nJWT based", token=_t)
+        c.complete(
+            "analyze",
+            artifacts="# Full Spec\n## Auth\nJWT based",
+            token=_t,
+            deliverables=auto_deliverables(c, "analyze"),
+        )
 
         md = render_briefing(_claim_view(c, "w2", task_id="impl"))
 
-        assert "**Artifacts**:" in md
+        assert "artifacts:" in md
         assert "# Full Spec" in md
 
     def test_visible_nodes(self, tmp_path):
@@ -114,7 +143,7 @@ class TestRenderBriefing:
 
         md = render_briefing(_claim_view(c, "w1", task_id="a"))
 
-        assert "## Downstream Topology" in md
+        assert "[downstream]" in md
         assert "b" in md
 
     def test_no_upstream_no_promises(self, tmp_path):
@@ -123,7 +152,7 @@ class TestRenderBriefing:
 
         md = render_briefing(_claim_view(c, "w1", task_id="standalone"))
 
-        assert "# Task: standalone" in md
+        assert "Task: standalone" in md
         lines = [line for line in md.split("\n") if line.strip()]
         assert len(lines) == 1
 
@@ -133,11 +162,16 @@ class TestRenderBriefing:
         c.add("b", deps={"a": Contract("E", "P")})
 
         _t = claim_token(c, "w1", "a")
-        c.complete("a", critical={"endpoints": ["/auth", "/users"], "db": "PostgreSQL"}, token=_t)
+        c.complete(
+            "a",
+            critical={"endpoints": ["/auth", "/users"], "db": "PostgreSQL"},
+            token=_t,
+            deliverables=auto_deliverables(c, "a"),
+        )
 
         md = render_briefing(_claim_view(c, "w2", task_id="b"))
 
-        assert "```json" in md
+        assert "critical:" in md
         assert '"/auth"' in md
         assert '"PostgreSQL"' in md
 
@@ -158,11 +192,12 @@ class TestRenderInspect:
         graph = c._storage.load()
         out = render_inspect(graph, "a")
 
-        assert "_State: COMPLETED_" in out
-        assert "## Delivered" in out
-        assert "**Summary**: Done" in out
+        assert "state: COMPLETED" in out
+        assert "[delivered by this node]" in out
+        assert "summary: Done" in out
         assert '"k": "v"' in out
-        assert "**Artifacts**: # Spec" in out
+        assert "artifacts:" in out
+        assert "|# Spec" in out
 
     def test_inspect_ready_no_delivered_section(self, tmp_path):
         c = _make_client(tmp_path)
@@ -170,33 +205,39 @@ class TestRenderInspect:
         graph = c._storage.load()
         out = render_inspect(graph, "a")
 
-        assert "_State: READY_" in out
-        assert "## Delivered" not in out
+        assert "state: READY" in out
+        assert "[delivered" not in out
 
     def test_inspect_completed_without_user_context(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("a")
         _t = claim_token(c, "w1", "a")
-        c.complete("a", token=_t)  # no summary/critical/artifacts
+        c.complete("a", token=_t)
 
         graph = c._storage.load()
         out = render_inspect(graph, "a")
 
-        assert "## Delivered" in out
-        assert "**Freshness**" in out
-        assert "produced_at" in out
-        assert "**Summary**" not in out
+        assert "[delivered by this node]" in out
+        assert "freshness:" in out
+        assert "critical:" not in out
+        assert "summary:" not in out
 
     def test_inspect_includes_upstream_briefing(self, tmp_path):
         c = _make_client(tmp_path)
         c.add("up")
         c.add("down", deps={"up": Contract("E", "P")})
         _t = claim_token(c, "w1", "up")
-        c.complete("up", summary="Up done", critical={"x": 1}, token=_t)
+        c.complete(
+            "up",
+            summary="Up done",
+            critical={"x": 1},
+            token=_t,
+            deliverables=auto_deliverables(c, "up"),
+        )
 
         graph = c._storage.load()
         out = render_inspect(graph, "down")
 
-        assert "## Upstream Context" in out
+        assert "[upstream: up, direct]" in out
         assert "Up done" in out
-        assert "_State: READY_" in out
+        assert "state: READY" in out

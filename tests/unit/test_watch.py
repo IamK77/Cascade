@@ -10,7 +10,7 @@ import sys
 import time
 
 import pytest
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade import CascadeClient, Contract  # noqa: F401
 
@@ -71,7 +71,7 @@ class TestWatch:
         _t = claim_token(client, "w1", "up")
         proc = _start_watch(storage_dir)
         time.sleep(0.3)
-        client.complete("up", summary="ok", token=_t)
+        client.complete("up", summary="ok", token=_t, deliverables=auto_deliverables(client, "up"))
         lines = _drain_then_terminate(proc)
         events = [json.loads(line) for line in lines]
         transitions = [e for e in events if e["type"] == "transition"]

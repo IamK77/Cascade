@@ -30,6 +30,8 @@ from cascade.core.cascade import Cascade
 from cascade.errors import NodeNotFoundError
 from cascade.types import DeliveredContext, UpstreamEntry
 
+_FRAMEWORK_CRITICAL_KEYS = frozenset({"produced_at", "git_ref", "deliverables"})
+
 
 def get_node_view(cascade: Cascade, node_id: str) -> dict[str, Any]:
     """Get all information an agent needs to execute a node.
@@ -92,40 +94,44 @@ def render_inspect(cascade: Cascade, node_id: str) -> str:
     Read-only review tool — no side effects, no state changes.
     """
     if node_id not in cascade.nodes:
-        return f"# Task: {node_id} (not found)"
+        return f"Task: {node_id} (not found)"
 
     node = cascade.nodes[node_id]
     view = get_node_view(cascade, node_id)
-    parts = [render_briefing(view), f"_State: {node.state.name}_", ""]
+    parts = [render_briefing(view), f"state: {node.state.name}"]
 
     ctx = getattr(node, "context", None)
     delivered: list[str] = []
     if ctx:
         if getattr(ctx, "summary", ""):
-            delivered.append(f"- **Summary**: {ctx.summary}")
+            delivered.append(f"  summary: {ctx.summary}")
         if getattr(ctx, "critical", None):
             freshness = _render_freshness(ctx.critical)
             if freshness:
-                delivered.append(f"- **Freshness**: {freshness}")
-            delivered.append("- **Critical**:")
-            delivered.append("  ```json")
-            delivered.append(f"  {json.dumps(ctx.critical, indent=2, ensure_ascii=False)}")
-            delivered.append("  ```")
+                delivered.append(f"  freshness: {freshness}")
+            user_critical = {
+                k: v for k, v in ctx.critical.items() if k not in _FRAMEWORK_CRITICAL_KEYS
+            }
+            if user_critical:
+                delivered.append(f"  critical: {json.dumps(user_critical, ensure_ascii=False)}")
         if getattr(ctx, "artifacts", ""):
-            delivered.append(f"- **Artifacts**: {ctx.artifacts}")
+            delivered.append(f"  artifacts:\n{_block(ctx.artifacts)}")
 
     if delivered:
-        parts.append("## Delivered (this node's output)")
         parts.append("")
+        parts.append("[delivered by this node]")
         parts.extend(delivered)
-        parts.append("")
     elif node.state.name == "COMPLETED":
-        parts.append("## Delivered (this node's output)")
         parts.append("")
-        parts.append("_No context delivered — node completed without summary/critical/artifacts._")
-        parts.append("")
+        parts.append("[delivered by this node]")
+        parts.append("  (no context delivered)")
 
     return "\n".join(parts)
+
+
+def _block(text: str, prefix: str = "    |") -> str:
+    """Render text as an indented block with | prefix on every line."""
+    return "\n".join(prefix + line for line in text.split("\n"))
 
 
 def _format_elapsed(seconds: float) -> str:
@@ -184,63 +190,63 @@ def _render_freshness(critical: dict[str, Any]) -> str:
 
 
 def render_briefing(view: dict[str, Any]) -> str:
-    """Render a task view as a markdown briefing.
+    """Render a task view as a compact briefing for LLM agents.
 
-    Pure factual statements — no behavioral instructions.
+    Uses indentation for structure, explicit subjects for direction.
     """
-    lines: list[str] = []
-    lines.append(f"# Task: {view['id']}")
-    lines.append("")
+    lines: list[str] = [f"Task: {view['id']}"]
 
     upstream = view.get("upstream", [])
-    if upstream:
-        lines.append("## Upstream Context")
+    for entry in upstream:
+        nid = entry["node_id"]
+        dist = entry["distance"]
+        label = "direct" if dist == 1 else f"distance {dist}"
         lines.append("")
-        for entry in upstream:
-            nid = entry["node_id"]
-            dist = entry["distance"]
-            label = "direct dependency" if dist == 1 else f"ancestor, distance {dist}"
-            lines.append(f"### {nid} ({label})")
-            lines.append("")
+        lines.append(f"[upstream: {nid}, {label}]")
 
-            if entry.get("expectation"):
-                lines.append(f"- **Expects from you**: {entry['expectation']}")
-            if entry.get("promise"):
-                lines.append(f"- **Promised to deliver**: {entry['promise']}")
+        if entry.get("expectation"):
+            lines.append(f"  you expected: {entry['expectation']}")
+        if entry.get("promise"):
+            lines.append(f"  {nid} promised: {entry['promise']}")
 
-            delivered = entry.get("delivered", {})
-            if delivered.get("summary"):
-                lines.append(f"- **Summary**: {delivered['summary']}")
-            if delivered.get("critical"):
-                freshness = _render_freshness(delivered["critical"])
-                if freshness:
-                    lines.append(f"- **Freshness**: {freshness}")
-                lines.append("- **Critical data**:")
-                lines.append("  ```json")
-                lines.append(f"  {json.dumps(delivered['critical'], indent=2, ensure_ascii=False)}")
-                lines.append("  ```")
-            if delivered.get("artifacts"):
-                lines.append(f"- **Artifacts**: {delivered['artifacts']}")
+        delivered = entry.get("delivered", {})
+        deliverables = delivered.get("critical", {}).get("deliverables", {})
+        if isinstance(deliverables, dict):
+            delivered_text = deliverables.get(view["id"], "")
+            if delivered_text:
+                lines.append(f"  {nid} delivered: {delivered_text}")
 
-            lines.append("")
+        if delivered.get("summary"):
+            lines.append(f"  summary: {delivered['summary']}")
+        if delivered.get("critical"):
+            freshness = _render_freshness(delivered["critical"])
+            if freshness:
+                lines.append(f"  freshness: {freshness}")
+            user_critical = {
+                k: v for k, v in delivered["critical"].items() if k not in _FRAMEWORK_CRITICAL_KEYS
+            }
+            if user_critical:
+                lines.append(f"  critical: {json.dumps(user_critical, ensure_ascii=False)}")
+        if delivered.get("artifacts"):
+            lines.append(f"  artifacts:\n{_block(delivered['artifacts'])}")
 
     promises = view.get("promises", [])
     if promises:
-        lines.append("## Promises to Downstream")
         lines.append("")
-        for p in promises:
-            lines.append(f"- → **{p['to_node']}**: {p['promise']}")
-        lines.append("")
+        lines.append("[promises]")
+        for i, p in enumerate(promises):
+            if i > 0:
+                lines.append("")
+            lines.append(f"  {p['to_node']} expects: {p['expectation']}")
+            lines.append(f"  you promise: {p['promise']}")
 
     visible = view.get("visible_nodes", {})
     if visible:
-        lines.append("## Downstream Topology")
         lines.append("")
+        lines.append("[downstream]")
         for dist_key in sorted(visible.keys()):
-            nodes = visible[dist_key]
-            for n in nodes:
-                lines.append(f"- {n['id']} ({n['state']}, distance {dist_key})")
-        lines.append("")
+            for n in visible[dist_key]:
+                lines.append(f"  {n['id']} ({n['state']}, distance {dist_key})")
 
     return "\n".join(lines)
 

@@ -155,6 +155,9 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
                 critical = json.loads(args.critical)
             except json.JSONDecodeError:
                 return {"success": False, "message": "Invalid JSON for --critical"}
+        deliverables = None
+        if hasattr(args, "deliver") and args.deliver:
+            deliverables = {node_id: text for node_id, text in args.deliver}
         r = client.complete(
             args.task,
             agent_id=agent_id,
@@ -162,6 +165,7 @@ def cmd_finish_task(args: argparse.Namespace) -> dict[str, Any]:
             summary=args.summary or "",
             critical=critical,
             artifacts=args.artifacts or "",
+            deliverables=deliverables,
         )
     elif args.fail:
         r = client.fail(
@@ -578,6 +582,13 @@ def main() -> None:
     p.add_argument("--summary", help="Summary for downstream")
     p.add_argument("--critical", help="Critical context as JSON")
     p.add_argument("--artifacts", help="Artifacts content")
+    p.add_argument(
+        "--deliver",
+        nargs=2,
+        action="append",
+        metavar=("NODE_ID", "TEXT"),
+        help="Delivery confirmation for a promise (repeatable)",
+    )
     p.add_argument("--reason", help="Reason for fail/release")
     p.add_argument("--cascade", action="store_true", help="Cascade failure to dependents")
     p.set_defaults(func=cmd_finish_task)

@@ -14,7 +14,7 @@
 
 """Tests for event sourcing -- event store and CascadeClient integration."""
 
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade.client import CascadeClient, Contract
 from cascade.events import EventType
@@ -128,7 +128,7 @@ class TestEventIntegration:
         client.add("a")
         client.add("b", deps={"a": Contract("E", "P")})
         _t = claim_token(client, "agent-1")
-        client.complete("a", token=_t)
+        client.complete("a", token=_t, deliverables=auto_deliverables(client, "a"))
         client.claim("agent-2", "b")
 
         all_events = temp_storage.events.read_all()

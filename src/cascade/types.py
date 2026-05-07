@@ -186,6 +186,7 @@ class PromiseEntry(TypedDict):
     """A promise this node made to a downstream dependent."""
 
     to_node: str
+    expectation: str
     promise: str
 
 
@@ -307,7 +308,8 @@ class ErrorCode:
     BATCH_INVALID_SPEC = "BATCH_INVALID_SPEC"
     INVALID_INPUT = "INVALID_INPUT"
     STALE_TOKEN = "STALE_TOKEN"
+    UNADDRESSED_PROMISES = "UNADDRESSED_PROMISES"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
-RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref"})
+RESERVED_CRITICAL_KEYS = frozenset({"produced_at", "git_ref", "deliverables"})

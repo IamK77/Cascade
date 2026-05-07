@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade.client import CascadeClient
 from cascade.types import Contract, NodeInfo, Result, TaskView
@@ -248,7 +248,13 @@ class TestClaim:
         client.add("a")
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
         _t = claim_token(client, "w1", "a")
-        client.complete("a", summary="Done A", critical={"out": "42"}, token=_t)
+        client.complete(
+            "a",
+            summary="Done A",
+            critical={"out": "42"},
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
         task_b = TaskView.from_result(client.claim("w2", "b"))
         assert len(task_b.upstream) > 0
         upstream_ids = [u.get("node_id") for u in task_b.upstream]
@@ -417,7 +423,9 @@ class TestRework:
         client.add("b", deps={"a": Contract("Need spec", "Deliver spec")})
         # Complete A
         _t = claim_token(client, "w1", "a")
-        client.complete("a", summary="Spec v1", token=_t)
+        client.complete(
+            "a", summary="Spec v1", token=_t, deliverables=auto_deliverables(client, "a")
+        )
         # Claim B and request rework
         client.claim("w2", "b")
         r = client.rework(
@@ -571,7 +579,12 @@ class TestContextFlow:
         client.add("a")
         client.add("b", deps={"a": Contract("Need result", "Deliver result")})
         _t = claim_token(client, "w1", "a")
-        client.complete("a", summary="Analysis complete: found 3 issues", token=_t)
+        client.complete(
+            "a",
+            summary="Analysis complete: found 3 issues",
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
         task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:
@@ -586,7 +599,12 @@ class TestContextFlow:
         client.add("a")
         client.add("b", deps={"a": Contract("Need data", "Deliver data")})
         _t = claim_token(client, "w1", "a")
-        client.complete("a", critical={"api_endpoint": "/v1/users"}, token=_t)
+        client.complete(
+            "a",
+            critical={"api_endpoint": "/v1/users"},
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
         task_b = TaskView.from_result(client.claim("w2", "b"))
         found = False
         for u in task_b.upstream:

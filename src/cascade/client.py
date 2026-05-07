@@ -950,6 +950,7 @@ class CascadeClient:
         summary: str = "",
         critical: dict[str, Any] | None = None,
         artifacts: str = "",
+        deliverables: dict[str, str] | None = None,
     ) -> Result:
         """Mark a task as successfully completed.
 
@@ -961,6 +962,9 @@ class CascadeClient:
             summary: Brief description of what was done (2-hop propagation).
             critical: Structured KV data for downstream (infinite propagation).
             artifacts: Full content (infinite propagation).
+            deliverables: Delivery confirmation for each promise.
+                Key is the downstream node_id, value is what was delivered.
+                Required when the node has promises to downstream.
         """
         return self._finish(
             task_id,
@@ -972,6 +976,7 @@ class CascadeClient:
             summary=summary,
             critical=critical,
             artifacts=artifacts,
+            deliverables=deliverables,
         )
 
     def fail(
@@ -1045,6 +1050,7 @@ class CascadeClient:
         summary: str = "",
         critical: dict[str, Any] | None = None,
         artifacts: str = "",
+        deliverables: dict[str, str] | None = None,
         should_cascade: bool = False,
     ) -> Result:
         """Internal finish logic shared by complete/fail/release."""
@@ -1137,6 +1143,26 @@ class CascadeClient:
                                 code=ErrorCode.INVALID_INPUT,
                             )
 
+                    node_promises = tx.graph.get_node_promises(task_id)
+                    complete_tips = tips.on_complete(
+                        summary=summary,
+                        critical=critical or {},
+                        artifacts=artifacts,
+                        promises=[
+                            {"to_node": p["to_node"], "promise": p["promise"]}
+                            for p in node_promises
+                        ],
+                        deliverables=deliverables,
+                        has_dependents=len(tx.graph.get_dependents(task_id)) > 0,
+                    )
+
+                    if tips.has_required(complete_tips):
+                        return Result(
+                            success=False,
+                            message=tips.required_messages(complete_tips)[0],
+                            code=ErrorCode.UNADDRESSED_PROMISES,
+                        )
+
                     node.update_state(NodeState.COMPLETED)
                     node.agent_id = None
                     node.claimed_at = None
@@ -1150,6 +1176,8 @@ class CascadeClient:
                         node.context.critical.update(critical)
                     if artifacts:
                         node.context.artifacts = str(artifacts)
+                    if deliverables:
+                        node.context.critical["deliverables"] = deliverables
 
                     node.context.critical["produced_at"] = time.time()
                     git_ref = _get_git_ref()
@@ -1157,18 +1185,6 @@ class CascadeClient:
                         node.context.critical["git_ref"] = git_ref
 
                     unblocked = tx.graph.notify_completion(task_id)
-
-                    node_promises = tx.graph.get_node_promises(task_id)
-                    complete_tips = tips.on_complete(
-                        summary=summary,
-                        critical=critical or {},
-                        artifacts=artifacts,
-                        promises=[
-                            {"to_node": p["to_node"], "promise": p["promise"]}
-                            for p in node_promises
-                        ],
-                        has_dependents=len(tx.graph.get_dependents(task_id)) > 0,
-                    )
 
                     message = f"Task {task_id} completed"
                     if unblocked:

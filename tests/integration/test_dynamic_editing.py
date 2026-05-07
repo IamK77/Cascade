@@ -19,7 +19,7 @@ These tests verify that the system remains consistent when
 nodes are split, refined, added, or removed mid-execution.
 """
 
-from conftest import claim_token
+from conftest import auto_deliverables, claim_token
 
 from cascade.client import CascadeClient
 from cascade.core.state import NodeState
@@ -86,6 +86,7 @@ class TestSplitDuringExecution:
             summary="Analysis complete",
             critical={"result": "data from a"},
             token=_t,
+            deliverables=auto_deliverables(client, "a"),
         )
 
         # b1 and b2 should now be READY
@@ -109,6 +110,7 @@ class TestSplitDuringExecution:
             summary="Found 3 bugs",
             critical={"bug_count": 3, "severity": "high"},
             token=_t,
+            deliverables=auto_deliverables(client, "a"),
         )
 
         # Split b into b1, b2
@@ -181,7 +183,13 @@ class TestRefineDuringExecution:
 
         # Complete a
         _t = claim_token(client, "a1", "a")
-        client.complete("a", summary="Done", critical={"from_a": True}, token=_t)
+        client.complete(
+            "a",
+            summary="Done",
+            critical={"from_a": True},
+            token=_t,
+            deliverables=auto_deliverables(client, "a"),
+        )
 
         # b should be READY and see a's context
         task = TaskView.from_result(client.claim("a2", "b"))
@@ -304,6 +312,7 @@ class TestCombinedDynamicEditing:
             summary="Found auth and API requirements",
             critical={"needs_auth": True, "api_version": "v2"},
             token=_t,
+            deliverables=auto_deliverables(client, "analyze"),
         )
 
         # 5. Both impl nodes should be READY
@@ -314,7 +323,12 @@ class TestCombinedDynamicEditing:
 
         # Agent picks up impl_auth and completes it
         _t2 = claim_token(client, "a2", "impl_auth")
-        client.complete("impl_auth", summary="Auth module done", token=_t2)
+        client.complete(
+            "impl_auth",
+            summary="Auth module done",
+            token=_t2,
+            deliverables=auto_deliverables(client, "impl_auth"),
+        )
 
         # 6. impl_api agent discovers it needs a schema task first
         #    Adding design_schema as dependency of impl_api makes impl_api PENDING
@@ -332,11 +346,21 @@ class TestCombinedDynamicEditing:
 
         # 7. Complete design_schema first (impl_api depends on it)
         _t4 = claim_token(client, "a4", "design_schema")
-        client.complete("design_schema", summary="Schema designed", token=_t4)
+        client.complete(
+            "design_schema",
+            summary="Schema designed",
+            token=_t4,
+            deliverables=auto_deliverables(client, "design_schema"),
+        )
 
         # Now impl_api is READY again — claim and complete it
         _t3 = claim_token(client, "a3", "impl_api")
-        client.complete("impl_api", summary="API module done", token=_t3)
+        client.complete(
+            "impl_api",
+            summary="API module done",
+            token=_t3,
+            deliverables=auto_deliverables(client, "impl_api"),
+        )
 
         # test should now be READY (all deps completed)
         with temp_storage.lock():

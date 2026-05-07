@@ -361,7 +361,13 @@ class Cascade:
         for dependent_id in self._adjacency.get(node_id, set()):
             contract = self.get_contract(node_id, dependent_id)
             if contract:
-                result.append(PromiseEntry(to_node=dependent_id, promise=contract.promise))
+                result.append(
+                    PromiseEntry(
+                        to_node=dependent_id,
+                        expectation=contract.expectation,
+                        promise=contract.promise,
+                    )
+                )
         return result
 
     def has_dependency(self, node_id: str, dep_id: str) -> bool:
