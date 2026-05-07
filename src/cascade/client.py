@@ -923,6 +923,7 @@ class CascadeClient:
             was_released = any(e.type == EventType.TASK_RELEASED for e in released_events)
 
             claim_tips = tips.on_claim(
+                task_id=task_id,
                 upstream=task_info.get("upstream", []),
                 promises=task_info.get("promises", []),
                 was_previously_released=was_released,

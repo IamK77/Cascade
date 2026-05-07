@@ -50,24 +50,41 @@ class Tip:
 
 def on_claim(
     *,
+    task_id: str,
     upstream: list[dict[str, Any]],
     promises: list[dict[str, Any]],
     was_previously_released: bool,
 ) -> list[Tip]:
     tips: list[Tip] = []
 
+    verify_lines: list[str] = []
     for u in upstream:
+        nid = u.get("node_id", "")
         delivered = u.get("delivered", {})
         crit = delivered.get("critical", {})
         user_critical = {k: v for k, v in crit.items() if k not in RESERVED_CRITICAL_KEYS}
         has_context = bool(delivered.get("summary") or user_critical or delivered.get("artifacts"))
+
         if u.get("state") == "COMPLETED" and not has_context:
             tips.append(
                 Tip(
-                    f"upstream '{u['node_id']}' delivered no context"
+                    f"upstream '{nid}' delivered no context"
                     " — you may need to inspect its output directly."
                 )
             )
+
+        deliverables = crit.get("deliverables", {})
+        if isinstance(deliverables, dict):
+            delivered_text = deliverables.get(task_id, "")
+            if delivered_text and u.get("promise"):
+                verify_lines.append(
+                    f'{nid} promised: "{u["promise"]}"'
+                    f' → delivered: "{delivered_text}"'
+                    f' — verify this meets your expectation: "{u.get("expectation", "")}"'
+                )
+
+    if verify_lines:
+        tips.append(Tip("Verify upstream delivery before proceeding:\n" + "\n".join(verify_lines)))
 
     if was_previously_released:
         tips.append(
