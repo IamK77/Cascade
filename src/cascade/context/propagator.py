@@ -43,6 +43,17 @@ class ContextPropagator:
 
     def __init__(self, cascade: Cascade):
         self._cascade = cascade
+        self._superseded: set[str] = self._find_superseded_nodes()
+
+    def _find_superseded_nodes(self) -> set[str]:
+        """Find nodes whose output has been superseded by a rework corrective."""
+        superseded: set[str] = set()
+        for node in self._cascade.nodes.values():
+            if node.context and node.context.critical:
+                source = node.context.critical.get("rework_source")
+                if source and isinstance(source, str):
+                    superseded.add(source)
+        return superseded
 
     def collect_context_at(self, node_id: str) -> list[ContextEntry]:
         """Collect context from all ancestors with provenance.
@@ -53,6 +64,9 @@ class ContextPropagator:
             - expectation, promise (direct parents only)
             - critical, artifacts (any distance)
             - summary (within SUMMARY_MAX_DISTANCE only)
+
+        Nodes whose output was superseded by a rework corrective are
+        skipped — their context is no longer authoritative.
         """
         if node_id not in self._cascade.nodes:
             raise NodeNotFoundError(f"Node {node_id} not found")
@@ -65,7 +79,7 @@ class ContextPropagator:
         while queue:
             current_id, distance = queue.popleft()
 
-            if distance > 0:
+            if distance > 0 and current_id not in self._superseded:
                 node = self._cascade.nodes[current_id]
                 if node.context:
                     entry_critical = dict(node.context.critical) if node.context.critical else {}
