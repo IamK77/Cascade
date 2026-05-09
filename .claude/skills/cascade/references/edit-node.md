@@ -14,16 +14,18 @@ cascade edit-node --node <node-id> [options]
 |-----------|-------|----------|-------------|
 | `--node` | `-n` | Yes | Node ID to edit |
 | `--summary` | | No | New summary text (overwrites existing) |
-| `--critical` | | No | JSON object to merge into critical context |
+| `--critical` | | No | JSON object to merge into critical context (override mode with `--context-merge`) |
 | `--artifacts` | | No | New artifacts content (overwrites existing) |
 | `--state` | | No | Manually set state (use with caution) |
+| `--context-merge` | | No | How `--critical` combines with existing values: `merge` (default — shallow merge by key), `replace` (overwrite the whole dict), `append` (extend list-valued keys instead of replacing) |
+| `--reason` | | No | Why this edit is needed (recorded in event log) |
 
 ## Merge vs Overwrite
 
 | Field | Behavior |
 |-------|----------|
 | `--summary` | **Overwrites** existing summary |
-| `--critical` | **Merges** with existing critical values |
+| `--critical` | Default **merges** (shallow, by key); override with `--context-merge replace`/`append` |
 | `--artifacts` | **Overwrites** existing artifacts |
 | `--state` | Directly sets state |
 
@@ -88,48 +90,6 @@ cascade edit-node --node design --artifacts "
 cascade edit-node --node stuck-task --state READY
 ```
 
-## Use Cases
-
-### 1. Incremental updates while working
-
-```bash
-# Claim task
-cascade get-task --agent agent-1
-
-# Add notes as you work
-cascade edit-node --node design --critical '{"progress": "50%"}'
-
-# More notes
-cascade edit-node --node design --critical '{"components_done": ["Button", "Input"]}'
-
-# Complete
-cascade finish-task --task design --success
-```
-
-### 2. Fix incorrect context
-
-```bash
-# Wrong value was set earlier
-cascade edit-node --node analyze --critical '{"api_version": "v3"}'
-# Now downstream tasks get correct version
-```
-
-### 3. Update before downstream uses it
-
-```bash
-# Task completed, but realized missing info
-cascade edit-node --node design --artifacts "$(cat design-spec.md)"
-```
-
-### 4. Progress tracking
-
-```bash
-# Add checkpoint without finishing
-cascade edit-node --node implement \
-  --summary "Core logic done, testing remaining" \
-  --critical '{"files_changed": 12, "tests_added": 8}'
-```
-
 ## State Transitions
 
 While `edit-node` can change state directly, prefer using proper commands:
@@ -146,8 +106,3 @@ Only use `--state` for:
 - Bulk corrections
 - Recovery scenarios
 
-## See Also
-
-- [finish-task.md](finish-task.md) - Proper state transitions
-- [get-task.md](get-task.md) - Claim tasks
-- [list-nodes.md](list-nodes.md) - Check current values

@@ -13,39 +13,52 @@ cascade get-task --agent <agent-id> [--task <task-id>] [--timeout <seconds>]
 | Parameter | Short | Required | Description |
 |-----------|-------|----------|-------------|
 | `--agent` | `-a` | Yes | Unique agent identifier — must match the agent passed to `finish-task` |
-| `--task` | `-t` | No | Specific task ID to claim. Without it, the highest-priority READY task is claimed (critical-path first) |
+| `--task` | `-t` | No | Specific task ID to claim. **Workers should omit this** — cascade auto-schedules by critical-path priority, and manual selection defeats the scheduler. Use only for orchestrator-side targeted retry/inspection |
 | `--timeout` |  | No | Seconds before auto-release if not finished |
 
 ## Output
 
-### Success → markdown briefing
+### Success → plain-text briefing
 
-On success, the CLI prints a **markdown briefing** to stdout (not JSON). Sections:
+On success, the CLI prints a **plain-text briefing** to stdout (not JSON or
+Markdown). Sections use `[bracket-tagged]` headers and indented bodies.
+The footer carries the **fencing token** required for `finish-task`.
 
-```markdown
-# Task: <task-id>
+```
+Task: <task-id>
 
-## Upstream Context
+[upstream: <upstream-id>, direct]
+  you expected: <consumer's need>
+  <upstream-id> promised: <upstream's deliverable>
+  <upstream-id> delivered: <text addressed to this task, if any>
+  summary: <upstream summary>
+  freshness: <elapsed> | <commits behind HEAD>
+  critical: {"k": "v"}
+  artifacts:
+    |# Markdown body
+    |...
 
-### <upstream-id> (direct dependency)
-- **Expects from you**: <what consumer needs>
-- **Promised to deliver**: <what upstream provided>
-- **Summary**: <upstream summary>
-- **Freshness**: <elapsed time> | <commits behind HEAD>
-- **Critical data**:
-  ```json
-  {"key": "value", "produced_at": 1778050765.98, "git_ref": "a3f8c2e..."}
-  ```
-- **Artifacts**: <full content>
+[upstream: <ancestor-id>, distance 2]
+  ...
 
-## Promises to Downstream
-- → <downstream-id>: <promise text>
+[promises]
+  <downstream-id> expects: <expectation text>
+  you promise: <promise text>
 
-## Downstream Topology
-- <node> (<state>, distance N)
+[downstream]
+  <id> (<STATE>, distance 1)
+
+---
+fencing_token: 17
 ```
 
-The briefing IS the worker's spec. Read it before doing any other tool call. Do not Read source files to discover the interface.
+The briefing IS the worker's spec — read it before any other tool call;
+do not Read source files to discover the interface.
+
+**The `fencing_token` integer is mandatory input to `finish-task`.** Pass
+it via `--token <int>`; calls without it fail with `STALE_TOKEN`. Provenance
+metadata (`produced_at`, `git_ref`) lives in a separate `provenance` field
+on each upstream entry — use the `freshness:` line if you need it.
 
 ### Failure → JSON with `code`
 
@@ -84,7 +97,3 @@ cascade get-task --agent worker-1 --task impl-auth
 cascade get-task --agent worker-1 --task slow-task --timeout 3600
 ```
 
-## See also
-
-- [finish-task.md](finish-task.md) — complete the claimed task
-- [inspect.md](inspect.md) — read-only preview without claiming

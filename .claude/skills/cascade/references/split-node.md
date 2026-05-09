@@ -14,6 +14,7 @@ cascade split-node --parent <node-id> --children <child1,child2,...>
 |-----------|-------|----------|-------------|
 | `--parent` | `-p` | Yes | ID of the node to split |
 | `--children` | `-c` | Yes | Comma-separated list of child node IDs |
+| `--reason` | | No | Why this split is needed (recorded in event log for audit) |
 
 ## Inheritance Rules
 
@@ -67,44 +68,6 @@ cascade split-node --parent project --children frontend,backend,infra
 # Can be claimed by different agents simultaneously
 ```
 
-## Use Cases
-
-### 1. Decompose after analysis
-
-```bash
-# Agent analyzes and realizes task is too big
-cascade finish-task --task analyze --success \
-  --critical '{"subtasks": ["auth", "api", "ui"]}'
-
-# Split based on analysis
-cascade split-node --parent implement --children auth,api,ui
-```
-
-### 2. Parallel execution
-
-```bash
-# Create sequential plan initially
-cascade add-node --id analyze
-cascade add-node --id parallel-work --deps analyze
-cascade add-node --id integrate --deps parallel-work
-
-# Split parallel-work into actual parallel tasks
-cascade split-node --parent parallel-work --children task-a,task-b,task-c
-
-# Now task-a, task-b, task-c can run in parallel after analyze
-# All three must complete before integrate
-```
-
-### 3. Add detail to placeholder
-
-```bash
-# High-level placeholder
-cascade add-node --id feature-x
-
-# Later, when scope is clear
-cascade split-node --parent feature-x --children data-layer,biz-logic,api-layer,ui
-```
-
 ## Output
 
 ```json
@@ -128,7 +91,3 @@ cascade split-node --parent feature-x --children data-layer,biz-logic,api-layer,
 | `Node <id> is ACTIVE` | Can't split active task | Finish or release first |
 | `Child ID <id> already exists` | Duplicate child ID | Use unique IDs |
 
-## See Also
-
-- [refine-node.md](refine-node.md) - Add single dependency
-- [add-node.md](add-node.md) - Create individual nodes

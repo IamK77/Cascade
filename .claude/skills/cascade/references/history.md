@@ -22,12 +22,19 @@ cascade history [options]
 | Type | When |
 |------|------|
 | `node_added` | New node created |
-| `task_claimed` | Agent claims a task |
+| `node_removed` | Node deleted |
+| `node_edited` | `edit-node` updated a node's properties |
+| `node_split` | `split-node` replaced a parent with children |
+| `node_refined` | `refine-node` added a dependency |
+| `node_cancelled` | Node CANCELLED by cascade failure |
+| `edge_added` | Dependency edge created (via `add-node` deps or `refine-node`) |
+| `edge_removed` | Dependency edge deleted |
+| `task_claimed` | Agent claims a task (`get-task`) |
 | `task_completed` | Task finished successfully |
 | `task_failed` | Task failed |
 | `task_released` | Task returned to pool |
-| `task_timed_out` | Task auto-released by check-timeouts |
-| `rework_requested` | Corrective node created |
+| `task_timed_out` | Task auto-released by `check-timeouts` |
+| `rework_requested` | Corrective node created (`rework`) |
 
 ## Examples
 
@@ -61,8 +68,16 @@ cascade history --type rework_requested
 }
 ```
 
-## Use Cases
+## Audit verbs
 
-- **Audit trail**: Who did what when?
-- **Debugging**: Replay events to understand what happened
-- **Progress monitoring**: How many tasks completed, how many reworks?
+The event log is content-addressed (SHA-256 chain) and supports time-travel
+via **logical timestamps** — monotonic event-sequence numbers, not wall-clock
+time:
+
+| Command | Use |
+|---------|-----|
+| `cascade show --ts <N>` | Print the event at logical timestamp `N` |
+| `cascade diff --from <A> --to <B>` | Print events between two logical timestamps |
+| `cascade snapshot-at --ts <N>` | Replay events to rebuild graph state as of `N` |
+| `cascade verify-chain` | Verify the SHA-256 hash chain integrity of the entire log |
+

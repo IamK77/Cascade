@@ -29,7 +29,8 @@ When a worker claims a task via `cascade get-task`, it receives an **upstream** 
       "promise": "Deliver requirements spec",
       "delivered": {
         "summary": "JWT auth + REST API",
-        "critical": {"auth": "JWT", "db": "PostgreSQL", "produced_at": 1778050765.98, "git_ref": "a3f8c2e..."}
+        "critical": {"auth": "JWT", "db": "PostgreSQL"},
+        "provenance": {"produced_at": 1778050765.98, "git_ref": "a3f8c2e..."}
       }
     },
     {
@@ -46,6 +47,12 @@ When a worker claims a task via `cascade get-task`, it receives an **upstream** 
 ```
 
 Direct parents (distance 1) include the edge contract; further ancestors include only `path` for provenance. Fan-in keeps each source separate — no key overwrite.
+
+Each upstream entry's `provenance` carries framework metadata (`produced_at`, `git_ref`, per-target `deliverables`) — distinct from `critical`, which holds only user-supplied KV.
+
+## Fencing Tokens
+
+`get-task` issues a fencing token in the briefing footer (`fencing_token: <int>`). `finish-task` requires it via `--token`; calls without it fail with `STALE_TOKEN`. The framework also rejects tokens older than the node's current epoch — so workers whose claims were invalidated by `rework` or `release` cannot silently overwrite the freshly-claimed worker's results.
 
 Three channels:
 
@@ -87,11 +94,11 @@ cascade finish-task --task X --fail --cascade
 
 ## Orchestrator Guide
 
-> Sections below marked **[L0]** = what you (orchestrator) do. **[L1]** = text to embed verbatim in worker prompts. Don't confuse them.
+Workers self-contain the protocol (see `.claude/agents/cascade-worker.md`). Dispatch them with a unique `agent-id`; cascade auto-schedules the task. The sections below are for you, the orchestrator.
 
-**[L0] Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about information flow, not code imports.
+**Edges represent information needs** — if task B needs decisions/specs/APIs from task A, B depends on A. This is about information flow, not code imports.
 
-### [L0] Spec Ownership
+### Spec Ownership
 
 Every line of spec belongs to a node's artifacts. If you find yourself writing spec in an Agent prompt, find the node that should own it instead:
 
@@ -104,12 +111,12 @@ If a spec line has no node owner, your DAG is incomplete.
 
 **Make semantics explicit.** `"computed": ["blocked_by"]` is ambiguous — workers may infer "computed field" but miss "therefore not persisted". Prefer: `{"blocked_by": {"type": "list[str]", "persist": false, "compute": "reverse of depends_on"}}`. Fields like `persist`, `validate`, `default` translate directly into worker code.
 
-### [L0] Verification & Feedback Tools
+### Verification & Feedback Tools
 
 - **`cascade inspect --task X`** — read-only preview of a worker's briefing plus its delivered context if completed. Use before dispatching (verify spec in place) and after (review what was delivered). Each `inspect` showing rich content is a credit signal that your DAG shape was right.
 - **`cascade watch`** — long-running stream. Outputs one JSONL line per state transition; silent when idle. **Don't poll `list-nodes`** — that re-emits unchanged state every interval. Pair `watch` with your agent harness's monitor to react to `READY` (dispatch), `COMPLETED` (review), `FAILED` (decide). Each `COMPLETED` line in `watch` is a positive credit signal; `FAILED` / `release` are negative — inspect before redispatching.
 
-### [L0] Loop
+### Loop
 
 1. **Spawn analyze worker** — create a root analyze node, dispatch a worker to produce the spec (`summary` + `critical` + `artifacts`)
 2. **Inspect analyze output** before designing the rest
@@ -118,51 +125,3 @@ If a spec line has no node owner, your DAG is incomplete.
 5. **Review** each completion via `inspect`; consult the **Adapt** table in SKILL.md and apply
 6. **Next wave** — repeat until all COMPLETED
 
-### [L1] Sub-Agent Prompts
-
-> The text in this section is for embedding into worker Agent prompts, not for orchestrator behavior. Copy the template; the principle below explains why.
-
-**Boundary principle**: cascade carries **intent** (state machines, invariants, cross-node conventions); upstream **code** carries **interface** (signatures, types, helpers). Both authoritative within their scope. From this:
-
-- **Claim before any other tool.** First call MUST be `cascade get-task`. Otherwise LLMs translate "read upstream context" into `Read source.py` and become a ghost agent — DAG falsely READY while work happens off-DAG.
-- **Read code for signatures, briefing for invariants.** Don't reconstruct interface from prose; don't reconstruct intent from code.
-- **Release on missing intent.** If briefing lacks state machines, validation rules, or cross-cutting decisions, run `cascade finish-task --release --reason "Missing: <what>"`. Don't guess intent from code — it causes drift across siblings.
-
-**Prompt template** — copy verbatim, replace `<node-id>` and `<agent-id>`:
-
-```
-RULE: Your first tool call MUST be `cascade get-task`. Until it succeeds,
-do NOT use Read, Write, Edit, or any other tool.
-
-1. Claim:
-   cascade get-task --agent <agent-id> --task <node-id>
-
-   On failure, STOP. Read the JSON's `code` field and act per the
-   failure table below. Do not proceed.
-
-2. Implement:
-   The briefing carries intent (state machines, invariants, conventions).
-   Read upstream code freely for signatures and patterns — both are
-   authoritative for their respective scopes. If briefing lacks required
-   intent (state rules, validation, contracts), release the task with
-   --reason "Missing: <what>". Do not invent intent from code.
-
-3. Finish:
-   cascade finish-task --task <node-id> --agent <agent-id> --success \
-       --summary "..." --critical '{...}' --artifacts "..."
-```
-
-**Pitfall**: `"Read upstream context"` in a prompt gets translated by LLMs into `Read` tool calls on source files, not `cascade get-task`. Be explicit about the command.
-
-### [L1] Failure Codes
-
-Workers branch on the JSON `code` field (not `message`). Run `cascade get-task --help` for the current full list; common cases:
-
-| code | Action |
-|------|--------|
-| `TASK_NOT_READY` | Wait for upstream (use `cascade watch`) |
-| `ALREADY_HAS_ACTIVE` | Finish your existing task before claiming a new one |
-| `TASK_NOT_FOUND` | Report to orchestrator — DAG state mismatch |
-| `TASK_ALREADY_ACTIVE` | Another agent has it; pick a different task |
-| `WRONG_AGENT` | `--agent` doesn't match the claimer; check agent_id |
-| `LOCK_CONTENTION` | Framework retried 3x; report and let orchestrator decide |
