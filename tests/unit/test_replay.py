@@ -6,8 +6,6 @@ Tests each per-event-type handler and the verify() function.
 import time
 from unittest.mock import MagicMock
 
-import pytest
-
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
@@ -715,15 +713,9 @@ class TestHandleRework:
         c = replay(events)
         assert ("fix", "req") in c.contracts
 
-    def test_requesting_active_node_crashes(self):
-        """BUG: ACTIVE -> PENDING is not a valid transition.
-
-        _handle_rework tries node.update_state(NodeState.PENDING) on an
-        ACTIVE node, but the state machine forbids this. This crashes replay
-        instead of gracefully handling the rework. Filed as upstream issue.
-        """
-        from cascade.errors import InvalidTransitionError
-
+    def test_requesting_active_node_goes_pending(self):
+        """ACTIVE node requesting rework: ACTIVE -> READY (valid transition),
+        then add_edge recomputes readiness to PENDING. Also clears agent state."""
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "req"}),
             _evt(
@@ -731,7 +723,7 @@ class TestHandleRework:
                 {
                     "node_id": "req",
                     "agent_id": "w1",
-                    "claimed_at": time.time(),
+                    "claimed_at": 1000.0,
                     "timeout": 30,
                 },
             ),
@@ -745,8 +737,11 @@ class TestHandleRework:
                 },
             ),
         ]
-        with pytest.raises(InvalidTransitionError, match="ACTIVE -> PENDING"):
-            replay(events)
+        c = replay(events)
+        assert c.nodes["req"].state == NodeState.PENDING
+        assert c.nodes["req"].agent_id is None
+        assert c.nodes["req"].claimed_at is None
+        assert c.nodes["req"].timeout is None
 
     def test_requesting_ready_node_becomes_pending_via_edge(self):
         """When a READY node gets a new dependency (corrective -> req),
@@ -781,10 +776,8 @@ class TestHandleNodeCancelled:
         c = replay(events)
         assert c.nodes["a"].state == NodeState.CANCELLED
 
-    def test_completed_not_cancelled_despite_valid_transition(self):
-        """BUG: is_terminal() blocks COMPLETED -> CANCELLED, but the state
-        machine (state.py line 88) allows it. The handler's guard is too broad.
-        Filed as upstream issue."""
+    def test_completed_can_be_cancelled(self):
+        """COMPLETED -> CANCELLED is a valid transition per state machine."""
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
             _evt(EventType.TASK_CLAIMED, {"node_id": "a", "agent_id": "w1"}),
@@ -792,8 +785,27 @@ class TestHandleNodeCancelled:
             _evt(EventType.NODE_CANCELLED, {"node_id": "a"}),
         ]
         c = replay(events)
-        # Should be CANCELLED per state machine, but handler skips it
-        assert c.nodes["a"].state == NodeState.COMPLETED
+        assert c.nodes["a"].state == NodeState.CANCELLED
+
+    def test_failed_can_be_cancelled(self):
+        """FAILED -> CANCELLED is a valid transition per state machine."""
+        events = [
+            _evt(EventType.NODE_ADDED, {"node_id": "a"}),
+            _evt(EventType.TASK_FAILED, {"node_id": "a"}),
+            _evt(EventType.NODE_CANCELLED, {"node_id": "a"}),
+        ]
+        c = replay(events)
+        assert c.nodes["a"].state == NodeState.CANCELLED
+
+    def test_already_cancelled_stays_cancelled(self):
+        """CANCELLED -> CANCELLED is a self-transition (no-op)."""
+        events = [
+            _evt(EventType.NODE_ADDED, {"node_id": "a"}),
+            _evt(EventType.NODE_CANCELLED, {"node_id": "a"}),
+            _evt(EventType.NODE_CANCELLED, {"node_id": "a"}),
+        ]
+        c = replay(events)
+        assert c.nodes["a"].state == NodeState.CANCELLED
 
     def test_nonexistent_ignored(self):
         events = [
