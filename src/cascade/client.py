@@ -1199,6 +1199,8 @@ class CascadeClient:
                 else:
                     affected = [task_id]
                     node.agent_id = None
+                    node.claimed_at = None
+                    node.timeout = None
 
                     if should_cascade:
 
