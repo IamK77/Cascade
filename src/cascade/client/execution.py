@@ -17,10 +17,10 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cascade import tips
-from cascade.client.base import _get_git_ref
+from cascade.client.base import ClientBase, _get_git_ref
 from cascade.core.state import NodeState
 from cascade.errors import LockError
 from cascade.events import EventType
@@ -33,15 +33,12 @@ from cascade.types import (
 )
 from cascade.view import get_node_view
 
-if TYPE_CHECKING:
-    from cascade.client.base import ClientBase
 
-
-class ExecutionMixin:
+class ExecutionMixin(ClientBase):
     """Task execution lifecycle: claim, complete, fail, release."""
 
     def claim(
-        self: ClientBase,
+        self,
         agent_id: str,
         task_id: str | None = None,
         *,
@@ -91,7 +88,7 @@ class ExecutionMixin:
         )
 
     def _claim_locked(
-        self: ClientBase,
+        self,
         agent_id: str,
         task_id: str | None,
         *,
@@ -239,7 +236,7 @@ class ExecutionMixin:
             )
 
     def complete(
-        self: ClientBase,
+        self,
         task_id: str,
         *,
         agent_id: str | None = None,
@@ -265,7 +262,7 @@ class ExecutionMixin:
         )
 
     def fail(
-        self: ClientBase,
+        self,
         task_id: str,
         *,
         agent_id: str | None = None,
@@ -287,7 +284,7 @@ class ExecutionMixin:
         )
 
     def release(
-        self: ClientBase,
+        self,
         task_id: str,
         *,
         agent_id: str | None = None,
@@ -307,7 +304,7 @@ class ExecutionMixin:
         )
 
     def _finish(
-        self: ClientBase,
+        self,
         task_id: str,
         *,
         agent_id: str | None = None,

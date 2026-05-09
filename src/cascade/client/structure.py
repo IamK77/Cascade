@@ -16,10 +16,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cascade import tips
-from cascade.client.base import _update_context
+from cascade.client.base import ClientBase, _update_context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
@@ -28,15 +28,12 @@ from cascade.operations.remove import RemoveOperation
 from cascade.operations.split import SplitOperation
 from cascade.types import Contract, ErrorCode, Result
 
-if TYPE_CHECKING:
-    from cascade.client.base import ClientBase
 
-
-class StructureMixin:
+class StructureMixin(ClientBase):
     """DAG structure operations: add, add_batch, remove, split, refine, edit."""
 
     def add(
-        self: ClientBase,
+        self,
         node_id: str,
         *,
         deps: dict[str, Contract] | None = None,
@@ -80,7 +77,7 @@ class StructureMixin:
             )
 
     def add_batch(
-        self: ClientBase,
+        self,
         specs: list[dict[str, Any]],
     ) -> Result:
         """Atomically add multiple nodes in one lock acquisition.
@@ -156,7 +153,7 @@ class StructureMixin:
             )
 
     def _add_locked(
-        self: ClientBase,
+        self,
         cascade: Cascade,
         node_id: str,
         deps: dict[str, Contract] | None,
@@ -227,7 +224,7 @@ class StructureMixin:
         )
 
     def remove(
-        self: ClientBase,
+        self,
         node_id: str,
         *,
         cascade: bool = False,
@@ -304,7 +301,7 @@ class StructureMixin:
             )
 
     def split(
-        self: ClientBase,
+        self,
         node_id: str,
         into: list[str],
         *,
@@ -373,7 +370,7 @@ class StructureMixin:
             )
 
     def refine(
-        self: ClientBase,
+        self,
         node_id: str,
         dep_id: str,
         expectation: str,
@@ -467,7 +464,7 @@ class StructureMixin:
             )
 
     def edit(
-        self: ClientBase,
+        self,
         node_id: str,
         *,
         state: str = "",

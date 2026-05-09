@@ -18,22 +18,20 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from cascade.client.base import ClientBase
 from cascade.core.state import NodeState
 from cascade.events import EventType
 from cascade.replay import replay as replay_events
 from cascade.types import ErrorCode, Result
 
-if TYPE_CHECKING:
-    from cascade.client.base import ClientBase
 
-
-class QueryMixin:
+class QueryMixin(ClientBase):
     """Read-only queries: nodes, check, check_timeouts, history, show, diff, snapshot_at."""
 
     def nodes(
-        self: ClientBase,
+        self,
         *,
         state: str | None = None,
         include_pending_only: bool = False,
@@ -96,7 +94,7 @@ class QueryMixin:
                 code=ErrorCode.INTERNAL_ERROR,
             )
 
-    def check(self: ClientBase, task_id: str) -> Result:
+    def check(self, task_id: str) -> Result:
         """Check if a task claim is still valid (pull cancellation)."""
         if not task_id:
             return Result(
@@ -126,7 +124,7 @@ class QueryMixin:
             },
         )
 
-    def check_timeouts(self: ClientBase, default_timeout: float | None = None) -> Result:
+    def check_timeouts(self, default_timeout: float | None = None) -> Result:
         """Release stalled tasks that exceeded their timeout."""
         try:
             with self._mutate() as tx:
@@ -191,7 +189,7 @@ class QueryMixin:
             )
 
     def history(
-        self: ClientBase,
+        self,
         *,
         node_id: str = "",
         event_type: str = "",
@@ -256,7 +254,7 @@ class QueryMixin:
                 success=False, message=f"Failed to read history: {e}", code=ErrorCode.INTERNAL_ERROR
             )
 
-    def show(self: ClientBase, logical_ts: int) -> Result:
+    def show(self, logical_ts: int) -> Result:
         """Show the event at a specific logical timestamp."""
         try:
             event = self._storage.events.read_at(logical_ts)
@@ -296,7 +294,7 @@ class QueryMixin:
                 success=False, message=f"Failed to read event: {e}", code=ErrorCode.INTERNAL_ERROR
             )
 
-    def diff(self: ClientBase, from_ts: int, to_ts: int) -> Result:
+    def diff(self, from_ts: int, to_ts: int) -> Result:
         """Show events between two logical timestamps (inclusive)."""
         if from_ts > to_ts:
             return Result(
@@ -350,7 +348,7 @@ class QueryMixin:
                 success=False, message=f"Failed to read events: {e}", code=ErrorCode.INTERNAL_ERROR
             )
 
-    def snapshot_at(self: ClientBase, logical_ts: int) -> Result:
+    def snapshot_at(self, logical_ts: int) -> Result:
         """Rebuild graph state at a specific logical timestamp."""
         try:
             events = self._storage.events.read_until(logical_ts)

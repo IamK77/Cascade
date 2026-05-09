@@ -16,15 +16,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from cascade import tips
+from cascade.client.base import ClientBase
 from cascade.events import EventType
 from cascade.operations.rework import ReworkOperation
 from cascade.types import Contract, ErrorCode, Result
-
-if TYPE_CHECKING:
-    from cascade.client.base import ClientBase
 
 _REQUIRED_PARAMS = [
     "corrective",
@@ -37,11 +33,11 @@ _REQUIRED_PARAMS = [
 ]
 
 
-class FeedbackMixin:
+class FeedbackMixin(ClientBase):
     """Feedback operations: rework."""
 
     def rework(
-        self: ClientBase,
+        self,
         source: str,
         corrective: str,
         reason: str,
