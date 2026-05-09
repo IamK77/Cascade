@@ -4,6 +4,7 @@
 # Claude Code — track skills, ignore the rest
 .claude/*
 !.claude/skills/
+!.claude/agents/
 
 # Test workspace for Cascade validation experiments
 playground/
