@@ -107,10 +107,13 @@ class TestVerify:
     def test_edge_mismatch(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
         ]
         snapshot = Cascade()
         snapshot.add_node(Node(id="a"))
@@ -136,10 +139,13 @@ class TestHandleNodeAdded:
     def test_deps_contracts_add_edges(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
         ]
         c = replay(events)
         assert ("a", "b") in c.contracts
@@ -147,20 +153,26 @@ class TestHandleNodeAdded:
     def test_dependent_contracts_add_edges(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "b"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "a",
-                "dependent_contracts": [{"node_id": "b", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "a",
+                    "dependent_contracts": [{"node_id": "b", "expectation": "E", "promise": "P"}],
+                },
+            ),
         ]
         c = replay(events)
         assert ("a", "b") in c.contracts
 
     def test_deps_contract_skipped_if_dep_missing(self):
         events = [
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
         ]
         c = replay(events)
         assert "b" in c.nodes
@@ -207,10 +219,13 @@ class TestHandleNodeSplit:
     def test_adds_new_nodes_and_removes_parent(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "parent"}),
-            _evt(EventType.NODE_SPLIT, {
-                "node_id": "parent",
-                "new_node_ids": ["c1", "c2"],
-            }),
+            _evt(
+                EventType.NODE_SPLIT,
+                {
+                    "node_id": "parent",
+                    "new_node_ids": ["c1", "c2"],
+                },
+            ),
         ]
         c = replay(events)
         assert "c1" in c.nodes
@@ -221,10 +236,13 @@ class TestHandleNodeSplit:
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "parent"}),
             _evt(EventType.TASK_CLAIMED, {"node_id": "parent", "agent_id": "w1"}),
-            _evt(EventType.NODE_SPLIT, {
-                "node_id": "parent",
-                "new_node_ids": ["c1"],
-            }),
+            _evt(
+                EventType.NODE_SPLIT,
+                {
+                    "node_id": "parent",
+                    "new_node_ids": ["c1"],
+                },
+            ),
         ]
         c = replay(events)
         assert "parent" in c.nodes
@@ -234,10 +252,13 @@ class TestHandleNodeSplit:
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "c1"}),
             _evt(EventType.NODE_ADDED, {"node_id": "parent"}),
-            _evt(EventType.NODE_SPLIT, {
-                "node_id": "parent",
-                "new_node_ids": ["c1", "c2"],
-            }),
+            _evt(
+                EventType.NODE_SPLIT,
+                {
+                    "node_id": "parent",
+                    "new_node_ids": ["c1", "c2"],
+                },
+            ),
         ]
         c = replay(events)
         assert "c1" in c.nodes
@@ -254,24 +275,30 @@ class TestHandleNodeRefined:
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
             _evt(EventType.NODE_ADDED, {"node_id": "b"}),
-            _evt(EventType.NODE_REFINED, {
-                "node_id": "b",
-                "dependency_id": "a",
-                "expectation": "E",
-                "promise": "P",
-            }),
+            _evt(
+                EventType.NODE_REFINED,
+                {
+                    "node_id": "b",
+                    "dependency_id": "a",
+                    "expectation": "E",
+                    "promise": "P",
+                },
+            ),
         ]
         c = replay(events)
         assert ("a", "b") in c.contracts
 
     def test_missing_nodes_ignored(self):
         events = [
-            _evt(EventType.NODE_REFINED, {
-                "node_id": "b",
-                "dependency_id": "a",
-                "expectation": "E",
-                "promise": "P",
-            }),
+            _evt(
+                EventType.NODE_REFINED,
+                {
+                    "node_id": "b",
+                    "dependency_id": "a",
+                    "expectation": "E",
+                    "promise": "P",
+                },
+            ),
         ]
         c = replay(events)
         assert len(c.nodes) == 0
@@ -286,10 +313,13 @@ class TestHandleNodeEdited:
     def test_state_transition(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
             _evt(EventType.TASK_CLAIMED, {"node_id": "a", "agent_id": "w1"}),
             _evt(EventType.NODE_EDITED, {"node_id": "a", "new_state": "COMPLETED"}),
         ]
@@ -299,10 +329,13 @@ class TestHandleNodeEdited:
     def test_completed_via_edit_unblocks_dependents(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
             _evt(EventType.TASK_CLAIMED, {"node_id": "a", "agent_id": "w1"}),
             _evt(EventType.NODE_EDITED, {"node_id": "a", "new_state": "COMPLETED"}),
         ]
@@ -319,10 +352,13 @@ class TestHandleNodeEdited:
     def test_context_summary_updated(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"summary": "new summary"},
-            }),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"summary": "new summary"},
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["a"].context is not None
@@ -331,14 +367,20 @@ class TestHandleNodeEdited:
     def test_context_critical_merged(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"critical": {"k1": "v1"}},
-            }),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"critical": {"k2": "v2"}},
-            }),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"critical": {"k1": "v1"}},
+                },
+            ),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"critical": {"k2": "v2"}},
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["a"].context.critical == {"k1": "v1", "k2": "v2"}
@@ -348,10 +390,13 @@ class TestHandleNodeEdited:
         store.get.return_value = "resolved content"
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"artifacts_ref": "abc123"},
-            }),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"artifacts_ref": "abc123"},
+                },
+            ),
         ]
         c = replay(events, content=store)
         assert c.nodes["a"].context.artifacts == "resolved content"
@@ -360,10 +405,13 @@ class TestHandleNodeEdited:
     def test_context_artifacts_without_content_store(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"artifacts_ref": "abc123"},
-            }),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"artifacts_ref": "abc123"},
+                },
+            ),
         ]
         c = replay(events, content=None)
         assert c.nodes["a"].context.artifacts == ""
@@ -371,10 +419,13 @@ class TestHandleNodeEdited:
     def test_no_state_change_when_no_new_state(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_EDITED, {
-                "node_id": "a",
-                "context": {"summary": "update"},
-            }),
+            _evt(
+                EventType.NODE_EDITED,
+                {
+                    "node_id": "a",
+                    "context": {"summary": "update"},
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["a"].state == NodeState.READY
@@ -398,9 +449,14 @@ class TestHandleTaskClaimed:
     def test_claim_sets_timeout(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.TASK_CLAIMED, {
-                "node_id": "a", "agent_id": "w1", "timeout": 60,
-            }),
+            _evt(
+                EventType.TASK_CLAIMED,
+                {
+                    "node_id": "a",
+                    "agent_id": "w1",
+                    "timeout": 60,
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["a"].timeout == 60.0
@@ -409,9 +465,14 @@ class TestHandleTaskClaimed:
         ts = time.time()
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.TASK_CLAIMED, {
-                "node_id": "a", "agent_id": "w1", "claimed_at": ts,
-            }),
+            _evt(
+                EventType.TASK_CLAIMED,
+                {
+                    "node_id": "a",
+                    "agent_id": "w1",
+                    "claimed_at": ts,
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["a"].claimed_at == ts
@@ -453,10 +514,13 @@ class TestHandleTaskCompleted:
     def test_complete_unblocks_dependents(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.NODE_ADDED, {
-                "node_id": "b",
-                "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            }),
+            _evt(
+                EventType.NODE_ADDED,
+                {
+                    "node_id": "b",
+                    "deps_contracts": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            ),
             _evt(EventType.TASK_CLAIMED, {"node_id": "a", "agent_id": "w1"}),
             _evt(EventType.TASK_COMPLETED, {"node_id": "a"}),
         ]
@@ -469,14 +533,17 @@ class TestHandleTaskCompleted:
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
             _evt(EventType.TASK_CLAIMED, {"node_id": "a", "agent_id": "w1"}),
-            _evt(EventType.TASK_COMPLETED, {
-                "node_id": "a",
-                "context": {
-                    "summary": "done",
-                    "critical": {"output": "result"},
-                    "artifacts_ref": "ref1",
+            _evt(
+                EventType.TASK_COMPLETED,
+                {
+                    "node_id": "a",
+                    "context": {
+                        "summary": "done",
+                        "critical": {"output": "result"},
+                        "artifacts_ref": "ref1",
+                    },
                 },
-            }),
+            ),
         ]
         c = replay(events, content=store)
         assert c.nodes["a"].context.summary == "done"
@@ -546,10 +613,15 @@ class TestHandleTaskReleased:
     def test_release_returns_to_ready(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.TASK_CLAIMED, {
-                "node_id": "a", "agent_id": "w1",
-                "claimed_at": time.time(), "timeout": 30,
-            }),
+            _evt(
+                EventType.TASK_CLAIMED,
+                {
+                    "node_id": "a",
+                    "agent_id": "w1",
+                    "claimed_at": time.time(),
+                    "timeout": 30,
+                },
+            ),
             _evt(EventType.TASK_RELEASED, {"node_id": "a"}),
         ]
         c = replay(events)
@@ -575,9 +647,14 @@ class TestHandleTaskTimedOut:
     def test_timeout_same_as_release(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "a"}),
-            _evt(EventType.TASK_CLAIMED, {
-                "node_id": "a", "agent_id": "w1", "timeout": 10,
-            }),
+            _evt(
+                EventType.TASK_CLAIMED,
+                {
+                    "node_id": "a",
+                    "agent_id": "w1",
+                    "timeout": 10,
+                },
+            ),
             _evt(EventType.TASK_TIMED_OUT, {"node_id": "a"}),
         ]
         c = replay(events)
@@ -595,11 +672,14 @@ class TestHandleRework:
     def test_creates_corrective_node(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "source"}),
-            _evt(EventType.REWORK_REQUESTED, {
-                "source_node_id": "source",
-                "corrective_node_id": "fix",
-                "requesting_node_id": "req",
-            }),
+            _evt(
+                EventType.REWORK_REQUESTED,
+                {
+                    "source_node_id": "source",
+                    "corrective_node_id": "fix",
+                    "requesting_node_id": "req",
+                },
+            ),
         ]
         c = replay(events)
         assert "fix" in c.nodes
@@ -607,11 +687,14 @@ class TestHandleRework:
     def test_adds_source_to_corrective_edge(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "source"}),
-            _evt(EventType.REWORK_REQUESTED, {
-                "source_node_id": "source",
-                "corrective_node_id": "fix",
-                "source_contract": {"expectation": "E", "promise": "P"},
-            }),
+            _evt(
+                EventType.REWORK_REQUESTED,
+                {
+                    "source_node_id": "source",
+                    "corrective_node_id": "fix",
+                    "source_contract": {"expectation": "E", "promise": "P"},
+                },
+            ),
         ]
         c = replay(events)
         assert ("source", "fix") in c.contracts
@@ -619,12 +702,15 @@ class TestHandleRework:
     def test_adds_corrective_to_requesting_edge(self):
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "req"}),
-            _evt(EventType.REWORK_REQUESTED, {
-                "source_node_id": "source",
-                "corrective_node_id": "fix",
-                "requesting_node_id": "req",
-                "corrective_contract": {"expectation": "E", "promise": "P"},
-            }),
+            _evt(
+                EventType.REWORK_REQUESTED,
+                {
+                    "source_node_id": "source",
+                    "corrective_node_id": "fix",
+                    "requesting_node_id": "req",
+                    "corrective_contract": {"expectation": "E", "promise": "P"},
+                },
+            ),
         ]
         c = replay(events)
         assert ("fix", "req") in c.contracts
@@ -640,16 +726,24 @@ class TestHandleRework:
 
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "req"}),
-            _evt(EventType.TASK_CLAIMED, {
-                "node_id": "req", "agent_id": "w1",
-                "claimed_at": time.time(), "timeout": 30,
-            }),
-            _evt(EventType.REWORK_REQUESTED, {
-                "source_node_id": "source",
-                "corrective_node_id": "fix",
-                "requesting_node_id": "req",
-                "corrective_contract": {"expectation": "E", "promise": "P"},
-            }),
+            _evt(
+                EventType.TASK_CLAIMED,
+                {
+                    "node_id": "req",
+                    "agent_id": "w1",
+                    "claimed_at": time.time(),
+                    "timeout": 30,
+                },
+            ),
+            _evt(
+                EventType.REWORK_REQUESTED,
+                {
+                    "source_node_id": "source",
+                    "corrective_node_id": "fix",
+                    "requesting_node_id": "req",
+                    "corrective_contract": {"expectation": "E", "promise": "P"},
+                },
+            ),
         ]
         with pytest.raises(InvalidTransitionError, match="ACTIVE -> PENDING"):
             replay(events)
@@ -659,12 +753,15 @@ class TestHandleRework:
         readiness recomputation moves it to PENDING."""
         events = [
             _evt(EventType.NODE_ADDED, {"node_id": "req"}),
-            _evt(EventType.REWORK_REQUESTED, {
-                "source_node_id": "source",
-                "corrective_node_id": "fix",
-                "requesting_node_id": "req",
-                "corrective_contract": {"expectation": "E", "promise": "P"},
-            }),
+            _evt(
+                EventType.REWORK_REQUESTED,
+                {
+                    "source_node_id": "source",
+                    "corrective_node_id": "fix",
+                    "requesting_node_id": "req",
+                    "corrective_contract": {"expectation": "E", "promise": "P"},
+                },
+            ),
         ]
         c = replay(events)
         assert c.nodes["req"].state == NodeState.PENDING
