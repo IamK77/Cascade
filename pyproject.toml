@@ -44,6 +44,7 @@ dev = [
     "mypy>=1.5.0",
     "ruff>=0.1.0",
     "fakeredis[lua]>=2.21.0",
+    "hypothesis>=6.100.0",
 ]
 
 [build-system]
@@ -102,4 +103,5 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.15.0",
     "fakeredis[lua]>=2.21.0",
+    "hypothesis>=6.100.0",
 ]
