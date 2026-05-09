@@ -180,16 +180,17 @@ Complete Phase 0-2 fully before the first loop iteration:
 
 ### Each round — vertical then horizontal
 
-For each target, exhaust applicable test types **vertically** before moving to the next target **horizontally**:
+For each target, exhaust all applicable test types **vertically** before moving to the next target **horizontally**. Which types apply depends on the target — consult the decision matrix in [references/types.md](references/types.md) each round.
 
 ```
-Target A: unit → property → chaos → all clear → mark complete
-Target B: unit → found bug → fix → property → all clear → mark complete
-Target C: unit only applicable → all clear → mark complete
+Target A (state machine):  unit → boundary → property → all clear → complete
+Target B (file I/O):       unit → chaos (corruption, truncation) → all clear → complete
+Target C (multi-component): unit → integration → property (cross-component) → found bug → fix → complete
+Target D (pure function):  unit → boundary → all clear → complete
 → All targets complete → stop loop
 ```
 
-Do not skip to the next target just because unit tests found nothing. Check the decision matrix — if property-based or chaos tests are applicable to this target, try them first.
+Do not skip to the next target just because one test type found nothing. Re-check the decision matrix — if other types are applicable to this target's characteristics, try them before marking complete.
 
 Per-round steps:
 1. Pick current target (or continue escalating on the same target)
