@@ -76,9 +76,11 @@ All three must pass. CI runs both `ruff check` and `ruff format --check` — pas
 
 These are independent checks. Code can pass `ruff check` (no lint errors) but fail `ruff format --check` (style inconsistencies). Always run both.
 
-### 4. Copyright header
+### 4. Copyright and DCO
 
-All `.py` files must have the Apache 2.0 copyright header:
+This project uses the [Developer Certificate of Origin (DCO)](../../DCO) for contributions. By adding a `Signed-off-by` line to your commits, you certify that you have the right to submit the contribution under the project's open source license.
+
+**Copyright header**: all `.py` files use the project copyright header:
 
 ```python
 # Copyright 2026 Hangzhou Autoseek Information Technology Co., Ltd.
@@ -86,6 +88,8 @@ All `.py` files must have the Apache 2.0 copyright header:
 # Licensed under the Apache License, Version 2.0 (the "License");
 # ...
 ```
+
+This applies to all contributions — including new files created by external contributors. The DCO ensures contributors retain their own copyright while granting the project a license to use the contribution under Apache 2.0. The project-wide copyright header keeps the codebase consistent; individual contribution credit lives in git history and `Signed-off-by` lines.
 
 When creating new files, remind the user if the header is missing.
 
@@ -98,21 +102,26 @@ When creating new files, remind the user if the header is missing.
 
 <optional body explaining why, not what>
 
+Signed-off-by: Your Name <your@email.com>
 Co-Authored-By: Claude <model> <noreply@anthropic.com>
 ```
 
-The `Co-Authored-By` trailer reflects that the human and Claude Code are collaborators. The human drives the decisions; Claude Code contributes alongside them. Neither is a tool for the other.
+Two trailers:
+- **`Signed-off-by`** — required. Certifies the contribution under the [Developer Certificate of Origin](../../DCO). Add with `git commit -s` or manually.
+- **`Co-Authored-By`** — when working with Claude Code. Reflects that the human and Claude Code are collaborators. The human drives the decisions; Claude Code contributes alongside them. Neither is a tool for the other.
 
 Use HEREDOC to preserve formatting:
 
 ```bash
-git commit -m "$(cat <<'EOF'
+git commit -s -m "$(cat <<'EOF'
 fix: read_all() crashes on truncated event log
 
 Co-Authored-By: Claude <model> <noreply@anthropic.com>
 EOF
 )"
 ```
+
+The `-s` flag appends `Signed-off-by` automatically using your git config name and email.
 
 ### Type prefixes
 
@@ -223,5 +232,6 @@ GitHub auto-links `#N` in PR bodies to issues/PRs. When referring to numbered it
 3. `uv run ruff format --check src tests` passes
 4. `uv run pytest tests/` passes with no regressions
 5. All new `.py` files have the copyright header
-6. Commit messages follow the convention
-7. PR scope is one logical change
+6. All commits have `Signed-off-by` (use `git commit -s`)
+7. Commit messages follow the type convention
+8. PR scope is one logical change
