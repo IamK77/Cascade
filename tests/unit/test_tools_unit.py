@@ -37,8 +37,8 @@ class TestToolRegistry:
         from tools import execute_tool
 
         storage = MagicMock()
-        with patch("tools.add_node.CascadeClient") as MockCls:
-            MockCls.return_value.add.return_value = _ok()
+        with patch("tools.add_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.add.return_value = _ok()
             result = execute_tool(storage, "add_node", {"node_id": "a"})
             assert result["success"] is True
 
@@ -136,43 +136,43 @@ class TestAddNode:
     # --- Happy path (mock CascadeClient) ---
 
     def test_add_node_no_deps(self):
-        with patch("tools.add_node.CascadeClient") as MockCls:
-            MockCls.return_value.add.return_value = _ok()
+        with patch("tools.add_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.add.return_value = _ok()
             r = self.fn(self.storage, {"node_id": "a"})
             assert r["success"] is True
-            MockCls.return_value.add.assert_called_once_with("a", deps=None, dependents=None)
+            mock_cls.return_value.add.assert_called_once_with("a", deps=None, dependents=None)
 
     def test_add_node_with_dependencies(self):
-        with patch("tools.add_node.CascadeClient") as MockCls:
-            MockCls.return_value.add.return_value = _ok()
+        with patch("tools.add_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.add.return_value = _ok()
             r = self.fn(self.storage, {
                 "node_id": "b",
                 "dependencies": ["a"],
                 "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
             })
             assert r["success"] is True
-            call_args = MockCls.return_value.add.call_args
+            call_args = mock_cls.return_value.add.call_args
             deps = call_args.kwargs.get("deps") or call_args[1].get("deps")
             assert "a" in deps
             assert deps["a"] == Contract(expectation="E", promise="P")
 
     def test_add_node_with_dependents(self):
-        with patch("tools.add_node.CascadeClient") as MockCls:
-            MockCls.return_value.add.return_value = _ok()
+        with patch("tools.add_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.add.return_value = _ok()
             r = self.fn(self.storage, {
                 "node_id": "a",
                 "dependents": ["b"],
                 "expectations": [{"node_id": "b", "expectation": "E", "promise": "P"}],
             })
             assert r["success"] is True
-            call_args = MockCls.return_value.add.call_args
+            call_args = mock_cls.return_value.add.call_args
             dependents = call_args.kwargs.get("dependents") or call_args[1].get("dependents")
             assert "b" in dependents
             assert dependents["b"] == Contract(expectation="E", promise="P")
 
     def test_add_node_with_both_deps_and_dependents(self):
-        with patch("tools.add_node.CascadeClient") as MockCls:
-            MockCls.return_value.add.return_value = _ok()
+        with patch("tools.add_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.add.return_value = _ok()
             r = self.fn(self.storage, {
                 "node_id": "b",
                 "dependencies": ["a"],
@@ -183,7 +183,7 @@ class TestAddNode:
                 ],
             })
             assert r["success"] is True
-            call_args = MockCls.return_value.add.call_args
+            call_args = mock_cls.return_value.add.call_args
             assert call_args[1]["deps"]["a"] == Contract(expectation="Ea", promise="Pa")
             assert call_args[1]["dependents"]["c"] == Contract(expectation="Ec", promise="Pc")
 
@@ -226,24 +226,24 @@ class TestSplitNode:
         assert "node_id" in r["message"]
 
     def test_split_delegates_to_client(self):
-        with patch("tools.split_node.CascadeClient") as MockCls:
-            MockCls.return_value.split.return_value = _ok()
+        with patch("tools.split_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.split.return_value = _ok()
             r = self.fn(self.storage, {
                 "parent_id": "p",
                 "new_nodes": [{"node_id": "c1"}, {"node_id": "c2"}],
             })
             assert r["success"] is True
-            MockCls.return_value.split.assert_called_once_with("p", ["c1", "c2"], reason="")
+            mock_cls.return_value.split.assert_called_once_with("p", ["c1", "c2"], reason="")
 
     def test_split_with_reason(self):
-        with patch("tools.split_node.CascadeClient") as MockCls:
-            MockCls.return_value.split.return_value = _ok()
+        with patch("tools.split_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.split.return_value = _ok()
             self.fn(self.storage, {
                 "parent_id": "p",
                 "new_nodes": [{"node_id": "c1"}],
                 "reason": "too big",
             })
-            MockCls.return_value.split.assert_called_once_with("p", ["c1"], reason="too big")
+            mock_cls.return_value.split.assert_called_once_with("p", ["c1"], reason="too big")
 
 
 # ---------------------------------------------------------------------------
@@ -269,36 +269,36 @@ class TestGetTask:
         assert "agent_id" in r["message"]
 
     def test_get_task_agent_only(self):
-        with patch("tools.get_task.CascadeClient") as MockCls:
-            MockCls.return_value.claim.return_value = _ok()
+        with patch("tools.get_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.claim.return_value = _ok()
             r = self.fn(self.storage, {"agent_id": "w1"})
             assert r["success"] is True
-            MockCls.return_value.claim.assert_called_once_with(
+            mock_cls.return_value.claim.assert_called_once_with(
                 "w1", None, timeout=None, cancel_notifier=None,
             )
 
     def test_get_task_specific_task(self):
-        with patch("tools.get_task.CascadeClient") as MockCls:
-            MockCls.return_value.claim.return_value = _ok()
+        with patch("tools.get_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "task_id": "a"})
-            MockCls.return_value.claim.assert_called_once_with(
+            mock_cls.return_value.claim.assert_called_once_with(
                 "w1", "a", timeout=None, cancel_notifier=None,
             )
 
     def test_get_task_with_timeout(self):
-        with patch("tools.get_task.CascadeClient") as MockCls:
-            MockCls.return_value.claim.return_value = _ok()
+        with patch("tools.get_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "timeout": 30.0})
-            MockCls.return_value.claim.assert_called_once_with(
+            mock_cls.return_value.claim.assert_called_once_with(
                 "w1", None, timeout=30.0, cancel_notifier=None,
             )
 
     def test_get_task_with_cancel_notifier(self):
         notifier = MagicMock()
-        with patch("tools.get_task.CascadeClient") as MockCls:
-            MockCls.return_value.claim.return_value = _ok()
+        with patch("tools.get_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "cancel_notifier": notifier})
-            MockCls.return_value.claim.assert_called_once_with(
+            mock_cls.return_value.claim.assert_called_once_with(
                 "w1", None, timeout=None, cancel_notifier=notifier,
             )
 
@@ -364,23 +364,23 @@ class TestRefineNode:
         assert "promise" in r["message"]
 
     def test_refine_delegates_to_client(self):
-        with patch("tools.refine_node.CascadeClient") as MockCls:
-            MockCls.return_value.refine.return_value = _ok()
+        with patch("tools.refine_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.refine.return_value = _ok()
             r = self.fn(self.storage, {
                 "node_id": "b", "dependency_id": "a",
                 "expectation": "E", "promise": "P",
             })
             assert r["success"] is True
-            MockCls.return_value.refine.assert_called_once_with("b", "a", "E", "P", reason="")
+            mock_cls.return_value.refine.assert_called_once_with("b", "a", "E", "P", reason="")
 
     def test_refine_with_reason(self):
-        with patch("tools.refine_node.CascadeClient") as MockCls:
-            MockCls.return_value.refine.return_value = _ok()
+        with patch("tools.refine_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.refine.return_value = _ok()
             self.fn(self.storage, {
                 "node_id": "b", "dependency_id": "a",
                 "expectation": "E", "promise": "P", "reason": "needed",
             })
-            MockCls.return_value.refine.assert_called_once_with(
+            mock_cls.return_value.refine.assert_called_once_with(
                 "b", "a", "E", "P", reason="needed",
             )
 
@@ -431,11 +431,11 @@ class TestRework:
         assert "reason" in r["message"]
 
     def test_rework_delegates_to_client(self):
-        with patch("tools.rework.CascadeClient") as MockCls:
-            MockCls.return_value.rework.return_value = _ok()
+        with patch("tools.rework.CascadeClient") as mock_cls:
+            mock_cls.return_value.rework.return_value = _ok()
             r = self.fn(self.storage, self.VALID_PARAMS)
             assert r["success"] is True
-            MockCls.return_value.rework.assert_called_once_with(
+            mock_cls.return_value.rework.assert_called_once_with(
                 source="s",
                 corrective="c",
                 reason="wrong output",
@@ -470,11 +470,11 @@ class TestCheckTask:
         assert "task_id" in r["message"]
 
     def test_check_delegates_to_client(self):
-        with patch("tools.check_task.CascadeClient") as MockCls:
-            MockCls.return_value.check.return_value = _ok()
+        with patch("tools.check_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.check.return_value = _ok()
             r = self.fn(self.storage, {"task_id": "a"})
             assert r["success"] is True
-            MockCls.return_value.check.assert_called_once_with("a")
+            mock_cls.return_value.check.assert_called_once_with("a")
 
 
 # ---------------------------------------------------------------------------
@@ -490,17 +490,17 @@ class TestCheckTimeouts:
         self.storage = MagicMock()
 
     def test_no_params(self):
-        with patch("tools.check_timeouts.CascadeClient") as MockCls:
-            MockCls.return_value.check_timeouts.return_value = _ok()
+        with patch("tools.check_timeouts.CascadeClient") as mock_cls:
+            mock_cls.return_value.check_timeouts.return_value = _ok()
             r = self.fn(self.storage, {})
             assert r["success"] is True
-            MockCls.return_value.check_timeouts.assert_called_once_with(default_timeout=None)
+            mock_cls.return_value.check_timeouts.assert_called_once_with(default_timeout=None)
 
     def test_with_default_timeout(self):
-        with patch("tools.check_timeouts.CascadeClient") as MockCls:
-            MockCls.return_value.check_timeouts.return_value = _ok()
+        with patch("tools.check_timeouts.CascadeClient") as mock_cls:
+            mock_cls.return_value.check_timeouts.return_value = _ok()
             self.fn(self.storage, {"default_timeout": 60.0})
-            MockCls.return_value.check_timeouts.assert_called_once_with(default_timeout=60.0)
+            mock_cls.return_value.check_timeouts.assert_called_once_with(default_timeout=60.0)
 
 
 # ---------------------------------------------------------------------------
@@ -521,24 +521,24 @@ class TestEditNode:
         assert "node_id" in r["message"]
 
     def test_edit_defaults(self):
-        with patch("tools.edit_node.CascadeClient") as MockCls:
-            MockCls.return_value.edit.return_value = _ok()
+        with patch("tools.edit_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.edit.return_value = _ok()
             r = self.fn(self.storage, {"node_id": "a"})
             assert r["success"] is True
-            MockCls.return_value.edit.assert_called_once_with(
+            mock_cls.return_value.edit.assert_called_once_with(
                 "a", state="", summary="", critical=None,
                 artifacts="", context_merge="merge", reason="",
             )
 
     def test_edit_all_params(self):
-        with patch("tools.edit_node.CascadeClient") as MockCls:
-            MockCls.return_value.edit.return_value = _ok()
+        with patch("tools.edit_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.edit.return_value = _ok()
             self.fn(self.storage, {
                 "node_id": "a", "state": "READY", "summary": "done",
                 "critical": {"k": "v"}, "artifacts": "file.txt",
                 "context_merge": "replace", "reason": "fix",
             })
-            MockCls.return_value.edit.assert_called_once_with(
+            mock_cls.return_value.edit.assert_called_once_with(
                 "a", state="READY", summary="done", critical={"k": "v"},
                 artifacts="file.txt", context_merge="replace", reason="fix",
             )
@@ -564,89 +564,89 @@ class TestFinishTask:
     # --- Complete path (default) ---
 
     def test_complete_default(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.complete.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.complete.return_value = _ok()
             r = self.fn(self.storage, {"task_id": "a"})
             assert r["success"] is True
-            MockCls.return_value.complete.assert_called_once_with(
+            mock_cls.return_value.complete.assert_called_once_with(
                 "a", summary="", critical=None, artifacts="", deliverables=None,
             )
 
     def test_complete_with_all_fields(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.complete.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.complete.return_value = _ok()
             self.fn(self.storage, {
                 "task_id": "a", "success": True, "summary": "done",
                 "critical": {"k": "v"}, "artifacts": "code",
                 "deliverables": {"b": "output"},
             })
-            MockCls.return_value.complete.assert_called_once_with(
+            mock_cls.return_value.complete.assert_called_once_with(
                 "a", summary="done", critical={"k": "v"},
                 artifacts="code", deliverables={"b": "output"},
             )
 
     def test_complete_backward_compat_result_field(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.complete.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.complete.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "result": "legacy"})
-            call_args = MockCls.return_value.complete.call_args
+            call_args = mock_cls.return_value.complete.call_args
             assert call_args[1]["summary"] == "legacy"
 
     # --- Fail path ---
 
     def test_fail_basic(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.fail.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.fail.return_value = _ok()
             r = self.fn(self.storage, {"task_id": "a", "success": False})
             assert r["success"] is True
-            MockCls.return_value.fail.assert_called_once_with("a", reason="", cascade=False)
+            mock_cls.return_value.fail.assert_called_once_with("a", reason="", cascade=False)
 
     def test_fail_with_cascade(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.fail.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.fail.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "success": False, "cascade": True})
-            MockCls.return_value.fail.assert_called_once_with("a", reason="", cascade=True)
+            mock_cls.return_value.fail.assert_called_once_with("a", reason="", cascade=True)
 
     def test_fail_with_reason(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.fail.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.fail.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "success": False, "summary": "oom"})
-            MockCls.return_value.fail.assert_called_once_with("a", reason="oom", cascade=False)
+            mock_cls.return_value.fail.assert_called_once_with("a", reason="oom", cascade=False)
 
     # --- Release path ---
 
     def test_release_basic(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.release.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.release.return_value = _ok()
             r = self.fn(self.storage, {"task_id": "a", "release": True})
             assert r["success"] is True
-            MockCls.return_value.release.assert_called_once_with("a", reason="")
+            mock_cls.return_value.release.assert_called_once_with("a", reason="")
 
     def test_release_with_summary(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.release.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.release.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "release": True, "summary": "blocked"})
-            MockCls.return_value.release.assert_called_once_with("a", reason="blocked")
+            mock_cls.return_value.release.assert_called_once_with("a", reason="blocked")
 
     def test_release_uses_result_as_fallback(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.release.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.release.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "release": True, "result": "old-api"})
-            MockCls.return_value.release.assert_called_once_with("a", reason="old-api")
+            mock_cls.return_value.release.assert_called_once_with("a", reason="old-api")
 
     def test_release_true_ignores_success_true(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.release.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.release.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "release": True, "success": True})
-            MockCls.return_value.release.assert_called_once()
-            MockCls.return_value.complete.assert_not_called()
+            mock_cls.return_value.release.assert_called_once()
+            mock_cls.return_value.complete.assert_not_called()
 
     def test_release_false_success_false_goes_to_fail(self):
-        with patch("tools.finish_task.CascadeClient") as MockCls:
-            MockCls.return_value.fail.return_value = _ok()
+        with patch("tools.finish_task.CascadeClient") as mock_cls:
+            mock_cls.return_value.fail.return_value = _ok()
             self.fn(self.storage, {"task_id": "a", "release": False, "success": False})
-            MockCls.return_value.fail.assert_called_once()
-            MockCls.return_value.release.assert_not_called()
+            mock_cls.return_value.fail.assert_called_once()
+            mock_cls.return_value.release.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -667,17 +667,17 @@ class TestRemoveNode:
         assert "node_id" in r["message"]
 
     def test_remove_defaults(self):
-        with patch("tools.remove_node.CascadeClient") as MockCls:
-            MockCls.return_value.remove.return_value = _ok()
+        with patch("tools.remove_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.remove.return_value = _ok()
             r = self.fn(self.storage, {"node_id": "a"})
             assert r["success"] is True
-            MockCls.return_value.remove.assert_called_once_with("a", cascade=False, reason="")
+            mock_cls.return_value.remove.assert_called_once_with("a", cascade=False, reason="")
 
     def test_remove_with_cascade_and_reason(self):
-        with patch("tools.remove_node.CascadeClient") as MockCls:
-            MockCls.return_value.remove.return_value = _ok()
+        with patch("tools.remove_node.CascadeClient") as mock_cls:
+            mock_cls.return_value.remove.return_value = _ok()
             self.fn(self.storage, {"node_id": "a", "cascade": True, "reason": "obsolete"})
-            MockCls.return_value.remove.assert_called_once_with(
+            mock_cls.return_value.remove.assert_called_once_with(
                 "a", cascade=True, reason="obsolete",
             )
 
@@ -695,27 +695,27 @@ class TestListNodes:
         self.storage = MagicMock()
 
     def test_list_defaults(self):
-        with patch("tools.list_nodes.CascadeClient") as MockCls:
-            MockCls.return_value.nodes.return_value = _ok()
+        with patch("tools.list_nodes.CascadeClient") as mock_cls:
+            mock_cls.return_value.nodes.return_value = _ok()
             r = self.fn(self.storage, {})
             assert r["success"] is True
-            MockCls.return_value.nodes.assert_called_once_with(
+            mock_cls.return_value.nodes.assert_called_once_with(
                 state=None, include_pending_only=False,
             )
 
     def test_list_with_state_filter(self):
-        with patch("tools.list_nodes.CascadeClient") as MockCls:
-            MockCls.return_value.nodes.return_value = _ok()
+        with patch("tools.list_nodes.CascadeClient") as mock_cls:
+            mock_cls.return_value.nodes.return_value = _ok()
             self.fn(self.storage, {"state_filter": "READY"})
-            MockCls.return_value.nodes.assert_called_once_with(
+            mock_cls.return_value.nodes.assert_called_once_with(
                 state="READY", include_pending_only=False,
             )
 
     def test_list_with_pending_only(self):
-        with patch("tools.list_nodes.CascadeClient") as MockCls:
-            MockCls.return_value.nodes.return_value = _ok()
+        with patch("tools.list_nodes.CascadeClient") as mock_cls:
+            mock_cls.return_value.nodes.return_value = _ok()
             self.fn(self.storage, {"include_pending_only": True})
-            MockCls.return_value.nodes.assert_called_once_with(
+            mock_cls.return_value.nodes.assert_called_once_with(
                 state=None, include_pending_only=True,
             )
 
@@ -733,34 +733,34 @@ class TestHistory:
         self.storage = MagicMock()
 
     def test_history_defaults(self):
-        with patch("tools.history.CascadeClient") as MockCls:
-            MockCls.return_value.history.return_value = _ok()
+        with patch("tools.history.CascadeClient") as mock_cls:
+            mock_cls.return_value.history.return_value = _ok()
             r = self.fn(self.storage, {})
             assert r["success"] is True
-            MockCls.return_value.history.assert_called_once_with(
+            mock_cls.return_value.history.assert_called_once_with(
                 node_id="", event_type="", last_n=0, summary=False,
             )
 
     def test_history_with_node_filter(self):
-        with patch("tools.history.CascadeClient") as MockCls:
-            MockCls.return_value.history.return_value = _ok()
+        with patch("tools.history.CascadeClient") as mock_cls:
+            mock_cls.return_value.history.return_value = _ok()
             self.fn(self.storage, {"node_id": "a"})
-            assert MockCls.return_value.history.call_args[1]["node_id"] == "a"
+            assert mock_cls.return_value.history.call_args[1]["node_id"] == "a"
 
     def test_history_with_event_type(self):
-        with patch("tools.history.CascadeClient") as MockCls:
-            MockCls.return_value.history.return_value = _ok()
+        with patch("tools.history.CascadeClient") as mock_cls:
+            mock_cls.return_value.history.return_value = _ok()
             self.fn(self.storage, {"event_type": "NODE_ADDED"})
-            assert MockCls.return_value.history.call_args[1]["event_type"] == "NODE_ADDED"
+            assert mock_cls.return_value.history.call_args[1]["event_type"] == "NODE_ADDED"
 
     def test_history_with_last_n(self):
-        with patch("tools.history.CascadeClient") as MockCls:
-            MockCls.return_value.history.return_value = _ok()
+        with patch("tools.history.CascadeClient") as mock_cls:
+            mock_cls.return_value.history.return_value = _ok()
             self.fn(self.storage, {"last_n": 5})
-            assert MockCls.return_value.history.call_args[1]["last_n"] == 5
+            assert mock_cls.return_value.history.call_args[1]["last_n"] == 5
 
     def test_history_with_summary(self):
-        with patch("tools.history.CascadeClient") as MockCls:
-            MockCls.return_value.history.return_value = _ok()
+        with patch("tools.history.CascadeClient") as mock_cls:
+            mock_cls.return_value.history.return_value = _ok()
             self.fn(self.storage, {"summary": True})
-            assert MockCls.return_value.history.call_args[1]["summary"] is True
+            assert mock_cls.return_value.history.call_args[1]["summary"] is True
