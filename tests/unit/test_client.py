@@ -264,7 +264,7 @@ class TestClaim:
         """Lock contention should retry up to 3 times before failing."""
         from cascade.errors import LockError
 
-        monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
+        monkeypatch.setattr("cascade.client.execution.time.sleep", lambda _: None)
 
         client.add("a")
         attempts = {"count": 0}
@@ -285,7 +285,7 @@ class TestClaim:
         """All retries failing should return clear error."""
         from cascade.errors import LockError
 
-        monkeypatch.setattr("cascade.client.time.sleep", lambda _: None)
+        monkeypatch.setattr("cascade.client.execution.time.sleep", lambda _: None)
 
         client.add("a")
 
