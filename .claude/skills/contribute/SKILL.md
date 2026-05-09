@@ -1,0 +1,237 @@
+---
+name: contribute
+description: Fork-based contribution workflow for Cascade. Use when contributing code, tests, or fixes from a personal fork to the upstream autoseek-ai/Cascade repository.
+allowed-tools: Read Edit Write Bash
+---
+
+# Contributing to Cascade
+
+This skill guides the fork-based contribution workflow. You and the user are collaborators — help them navigate the process, catch edge cases, and maintain quality.
+
+## Setup (first time only)
+
+```bash
+# 1. Fork autoseek-ai/Cascade on GitHub, then clone your fork
+git clone https://github.com/<your-user>/Cascade.git
+cd Cascade
+
+# 2. Add upstream remote
+git remote add upstream https://github.com/autoseek-ai/Cascade.git
+git fetch upstream
+```
+
+### Edge case: gh auth
+
+WSL2 environments cannot open a browser for `gh auth login`. Use device code flow:
+
+```bash
+gh auth login -h github.com -p https -w
+```
+
+This prints a one-time code and URL — open the URL manually in a Windows browser.
+
+If using a **fine-grained personal access token** (prefix `github_pat_`), it only covers your own repos. Creating PRs to upstream requires either:
+- A **classic token** with `repo` scope: `gh auth login --with-token <<< "ghp_..."`
+- Or **browser OAuth** via `gh auth login` (recommended)
+
+When encountering `Permission denied` or `Resource not accessible by personal access token`, remind the user to check their token type and re-authenticate if needed.
+
+## Development workflow
+
+### 1. Always start from upstream/main
+
+```bash
+git fetch upstream
+git checkout -b <type>/<description> upstream/main
+```
+
+Branch naming: `<type>/<short-description>`
+- `feat/` — new feature
+- `fix/` — bug fix
+- `test/` — adding tests
+- `refactor/` — restructuring
+- `docs/` — documentation
+- `chore/` — maintenance
+
+### 2. One PR per logical change
+
+Each PR should tell one clear story. Examples:
+- "Add tests, discover bug, fix it" — one PR
+- "Add coverage tests (no bugs)" + "Add property tests (found bug, fixed)" — two PRs
+- Unrelated changes — always separate PRs
+
+When in doubt: if you need the word "and" to describe the PR, consider splitting.
+
+### 3. Validate locally before every push
+
+```bash
+uv run ruff check src tests        # lint
+uv run ruff format --check src tests  # format
+uv run pytest tests/                  # all tests pass
+```
+
+All three must pass. CI runs both `ruff check` and `ruff format --check` — passing one but not the other will still fail the pipeline.
+
+### Edge case: ruff format vs ruff check
+
+These are independent checks. Code can pass `ruff check` (no lint errors) but fail `ruff format --check` (style inconsistencies). Always run both.
+
+### 4. Copyright and DCO
+
+This project uses the [Developer Certificate of Origin (DCO)](../../DCO) for contributions. By adding a `Signed-off-by` line to your commits, you certify that you have the right to submit the contribution under the project's open source license.
+
+**Copyright header**: all `.py` files use the project copyright header:
+
+```python
+# Copyright 2026 Hangzhou Autoseek Information Technology Co., Ltd.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# ...
+```
+
+This applies to all contributions — including new files created by external contributors. The DCO ensures contributors retain their own copyright while granting the project a license to use the contribution under Apache 2.0. The project-wide copyright header keeps the codebase consistent; individual contribution credit lives in git history and `Signed-off-by` lines.
+
+When creating new files, remind the user if the header is missing.
+
+## Commit conventions
+
+### Message format
+
+```
+<type>: <concise description>
+
+<optional body explaining why, not what>
+
+Signed-off-by: Your Name <your@email.com>
+Co-Authored-By: Claude <model> <noreply@anthropic.com>
+```
+
+Two trailers:
+- **`Signed-off-by`** — required. Certifies the contribution under the [Developer Certificate of Origin](../../DCO). Add with `git commit -s` or manually.
+- **`Co-Authored-By`** — when working with Claude Code. Reflects that the human and Claude Code are collaborators. The human drives the decisions; Claude Code contributes alongside them. Neither is a tool for the other.
+
+Use HEREDOC to preserve formatting:
+
+```bash
+git commit -s -m "$(cat <<'EOF'
+fix: read_all() crashes on truncated event log
+
+Co-Authored-By: Claude <model> <noreply@anthropic.com>
+EOF
+)"
+```
+
+The `-s` flag appends `Signed-off-by` automatically using your git config name and email.
+
+### Type prefixes
+
+| Type | When |
+|------|------|
+| `feat` | New feature |
+| `fix` | Bug fix |
+| `test` | Adding or improving tests |
+| `refactor` | Restructuring without behavior change |
+| `style` | Formatting, lint fixes |
+| `docs` | Documentation |
+| `chore` | Maintenance, dependency updates |
+
+## PR workflow
+
+### Push and create
+
+```bash
+git push origin <branch-name>
+
+gh pr create --repo autoseek-ai/Cascade \
+  --head <your-user>:<branch-name> \
+  --base main \
+  --title "<type>: <description>" \
+  --body "$(cat <<'EOF'
+## Summary
+- <what changed and why>
+
+## Test plan
+- [x] <what was verified>
+
+Co-worked with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+The PR footer "Co-worked with Claude Code" — not "Generated by". The human and Claude Code collaborate; the human makes the calls.
+
+### Edge case: gh pr create fails with permission error
+
+```
+pull request create failed: GraphQL: Resource not accessible by personal access token
+```
+
+This means the token lacks cross-repo PR creation rights. Options:
+1. **Create via browser**: `https://github.com/autoseek-ai/Cascade/compare/main...<user>:Cascade:<branch>`
+2. **Re-authenticate** with OAuth: `gh auth login` via browser flow
+
+Always inform the user which option is quickest for their situation.
+
+### After merge
+
+```bash
+git checkout main
+git fetch upstream
+git reset --hard upstream/main
+git push origin main --force
+git branch -d <branch-name>
+git push origin --delete <branch-name>
+```
+
+### Edge case: multiple PRs in flight
+
+When the user has multiple PRs pending, each should be its own branch based on `upstream/main`. Do not stack branches unless the user explicitly asks. If PR B depends on PR A's changes, wait for A to merge first, then rebase B.
+
+## When tests discover bugs
+
+Tests may uncover bugs in the codebase. When this happens, ask the user how they'd like to proceed:
+
+1. **Fix it yourself and include in the same PR** — tests + fix tell one complete story. Best when the fix is straightforward and you're confident in the change.
+2. **Open an issue and leave the fix to upstream** — appropriate when the fix is complex, touches unfamiliar code, or requires design discussion. The test documents the bug as a known failure.
+
+Don't assume — ask. The user's relationship with the upstream team and the severity of the bug both matter.
+
+If the user chooses option 1, bundle tests and fix in one PR. If option 2, the test should assert the current (buggy) behavior with a clear docstring explaining what's wrong and what the correct behavior should be.
+
+## PR body guidelines
+
+### Bug fix PRs
+
+When a PR includes both tests and a fix, structure the body to tell the discovery story:
+
+```markdown
+## Summary
+- **Bug fix**: <what was wrong and how it was fixed>
+- **Tests**: <what tests were added>
+
+## Context
+<How the bug was discovered — which test found it, what sequence triggered it>
+```
+
+### Test-only PRs
+
+Be honest about results:
+- Found bugs: highlight them prominently
+- No bugs found: say "No bugs found — pure regression protection"
+
+Don't inflate the value of tests that didn't find anything.
+
+### Edge case: avoid auto-linking issue/PR numbers
+
+GitHub auto-links `#N` in PR bodies to issues/PRs. When referring to numbered items in a list (e.g., "invariant 3"), write it out as "item 3 above" or "the third invariant" instead of "#3" to avoid unintended links.
+
+## Checklist before asking to create a PR
+
+1. Branch is based on `upstream/main`, not fork's `main`
+2. `uv run ruff check src tests` passes
+3. `uv run ruff format --check src tests` passes
+4. `uv run pytest tests/` passes with no regressions
+5. All new `.py` files have the copyright header
+6. All commits have `Signed-off-by` (use `git commit -s`)
+7. Commit messages follow the type convention
+8. PR scope is one logical change
