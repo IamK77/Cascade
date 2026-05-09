@@ -43,7 +43,7 @@ from contextlib import contextmanager
 from typing import Any, cast
 
 from cascade.core.cascade import Cascade
-from cascade.errors import LockError
+from cascade.errors import LockError, StorageCorruptionError
 from cascade.events import Event, EventType, _compute_hash
 from cascade.storage._serde import deserialize_graph, serialize_graph
 from cascade.storage.content import ContentStore
@@ -388,12 +388,39 @@ class RedisStorage:
 
         try:
             graph_data = json.loads(cast(str, raw))
-        except json.JSONDecodeError:
-            return None
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise StorageCorruptionError(
+                "malformed data in Redis graph key",
+                path=self._graph_key(),
+            ) from e
 
-        cascade, stored_lamport = deserialize_graph(graph_data, self.content)
+        if not isinstance(graph_data, dict):
+            raise StorageCorruptionError(
+                f"expected JSON object, got {type(graph_data).__name__}",
+                path=self._graph_key(),
+            )
+
+        try:
+            cascade, stored_lamport = deserialize_graph(graph_data, self.content)
+        except (KeyError, AttributeError, TypeError, ValueError) as e:
+            raise StorageCorruptionError(
+                f"invalid graph structure: {e}",
+                path=self._graph_key(),
+            ) from e
+
         self._r.set(self._lamport_key(), stored_lamport)
         return cascade
+
+    def backup_corrupt(self) -> str | None:
+        """Copy corrupt graph data to a backup key for forensics."""
+        graph_key = f"{self._prefix}:graph"
+        raw = self._r.get(graph_key)
+        if raw is None:
+            return None
+        backup_key = f"{graph_key}:corrupt:{time.time_ns()}"
+        self._r.set(backup_key, raw)
+        self._r.delete(graph_key)
+        return backup_key
 
     def delete(self) -> None:
         cursor: int = 0

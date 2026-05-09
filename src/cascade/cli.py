@@ -297,10 +297,8 @@ def cmd_watch(args: argparse.Namespace) -> None:
     storage_backend = _make_storage(args)
     client = CascadeClient(storage_backend)
 
-    def read_snapshot() -> dict[str, dict[str, Any]] | None:
-        graph = client.storage.load()
-        if graph is None:
-            return None
+    def read_snapshot() -> dict[str, dict[str, Any]]:
+        graph = client.load()
         result: dict[str, dict[str, Any]] = {}
         for nid, node in graph.nodes.items():
             entry: dict[str, Any] = {"state": node.state.name}
@@ -312,19 +310,13 @@ def cmd_watch(args: argparse.Namespace) -> None:
     def emit(transition: dict[str, Any]) -> None:
         print(json.dumps(transition, ensure_ascii=False), flush=True)
 
-    last_snapshot: dict[str, dict[str, Any]] = {}
-
-    snap = read_snapshot()
-    if snap is not None:
-        last_snapshot = snap
+    last_snapshot: dict[str, dict[str, Any]] = read_snapshot()
 
     try:
         while True:
             _t.sleep(0.05)
 
             snap = read_snapshot()
-            if snap is None:
-                continue
             if snap == last_snapshot:
                 continue
 
@@ -381,15 +373,13 @@ def cmd_watch(args: argparse.Namespace) -> None:
 
 
 def cmd_inspect(args: argparse.Namespace) -> dict[str, Any] | str:
-    from cascade.core.cascade import Cascade
     from cascade.view import render_inspect
 
     client = CascadeClient(_make_storage(args))
-    with client._storage.lock():
-        graph = client._storage.load() or Cascade()
-        if args.task not in graph.nodes:
-            return {"success": False, "message": f"Task {args.task} not found"}
-        return render_inspect(graph, args.task)
+    graph = client.load()
+    if args.task not in graph.nodes:
+        return {"success": False, "message": f"Task {args.task} not found"}
+    return render_inspect(graph, args.task)
 
 
 def cmd_list_nodes(args: argparse.Namespace) -> dict[str, Any]:

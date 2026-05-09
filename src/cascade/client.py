@@ -43,7 +43,7 @@ from cascade import tips
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.errors import LockError
+from cascade.errors import LockError, StorageCorruptionError
 from cascade.events import EventType
 from cascade.operations.remove import RemoveOperation
 from cascade.operations.rework import ReworkOperation
@@ -124,6 +124,65 @@ class CascadeClient:
             return Result.from_dict(cached)
         return None
 
+    def recover_from_corruption(self, error: StorageCorruptionError) -> Cascade:
+        """Recover graph from event log after detecting storage corruption.
+
+        1. Preserve the corrupt snapshot for forensics
+        2. Replay the event log (source of truth) to rebuild the graph
+        3. Save the recovered graph (self-heal the snapshot)
+        4. Record the corruption event in the audit trail
+
+        If the event log is also unreadable, starts from an empty graph.
+        """
+        try:
+            backup_path = self._storage.backup_corrupt()
+        except OSError:
+            backup_path = None
+
+        try:
+            events = self._storage.events.read_all()
+        except Exception:
+            events = []
+
+        if events:
+            graph = replay_events(events, self._storage.content)
+            recovery_source = "event_log"
+        else:
+            graph = Cascade()
+            recovery_source = "empty"
+
+        self._storage.save(graph)
+
+        try:
+            self._storage.events.emit(
+                EventType.GRAPH_CORRUPTED,
+                logical_ts=self._storage.next_lamport(),
+                reason=error.reason,
+                recovery_source=recovery_source,
+                node_count=len(graph.nodes),
+                backup_path=backup_path,
+            )
+        except Exception:
+            pass
+
+        return graph
+
+    def _load_or_recover(self) -> Cascade:
+        """Load graph, recovering from corruption. Caller must hold lock."""
+        try:
+            return self._storage.load() or Cascade()
+        except StorageCorruptionError as e:
+            return self.recover_from_corruption(e)
+
+    def load(self) -> Cascade:
+        """Load graph with automatic corruption recovery.
+
+        Returns the current graph, or an empty Cascade if no data exists.
+        If the snapshot is corrupt, recovers from the event log transparently.
+        """
+        with self._storage.lock():
+            return self._load_or_recover()
+
     @contextmanager
     def _mutate(self, op_id: str | None = None) -> Generator[_Tx, None, None]:
         """Transaction context: lock, load, yield _Tx.
@@ -138,7 +197,7 @@ class CascadeClient:
                 return tx.ok(Result(...))
         """
         with self._storage.lock():
-            graph = self._storage.load() or Cascade()
+            graph = self._load_or_recover()
             yield _Tx(graph, self._storage, op_id)
 
     @property
@@ -1427,7 +1486,7 @@ class CascadeClient:
         """
         try:
             with self._storage.lock():
-                graph = self._storage.load() or Cascade()
+                graph = self._load_or_recover()
 
                 nodes_list: list[dict[str, Any]] = []
                 by_state: dict[str, list[str]] = {}

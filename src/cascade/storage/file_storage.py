@@ -26,7 +26,7 @@ from pathlib import Path
 from filelock import FileLock, Timeout
 
 from cascade.core.cascade import Cascade
-from cascade.errors import LockError
+from cascade.errors import LockError, StorageCorruptionError
 from cascade.events import FileEventStore
 from cascade.storage._serde import deserialize_graph, serialize_graph
 from cascade.storage.content import ContentStore, LocalContentStore
@@ -81,8 +81,10 @@ class FileStorage:
             return 0
         try:
             data = json.loads(graph_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return 0
             return int(data.get("lamport", 0))
-        except (json.JSONDecodeError, OSError, ValueError):
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError, ValueError):
             return 0
 
     def next_lamport(self) -> int:
@@ -166,18 +168,64 @@ class FileStorage:
     # ------------------------------------------------------------------
 
     def load(self) -> Cascade | None:
-        """Load Cascade from storage."""
+        """Load Cascade from storage.
+
+        Returns None if no data exists. Raises StorageCorruptionError
+        if the file exists but cannot be deserialized — the caller
+        must decide recovery strategy.
+        """
         graph_path = self.base_dir / "graph.json"
         if not graph_path.exists():
             return None
 
         try:
-            graph_data = json.loads(graph_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            return None
+            raw = graph_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as e:
+            raise StorageCorruptionError(
+                "binary content in graph.json",
+                path=str(graph_path),
+            ) from e
 
-        cascade, self._lamport = deserialize_graph(graph_data, self.content)
-        return cascade
+        if not raw.strip():
+            raise StorageCorruptionError(
+                "empty graph.json",
+                path=str(graph_path),
+            )
+
+        try:
+            graph_data = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise StorageCorruptionError(
+                "malformed JSON in graph.json",
+                path=str(graph_path),
+            ) from e
+
+        if not isinstance(graph_data, dict):
+            raise StorageCorruptionError(
+                f"expected JSON object, got {type(graph_data).__name__}",
+                path=str(graph_path),
+            )
+
+        try:
+            cascade, self._lamport = deserialize_graph(graph_data, self.content)
+            return cascade
+        except (KeyError, AttributeError, TypeError, ValueError) as e:
+            raise StorageCorruptionError(
+                f"invalid graph structure: {e}",
+                path=str(graph_path),
+            ) from e
+
+    def backup_corrupt(self) -> str | None:
+        """Rename corrupt graph.json for forensic preservation.
+
+        Returns the backup path as string, or None if no file to back up.
+        """
+        graph_path = self.base_dir / "graph.json"
+        if not graph_path.exists():
+            return None
+        backup_path = self.base_dir / f"graph.json.corrupt.{time.time_ns()}"
+        graph_path.rename(backup_path)
+        return str(backup_path)
 
     # ------------------------------------------------------------------
     # Misc

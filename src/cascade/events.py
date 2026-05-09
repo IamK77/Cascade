@@ -50,6 +50,7 @@ class EventType(Enum):
     NODE_SPLIT = "node_split"
     NODE_REFINED = "node_refined"
     NODE_CANCELLED = "node_cancelled"
+    GRAPH_CORRUPTED = "graph_corrupted"
 
 
 def _compute_hash(event_dict: dict[str, Any], prev_hash: str) -> str:

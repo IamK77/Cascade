@@ -31,6 +31,8 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from cascade.client import CascadeClient
 from cascade.core.state import NodeState
 from cascade.replay import verify
@@ -53,22 +55,26 @@ def _make_client() -> tuple[CascadeClient, FileStorage, Path]:
 
 class TestCorruptedGraph:
     def test_load_empty_file(self):
-        """graph.json exists but is empty — load should return None gracefully."""
+        """graph.json exists but is empty — load raises StorageCorruptionError."""
+        from cascade.errors import StorageCorruptionError
+
         client, storage, path = _make_client()
         client.add("a")
         (path / "graph.json").write_text("", encoding="utf-8")
         with storage.lock():
-            graph = storage.load()
-        assert graph is None
+            with pytest.raises(StorageCorruptionError):
+                storage.load()
 
     def test_load_invalid_json(self):
-        """graph.json contains garbage — load should return None, not crash."""
+        """graph.json contains garbage — load raises StorageCorruptionError."""
+        from cascade.errors import StorageCorruptionError
+
         client, storage, path = _make_client()
         client.add("a")
         (path / "graph.json").write_text("{invalid json!!", encoding="utf-8")
         with storage.lock():
-            graph = storage.load()
-        assert graph is None
+            with pytest.raises(StorageCorruptionError):
+                storage.load()
 
     def test_load_valid_json_wrong_structure(self):
         """graph.json is valid JSON but not a graph — should not crash."""
