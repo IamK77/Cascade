@@ -145,7 +145,7 @@ Re-run coverage. Report honestly:
 - "Coverage went up 20% but found no bugs" is an honest outcome
 - "Coverage moved 2% but found a real bug" is a great outcome
 
-**CHECKPOINT (IN-FLIGHT 8-9):** Report results. Output "IN-FLIGHT 1-9 ✓" with the round summary. Ask: **"These tests [found N bugs / found no bugs]. Want me to continue with [next target / different approach], or is this enough?"**
+**CHECKPOINT (IN-FLIGHT 8-10):** Reflect on results. Output "IN-FLIGHT 1-10 ✓" with the round summary. In interactive mode, ask the user for direction. In /loop mode, self-evaluate: check the strategy escalation gate (item 9) and the stop conditions — act autonomously per PREFLIGHT agreements.
 
 ---
 
@@ -178,14 +178,31 @@ Complete Phase 0-2 fully before the first loop iteration:
 5. Agree on branch/PR workflow: auto-push each round, or batch?
 6. Output "PREFLIGHT 1-6 ✓ — entering loop" before starting
 
-### Each round
+### Each round — vertical then horizontal
 
-1. Pick next target from priority list
-2. Select types, design, write, run (Phase 3-5)
-3. Output "IN-FLIGHT 1-9 ✓" with round summary
-4. Handle bugs per the pre-agreed policy
-5. Handle branch: commit, push, create PR
-6. If a decision cannot be made without user input, **stop the loop and ask** — do not guess
+For each target, exhaust applicable test types **vertically** before moving to the next target **horizontally**:
+
+```
+Target A: unit → property → chaos → all clear → mark complete
+Target B: unit → found bug → fix → property → all clear → mark complete
+Target C: unit only applicable → all clear → mark complete
+→ All targets complete → stop loop
+```
+
+Do not skip to the next target just because unit tests found nothing. Check the decision matrix — if property-based or chaos tests are applicable to this target, try them first.
+
+Per-round steps:
+1. Pick current target (or continue escalating on the same target)
+2. Select next applicable test type for this target
+3. Design, write, run (Phase 3-5)
+4. Reflect: found bugs?
+   - Yes → handle per pre-agreed policy, stay on this target
+   - No → check if more test types apply to this target
+     - Yes → escalate to next type (next round)
+     - No → mark target complete, move to next target
+5. Output "IN-FLIGHT 1-10 ✓" with round summary
+6. Handle branch: commit, push, create PR
+7. If a decision cannot be made without user input, **stop the loop and ask** — do not guess
 
 ### Branch strategy
 
@@ -196,10 +213,11 @@ One branch per round, based on `upstream/main`, never stacked:
 
 ### When to stop
 
-Stop when the user says so, or suggest stopping when:
-- Two consecutive rounds find no bugs AND remaining targets are low-priority
+Stop autonomously (do not ask the user) when:
+- All targets have been marked complete (all applicable test types exhausted, no bugs found) OR
+- N consecutive targets (N ≥ 2) completed across all applicable test types with no bugs found AND remaining targets are low-priority
 
-Do not stop without reporting. Always tell the user what's left and let them decide.
+Output a LOOP SHUTDOWN summary when stopping. The user can always restart the loop if they disagree.
 
 ### Round summary format
 
@@ -240,8 +258,11 @@ Reference at every phase transition. Items are gates — do not proceed until ch
 □ 5. Format check passed
 □ 6. Full test suite green (no regressions)
 □ 7. New files have required copyright header
-□ 8. Reflection completed: found bugs? Strategy working or escalate?
-□ 9. Results reported to user, next step confirmed
+□ 8. Reflection completed: found bugs?
+□ 9. Strategy escalation gate: no bugs → check if more test types apply to this target
+     → Yes: escalate (do not move to next target)
+     → No: mark target complete, move to next target
+□ 10. Round summary output
 ```
 
 ### POST-FLIGHT (after each round, if producing a PR)
