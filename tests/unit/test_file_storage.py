@@ -450,10 +450,13 @@ class TestLoad:
     def test_returns_none_no_file(self, storage: FileStorage):
         assert storage.load() is None
 
-    def test_returns_none_corrupt_json(self, storage: FileStorage):
+    def test_raises_on_corrupt_json(self, storage: FileStorage):
+        from cascade.errors import StorageCorruptionError
+
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text("not-json!!!", encoding="utf-8")
-        assert storage.load() is None
+        with pytest.raises(StorageCorruptionError):
+            storage.load()
 
     def test_load_restores_lamport(self, storage: FileStorage, sample_cascade: Cascade):
         storage.next_lamport()

@@ -54,3 +54,26 @@ class CancelledError(CascadeError):
     def __init__(self, reason: str | None = None):
         self.reason = reason
         super().__init__(reason or "Operation cancelled")
+
+
+class StorageCorruptionError(CascadeError):
+    """Raised when stored data exists but cannot be deserialized.
+
+    Distinct from "no data" (load returns None). Corruption means
+    the file/record exists but its content is invalid — the caller
+    must decide recovery strategy rather than silently treating it
+    as an empty graph.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        path: str | None = None,
+    ):
+        self.reason = reason
+        self.path = path
+        msg = f"Storage corruption: {reason}"
+        if path:
+            msg += f" ({path})"
+        super().__init__(msg)

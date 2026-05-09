@@ -75,8 +75,8 @@ def populated_store(store: FileEventStore) -> FileEventStore:
 class TestEventType:
     """Verify EventType enum members."""
 
-    def test_all_14_types(self):
-        assert len(EventType) == 14
+    def test_all_event_types(self):
+        assert len(EventType) == 15
 
     def test_roundtrip_value(self):
         for et in EventType:

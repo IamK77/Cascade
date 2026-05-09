@@ -329,4 +329,5 @@ _HANDLERS: dict[EventType, _Handler] = {
     EventType.TASK_TIMED_OUT: _handle_task_timed_out,
     EventType.REWORK_REQUESTED: _handle_rework,
     EventType.NODE_CANCELLED: _handle_node_cancelled,
+    EventType.GRAPH_CORRUPTED: _noop,
 }

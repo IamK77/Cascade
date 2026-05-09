@@ -38,7 +38,7 @@ from cascade.context.context import Context
 from cascade.core.cascade import Cascade
 from cascade.core.node import Node
 from cascade.core.state import NodeState
-from cascade.errors import LockError
+from cascade.errors import LockError, StorageCorruptionError
 from cascade.storage.file_storage import FileStorage
 
 # -----------------------------------------------------------------------
@@ -89,61 +89,52 @@ def _make_large_cascade(n: int = 50) -> Cascade:
 class TestCorruptedGraphRecovery:
     """Verify FileStorage handles every flavour of graph.json corruption."""
 
-    def test_empty_file_returns_none(self, storage: FileStorage):
-        """graph.json is 0 bytes — load returns None, no crash."""
+    def test_empty_file_raises_corruption(self, storage: FileStorage):
+        """graph.json is 0 bytes — load raises StorageCorruptionError."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text("", encoding="utf-8")
-        assert storage.load() is None
+        with pytest.raises(StorageCorruptionError, match="empty graph.json"):
+            storage.load()
 
-    def test_single_brace_returns_none(self, storage: FileStorage):
-        """graph.json contains only '{' (torn write) — load returns None."""
+    def test_single_brace_raises_corruption(self, storage: FileStorage):
+        """graph.json contains only '{' (torn write) — raises StorageCorruptionError."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text("{", encoding="utf-8")
-        assert storage.load() is None
+        with pytest.raises(StorageCorruptionError, match="malformed JSON"):
+            storage.load()
 
-    def test_truncated_json_returns_none(self, storage: FileStorage):
-        """graph.json is valid JSON prefix cut mid-object — load returns None."""
+    def test_truncated_json_raises_corruption(self, storage: FileStorage):
+        """graph.json is valid JSON prefix cut mid-object — raises StorageCorruptionError."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text(
             '{"nodes": {"a": {"id": "a", "state": "RE', encoding="utf-8"
         )
-        assert storage.load() is None
-
-    def test_binary_garbage_returns_none(self, storage: FileStorage):
-        """graph.json filled with random bytes — load returns None or raises."""
-        storage.base_dir.mkdir(parents=True, exist_ok=True)
-        (storage.base_dir / "graph.json").write_bytes(bytes(range(256)))
-        # Binary content may cause UnicodeDecodeError on read_text,
-        # json.JSONDecodeError, or other errors — none should corrupt state
-        try:
-            result = storage.load()
-            # If it doesn't crash, it should return None (invalid JSON)
-            assert result is None
-        except (UnicodeDecodeError, ValueError):
-            pass  # Acceptable — binary content is not valid text/JSON
-
-    def test_null_bytes_returns_none(self, storage: FileStorage):
-        """graph.json filled with NUL bytes (disk zero-fill) — load returns None."""
-        storage.base_dir.mkdir(parents=True, exist_ok=True)
-        (storage.base_dir / "graph.json").write_bytes(b"\x00" * 1024)
-        assert storage.load() is None
-
-    def test_valid_json_array_instead_of_object(self, storage: FileStorage):
-        """graph.json is a valid JSON array — load raises AttributeError.
-
-        The current implementation does not guard against non-dict JSON.
-        deserialize_graph calls .get() on the parsed data which fails
-        on a list. This documents the current behavior.
-        """
-        storage.base_dir.mkdir(parents=True, exist_ok=True)
-        (storage.base_dir / "graph.json").write_text("[1, 2, 3]", encoding="utf-8")
-        # json.loads succeeds but graph_data is a list, not dict
-        # deserialize_graph calls .get() on a list => AttributeError
-        with pytest.raises(AttributeError):
+        with pytest.raises(StorageCorruptionError, match="malformed JSON"):
             storage.load()
 
-    def test_corrupted_node_state_uses_default(self, storage: FileStorage):
-        """Node with invalid state name — deserialize handles with KeyError."""
+    def test_binary_garbage_raises_corruption(self, storage: FileStorage):
+        """graph.json filled with random bytes — raises StorageCorruptionError."""
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_bytes(bytes(range(256)))
+        with pytest.raises(StorageCorruptionError, match="binary content"):
+            storage.load()
+
+    def test_null_bytes_raises_corruption(self, storage: FileStorage):
+        """graph.json filled with NUL bytes (disk zero-fill) — raises StorageCorruptionError."""
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_bytes(b"\x00" * 1024)
+        with pytest.raises(StorageCorruptionError, match="malformed JSON"):
+            storage.load()
+
+    def test_valid_json_array_raises_corruption(self, storage: FileStorage):
+        """graph.json is a valid JSON array instead of object — raises StorageCorruptionError."""
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("[1, 2, 3]", encoding="utf-8")
+        with pytest.raises(StorageCorruptionError, match="expected JSON object"):
+            storage.load()
+
+    def test_corrupted_node_state_raises_corruption(self, storage: FileStorage):
+        """Node with invalid state name — raises StorageCorruptionError."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         graph_data = {
             "epoch": 0,
@@ -152,9 +143,7 @@ class TestCorruptedGraphRecovery:
             "edges": [],
         }
         (storage.base_dir / "graph.json").write_text(json.dumps(graph_data), encoding="utf-8")
-        # NodeState["NONEXISTENT_STATE"] raises KeyError
-        # Current impl does not catch this — it propagates
-        with pytest.raises(KeyError):
+        with pytest.raises(StorageCorruptionError, match="invalid graph structure"):
             storage.load()
 
     def test_missing_nodes_key_loads_empty(self, storage: FileStorage):
@@ -199,25 +188,27 @@ class TestCorruptedGraphRecovery:
         assert loaded is not None
         assert "a" in loaded.nodes
 
-    def test_save_after_load_none_succeeds(self, storage: FileStorage, sample_cascade: Cascade):
-        """load() returns None on corrupt file, but save() still works after."""
+    def test_save_after_corruption_succeeds(self, storage: FileStorage, sample_cascade: Cascade):
+        """load() raises on corrupt file, but save() still works after."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text("{bad", encoding="utf-8")
-        assert storage.load() is None
-        # save should overwrite the corrupt file
+        with pytest.raises(StorageCorruptionError):
+            storage.load()
         storage.save(sample_cascade)
         loaded = storage.load()
         assert loaded is not None
         assert "a" in loaded.nodes
 
-    def test_double_corruption_recovery(self, storage: FileStorage):
+    def test_double_corruption_then_save_recovers(self, storage: FileStorage):
         """Corrupt twice, then save valid — storage recovers."""
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         gp = storage.base_dir / "graph.json"
         gp.write_text("CORRUPT1", encoding="utf-8")
-        assert storage.load() is None
+        with pytest.raises(StorageCorruptionError):
+            storage.load()
         gp.write_text("CORRUPT2", encoding="utf-8")
-        assert storage.load() is None
+        with pytest.raises(StorageCorruptionError):
+            storage.load()
         cascade = Cascade()
         cascade.add_node(Node(id="recovered", state=NodeState.READY))
         storage.save(cascade)
@@ -878,3 +869,221 @@ class TestStressCycles:
         loaded = storage.load()
         assert loaded is not None
         assert len(loaded.nodes) == 40
+
+
+# =======================================================================
+# 9. StorageCorruptionError diagnostics
+# =======================================================================
+
+
+class TestCorruptionErrorDiagnostics:
+    """StorageCorruptionError carries actionable diagnostic info."""
+
+    def test_error_includes_path(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("{bad", encoding="utf-8")
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            storage.load()
+        assert exc_info.value.path is not None
+        assert "graph.json" in exc_info.value.path
+
+    def test_error_includes_reason(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_bytes(bytes(range(256)))
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            storage.load()
+        assert "binary content" in exc_info.value.reason
+
+    def test_error_chains_original_exception(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("[1,2]", encoding="utf-8")
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            storage.load()
+        assert exc_info.value.__cause__ is None  # type guard, not chained
+        assert "expected JSON object" in exc_info.value.reason
+
+    def test_malformed_json_chains_decode_error(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("{{{{", encoding="utf-8")
+        with pytest.raises(StorageCorruptionError) as exc_info:
+            storage.load()
+        assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
+
+
+# =======================================================================
+# 10. backup_corrupt() forensic preservation
+# =======================================================================
+
+
+class TestBackupCorrupt:
+    """backup_corrupt() preserves evidence for forensic analysis."""
+
+    def test_backup_renames_graph_json(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        gp = storage.base_dir / "graph.json"
+        gp.write_text("CORRUPT", encoding="utf-8")
+        backup = storage.backup_corrupt("test reason")
+        assert backup is not None
+        backup_path = Path(backup)
+        assert backup_path.exists()
+        assert backup_path.read_text(encoding="utf-8") == "CORRUPT"
+        assert not gp.exists()
+
+    def test_backup_returns_none_when_no_file(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        assert storage.backup_corrupt("nothing to back up") is None
+
+    def test_backup_path_contains_timestamp(self, storage: FileStorage):
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("X", encoding="utf-8")
+        backup = storage.backup_corrupt("reason")
+        assert "graph.json.corrupt." in backup
+
+    def test_multiple_backups_coexist(self, storage: FileStorage):
+        """Nanosecond timestamps ensure no collision even without delay."""
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        gp = storage.base_dir / "graph.json"
+        gp.write_text("CORRUPT1", encoding="utf-8")
+        b1 = storage.backup_corrupt("first")
+        gp.write_text("CORRUPT2", encoding="utf-8")
+        b2 = storage.backup_corrupt("second")
+        assert Path(b1).exists()
+        assert Path(b2).exists()
+        assert b1 != b2
+
+
+# =======================================================================
+# 11. Client-level corruption recovery via event replay
+# =======================================================================
+
+
+class TestClientCorruptionRecovery:
+    """CascadeClient recovers from graph corruption using event replay."""
+
+    def test_recovery_from_event_log(self, temp_dir: Path):
+        """Corrupt graph.json with intact events — client recovers via replay."""
+        from cascade.client import CascadeClient
+        from cascade.types import Contract
+
+        client = CascadeClient(temp_dir)
+        client.add("a")
+        client.add("b", deps={"a": Contract("E", "P")})
+
+        (temp_dir / "graph.json").write_text("CORRUPT!", encoding="utf-8")
+
+        r = client.nodes()
+        assert r.success
+        assert r.data["count"] == 2
+        node_ids = {n["id"] for n in r.data["nodes"]}
+        assert node_ids == {"a", "b"}
+
+    def test_recovery_creates_backup(self, temp_dir: Path):
+        """Recovery should preserve the corrupt file for forensics."""
+        from cascade.client import CascadeClient
+
+        client = CascadeClient(temp_dir)
+        client.add("x")
+
+        (temp_dir / "graph.json").write_text("CORRUPT!", encoding="utf-8")
+
+        client.nodes()
+
+        backups = list(temp_dir.glob("graph.json.corrupt.*"))
+        assert len(backups) == 1
+        assert backups[0].read_text(encoding="utf-8") == "CORRUPT!"
+
+    def test_recovery_self_heals_snapshot(self, temp_dir: Path):
+        """After recovery, graph.json should be valid again."""
+        from cascade.client import CascadeClient
+
+        client = CascadeClient(temp_dir)
+        client.add("a")
+
+        (temp_dir / "graph.json").write_text("{bad", encoding="utf-8")
+
+        client.nodes()
+
+        loaded = client.storage.load()
+        assert loaded is not None
+        assert "a" in loaded.nodes
+
+    def test_recovery_emits_corruption_event(self, temp_dir: Path):
+        """Recovery records a GRAPH_CORRUPTED event in the audit trail."""
+        from cascade.client import CascadeClient
+        from cascade.events import EventType
+
+        client = CascadeClient(temp_dir)
+        client.add("a")
+
+        (temp_dir / "graph.json").write_text("[1,2,3]", encoding="utf-8")
+
+        client.nodes()
+
+        corruption_events = client.storage.events.read_by_type(EventType.GRAPH_CORRUPTED)
+        assert len(corruption_events) == 1
+        assert corruption_events[0].data["recovery_source"] == "event_log"
+        assert corruption_events[0].data["node_count"] == 1
+
+    def test_recovery_with_no_events(self, temp_dir: Path):
+        """Corrupt graph.json with no event log — starts from empty graph."""
+        from cascade.client import CascadeClient
+
+        storage = FileStorage(temp_dir)
+        storage.base_dir.mkdir(parents=True, exist_ok=True)
+        (storage.base_dir / "graph.json").write_text("CORRUPT!", encoding="utf-8")
+
+        client = CascadeClient(storage)
+        r = client.nodes()
+        assert r.success
+        assert r.data["count"] == 0
+
+    def test_recovery_via_mutate(self, temp_dir: Path):
+        """Mutation operations (add/claim/etc.) also recover from corruption."""
+        from cascade.client import CascadeClient
+
+        client = CascadeClient(temp_dir)
+        client.add("original")
+
+        (temp_dir / "graph.json").write_text("BAD!", encoding="utf-8")
+
+        r = client.add("new_node")
+        assert r.success
+
+        r = client.nodes()
+        assert r.success
+        node_ids = {n["id"] for n in r.data["nodes"]}
+        assert "original" in node_ids
+        assert "new_node" in node_ids
+
+    def test_recovery_when_both_sources_corrupt(self, temp_dir: Path):
+        """Both graph.json and events.jsonl corrupt — starts from empty graph."""
+        from cascade.client import CascadeClient
+
+        client = CascadeClient(temp_dir)
+        client.add("a")
+
+        (temp_dir / "graph.json").write_text("CORRUPT!", encoding="utf-8")
+        (temp_dir / "events.jsonl").write_bytes(bytes(range(256)))
+
+        r = client.nodes()
+        assert r.success
+        assert r.data["count"] == 0
+
+    def test_replay_with_corruption_event(self, temp_dir: Path):
+        """Event log containing GRAPH_CORRUPTED can be replayed without error."""
+        from cascade.client import CascadeClient
+        from cascade.events import EventType
+        from cascade.replay import replay as replay_events
+
+        client = CascadeClient(temp_dir)
+        client.add("a")
+
+        (temp_dir / "graph.json").write_text("CORRUPT!", encoding="utf-8")
+        client.nodes()
+
+        events = client.storage.events.read_all()
+        corruption_events = [e for e in events if e.type == EventType.GRAPH_CORRUPTED]
+        assert len(corruption_events) >= 1
+
+        graph = replay_events(events, client.storage.content)
+        assert "a" in graph.nodes
