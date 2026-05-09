@@ -278,6 +278,15 @@ def _handle_rework(cascade: Cascade, data: dict[str, Any], content: ContentStore
             )
 
     requesting_id = data.get("requesting_node_id", "")
+
+    if requesting_id in cascade.nodes:
+        node = cascade.nodes[requesting_id]
+        if node.state == NodeState.ACTIVE:
+            node.update_state(NodeState.READY)
+            node.agent_id = None
+            node.claimed_at = None
+            node.timeout = None
+
     if requesting_id in cascade.nodes and corrective_id in cascade.nodes:
         corrective_contract = data.get("corrective_contract")
         if corrective_contract:
@@ -288,12 +297,6 @@ def _handle_rework(cascade: Cascade, data: dict[str, Any], content: ContentStore
                 promise=corrective_contract.get("promise", ""),
             )
 
-    if requesting_id in cascade.nodes:
-        node = cascade.nodes[requesting_id]
-        if node.state == NodeState.ACTIVE:
-            node.update_state(NodeState.PENDING)
-            node.agent_id = None
-
 
 def _handle_node_cancelled(
     cascade: Cascade, data: dict[str, Any], content: ContentStore | None
@@ -301,7 +304,7 @@ def _handle_node_cancelled(
     node_id = data.get("node_id", "")
     if node_id in cascade.nodes:
         node = cascade.nodes[node_id]
-        if not node.state.is_terminal():
+        if node.state.can_transition_to(NodeState.CANCELLED):
             node.update_state(NodeState.CANCELLED)
 
 
