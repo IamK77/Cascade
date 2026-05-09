@@ -170,8 +170,12 @@ class FileEventStore:
         with open(self._path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line:
+                if not line:
+                    continue
+                try:
                     events.append(Event.from_dict(json.loads(line)))
+                except (json.JSONDecodeError, KeyError):
+                    continue
         return events
 
     def clear(self) -> None:
