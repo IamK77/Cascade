@@ -69,67 +69,88 @@ class TestAddNode:
         assert "node_id" in r["message"]
 
     def test_empty_expectation_rejected(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"node_id": "a", "expectation": "", "promise": "p"}],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"node_id": "a", "expectation": "", "promise": "p"}],
+            },
+        )
         assert r["success"] is False
         assert "expectation" in r["message"]
 
     def test_whitespace_expectation_rejected(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"node_id": "a", "expectation": "   ", "promise": "p"}],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"node_id": "a", "expectation": "   ", "promise": "p"}],
+            },
+        )
         assert r["success"] is False
         assert "expectation" in r["message"]
 
     def test_empty_promise_rejected(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"node_id": "a", "expectation": "e", "promise": ""}],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"node_id": "a", "expectation": "e", "promise": ""}],
+            },
+        )
         assert r["success"] is False
         assert "promise" in r["message"]
 
     def test_whitespace_promise_rejected(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"node_id": "a", "expectation": "e", "promise": "   "}],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"node_id": "a", "expectation": "e", "promise": "   "}],
+            },
+        )
         assert r["success"] is False
         assert "promise" in r["message"]
 
     def test_missing_contract_for_dependency(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [],
+            },
+        )
         assert r["success"] is False
         assert "Missing contract" in r["message"]
         assert r["data"]["missing_contract_for"] == "a"
 
     def test_missing_contract_for_dependent(self):
-        r = self.fn(self.storage, {
-            "node_id": "a",
-            "dependents": ["b"],
-            "expectations": [],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "a",
+                "dependents": ["b"],
+                "expectations": [],
+            },
+        )
         assert r["success"] is False
         assert "Missing contract" in r["message"]
         assert r["data"]["missing_contract_for"] == "b"
 
     def test_expectations_entry_without_node_id_skipped(self):
-        r = self.fn(self.storage, {
-            "node_id": "b",
-            "dependencies": ["a"],
-            "expectations": [{"expectation": "e", "promise": "p"}],
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "b",
+                "dependencies": ["a"],
+                "expectations": [{"expectation": "e", "promise": "p"}],
+            },
+        )
         assert r["success"] is False
         assert "Missing contract" in r["message"]
 
@@ -145,11 +166,14 @@ class TestAddNode:
     def test_add_node_with_dependencies(self):
         with patch("tools.add_node.CascadeClient") as mock_cls:
             mock_cls.return_value.add.return_value = _ok()
-            r = self.fn(self.storage, {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
-            })
+            r = self.fn(
+                self.storage,
+                {
+                    "node_id": "b",
+                    "dependencies": ["a"],
+                    "expectations": [{"node_id": "a", "expectation": "E", "promise": "P"}],
+                },
+            )
             assert r["success"] is True
             call_args = mock_cls.return_value.add.call_args
             deps = call_args.kwargs.get("deps") or call_args[1].get("deps")
@@ -159,11 +183,14 @@ class TestAddNode:
     def test_add_node_with_dependents(self):
         with patch("tools.add_node.CascadeClient") as mock_cls:
             mock_cls.return_value.add.return_value = _ok()
-            r = self.fn(self.storage, {
-                "node_id": "a",
-                "dependents": ["b"],
-                "expectations": [{"node_id": "b", "expectation": "E", "promise": "P"}],
-            })
+            r = self.fn(
+                self.storage,
+                {
+                    "node_id": "a",
+                    "dependents": ["b"],
+                    "expectations": [{"node_id": "b", "expectation": "E", "promise": "P"}],
+                },
+            )
             assert r["success"] is True
             call_args = mock_cls.return_value.add.call_args
             dependents = call_args.kwargs.get("dependents") or call_args[1].get("dependents")
@@ -173,15 +200,18 @@ class TestAddNode:
     def test_add_node_with_both_deps_and_dependents(self):
         with patch("tools.add_node.CascadeClient") as mock_cls:
             mock_cls.return_value.add.return_value = _ok()
-            r = self.fn(self.storage, {
-                "node_id": "b",
-                "dependencies": ["a"],
-                "dependents": ["c"],
-                "expectations": [
-                    {"node_id": "a", "expectation": "Ea", "promise": "Pa"},
-                    {"node_id": "c", "expectation": "Ec", "promise": "Pc"},
-                ],
-            })
+            r = self.fn(
+                self.storage,
+                {
+                    "node_id": "b",
+                    "dependencies": ["a"],
+                    "dependents": ["c"],
+                    "expectations": [
+                        {"node_id": "a", "expectation": "Ea", "promise": "Pa"},
+                        {"node_id": "c", "expectation": "Ec", "promise": "Pc"},
+                    ],
+                },
+            )
             assert r["success"] is True
             call_args = mock_cls.return_value.add.call_args
             assert call_args[1]["deps"]["a"] == Contract(expectation="Ea", promise="Pa")
@@ -228,21 +258,27 @@ class TestSplitNode:
     def test_split_delegates_to_client(self):
         with patch("tools.split_node.CascadeClient") as mock_cls:
             mock_cls.return_value.split.return_value = _ok()
-            r = self.fn(self.storage, {
-                "parent_id": "p",
-                "new_nodes": [{"node_id": "c1"}, {"node_id": "c2"}],
-            })
+            r = self.fn(
+                self.storage,
+                {
+                    "parent_id": "p",
+                    "new_nodes": [{"node_id": "c1"}, {"node_id": "c2"}],
+                },
+            )
             assert r["success"] is True
             mock_cls.return_value.split.assert_called_once_with("p", ["c1", "c2"], reason="")
 
     def test_split_with_reason(self):
         with patch("tools.split_node.CascadeClient") as mock_cls:
             mock_cls.return_value.split.return_value = _ok()
-            self.fn(self.storage, {
-                "parent_id": "p",
-                "new_nodes": [{"node_id": "c1"}],
-                "reason": "too big",
-            })
+            self.fn(
+                self.storage,
+                {
+                    "parent_id": "p",
+                    "new_nodes": [{"node_id": "c1"}],
+                    "reason": "too big",
+                },
+            )
             mock_cls.return_value.split.assert_called_once_with("p", ["c1"], reason="too big")
 
 
@@ -274,7 +310,10 @@ class TestGetTask:
             r = self.fn(self.storage, {"agent_id": "w1"})
             assert r["success"] is True
             mock_cls.return_value.claim.assert_called_once_with(
-                "w1", None, timeout=None, cancel_notifier=None,
+                "w1",
+                None,
+                timeout=None,
+                cancel_notifier=None,
             )
 
     def test_get_task_specific_task(self):
@@ -282,7 +321,10 @@ class TestGetTask:
             mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "task_id": "a"})
             mock_cls.return_value.claim.assert_called_once_with(
-                "w1", "a", timeout=None, cancel_notifier=None,
+                "w1",
+                "a",
+                timeout=None,
+                cancel_notifier=None,
             )
 
     def test_get_task_with_timeout(self):
@@ -290,7 +332,10 @@ class TestGetTask:
             mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "timeout": 30.0})
             mock_cls.return_value.claim.assert_called_once_with(
-                "w1", None, timeout=30.0, cancel_notifier=None,
+                "w1",
+                None,
+                timeout=30.0,
+                cancel_notifier=None,
             )
 
     def test_get_task_with_cancel_notifier(self):
@@ -299,7 +344,10 @@ class TestGetTask:
             mock_cls.return_value.claim.return_value = _ok()
             self.fn(self.storage, {"agent_id": "w1", "cancel_notifier": notifier})
             mock_cls.return_value.claim.assert_called_once_with(
-                "w1", None, timeout=None, cancel_notifier=notifier,
+                "w1",
+                None,
+                timeout=None,
+                cancel_notifier=notifier,
             )
 
 
@@ -336,52 +384,89 @@ class TestRefineNode:
         assert "expectation" in r["message"]
 
     def test_whitespace_expectation(self):
-        r = self.fn(self.storage, {
-            "node_id": "a", "dependency_id": "b", "expectation": "   ",
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "a",
+                "dependency_id": "b",
+                "expectation": "   ",
+            },
+        )
         assert r["success"] is False
         assert "expectation" in r["message"]
 
     def test_missing_promise(self):
-        r = self.fn(self.storage, {
-            "node_id": "a", "dependency_id": "b", "expectation": "E",
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "a",
+                "dependency_id": "b",
+                "expectation": "E",
+            },
+        )
         assert r["success"] is False
         assert "promise" in r["message"]
 
     def test_empty_promise(self):
-        r = self.fn(self.storage, {
-            "node_id": "a", "dependency_id": "b", "expectation": "E", "promise": "",
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "a",
+                "dependency_id": "b",
+                "expectation": "E",
+                "promise": "",
+            },
+        )
         assert r["success"] is False
         assert "promise" in r["message"]
 
     def test_whitespace_promise(self):
-        r = self.fn(self.storage, {
-            "node_id": "a", "dependency_id": "b", "expectation": "E", "promise": "   ",
-        })
+        r = self.fn(
+            self.storage,
+            {
+                "node_id": "a",
+                "dependency_id": "b",
+                "expectation": "E",
+                "promise": "   ",
+            },
+        )
         assert r["success"] is False
         assert "promise" in r["message"]
 
     def test_refine_delegates_to_client(self):
         with patch("tools.refine_node.CascadeClient") as mock_cls:
             mock_cls.return_value.refine.return_value = _ok()
-            r = self.fn(self.storage, {
-                "node_id": "b", "dependency_id": "a",
-                "expectation": "E", "promise": "P",
-            })
+            r = self.fn(
+                self.storage,
+                {
+                    "node_id": "b",
+                    "dependency_id": "a",
+                    "expectation": "E",
+                    "promise": "P",
+                },
+            )
             assert r["success"] is True
             mock_cls.return_value.refine.assert_called_once_with("b", "a", "E", "P", reason="")
 
     def test_refine_with_reason(self):
         with patch("tools.refine_node.CascadeClient") as mock_cls:
             mock_cls.return_value.refine.return_value = _ok()
-            self.fn(self.storage, {
-                "node_id": "b", "dependency_id": "a",
-                "expectation": "E", "promise": "P", "reason": "needed",
-            })
+            self.fn(
+                self.storage,
+                {
+                    "node_id": "b",
+                    "dependency_id": "a",
+                    "expectation": "E",
+                    "promise": "P",
+                    "reason": "needed",
+                },
+            )
             mock_cls.return_value.refine.assert_called_once_with(
-                "b", "a", "E", "P", reason="needed",
+                "b",
+                "a",
+                "E",
+                "P",
+                reason="needed",
             )
 
 
@@ -408,16 +493,19 @@ class TestRework:
         self.fn = rework
         self.storage = MagicMock()
 
-    @pytest.mark.parametrize("field", [
-        "source_node_id",
-        "corrective_node_id",
-        "reason",
-        "agent_id",
-        "source_expectation",
-        "source_promise",
-        "corrective_expectation",
-        "corrective_promise",
-    ])
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "source_node_id",
+            "corrective_node_id",
+            "reason",
+            "agent_id",
+            "source_expectation",
+            "source_promise",
+            "corrective_expectation",
+            "corrective_promise",
+        ],
+    )
     def test_missing_required_field(self, field):
         params = {k: v for k, v in self.VALID_PARAMS.items() if k != field}
         r = self.fn(self.storage, params)
@@ -526,21 +614,38 @@ class TestEditNode:
             r = self.fn(self.storage, {"node_id": "a"})
             assert r["success"] is True
             mock_cls.return_value.edit.assert_called_once_with(
-                "a", state="", summary="", critical=None,
-                artifacts="", context_merge="merge", reason="",
+                "a",
+                state="",
+                summary="",
+                critical=None,
+                artifacts="",
+                context_merge="merge",
+                reason="",
             )
 
     def test_edit_all_params(self):
         with patch("tools.edit_node.CascadeClient") as mock_cls:
             mock_cls.return_value.edit.return_value = _ok()
-            self.fn(self.storage, {
-                "node_id": "a", "state": "READY", "summary": "done",
-                "critical": {"k": "v"}, "artifacts": "file.txt",
-                "context_merge": "replace", "reason": "fix",
-            })
+            self.fn(
+                self.storage,
+                {
+                    "node_id": "a",
+                    "state": "READY",
+                    "summary": "done",
+                    "critical": {"k": "v"},
+                    "artifacts": "file.txt",
+                    "context_merge": "replace",
+                    "reason": "fix",
+                },
+            )
             mock_cls.return_value.edit.assert_called_once_with(
-                "a", state="READY", summary="done", critical={"k": "v"},
-                artifacts="file.txt", context_merge="replace", reason="fix",
+                "a",
+                state="READY",
+                summary="done",
+                critical={"k": "v"},
+                artifacts="file.txt",
+                context_merge="replace",
+                reason="fix",
             )
 
 
@@ -569,20 +674,33 @@ class TestFinishTask:
             r = self.fn(self.storage, {"task_id": "a"})
             assert r["success"] is True
             mock_cls.return_value.complete.assert_called_once_with(
-                "a", summary="", critical=None, artifacts="", deliverables=None,
+                "a",
+                summary="",
+                critical=None,
+                artifacts="",
+                deliverables=None,
             )
 
     def test_complete_with_all_fields(self):
         with patch("tools.finish_task.CascadeClient") as mock_cls:
             mock_cls.return_value.complete.return_value = _ok()
-            self.fn(self.storage, {
-                "task_id": "a", "success": True, "summary": "done",
-                "critical": {"k": "v"}, "artifacts": "code",
-                "deliverables": {"b": "output"},
-            })
+            self.fn(
+                self.storage,
+                {
+                    "task_id": "a",
+                    "success": True,
+                    "summary": "done",
+                    "critical": {"k": "v"},
+                    "artifacts": "code",
+                    "deliverables": {"b": "output"},
+                },
+            )
             mock_cls.return_value.complete.assert_called_once_with(
-                "a", summary="done", critical={"k": "v"},
-                artifacts="code", deliverables={"b": "output"},
+                "a",
+                summary="done",
+                critical={"k": "v"},
+                artifacts="code",
+                deliverables={"b": "output"},
             )
 
     def test_complete_backward_compat_result_field(self):
@@ -678,7 +796,9 @@ class TestRemoveNode:
             mock_cls.return_value.remove.return_value = _ok()
             self.fn(self.storage, {"node_id": "a", "cascade": True, "reason": "obsolete"})
             mock_cls.return_value.remove.assert_called_once_with(
-                "a", cascade=True, reason="obsolete",
+                "a",
+                cascade=True,
+                reason="obsolete",
             )
 
 
@@ -700,7 +820,8 @@ class TestListNodes:
             r = self.fn(self.storage, {})
             assert r["success"] is True
             mock_cls.return_value.nodes.assert_called_once_with(
-                state=None, include_pending_only=False,
+                state=None,
+                include_pending_only=False,
             )
 
     def test_list_with_state_filter(self):
@@ -708,7 +829,8 @@ class TestListNodes:
             mock_cls.return_value.nodes.return_value = _ok()
             self.fn(self.storage, {"state_filter": "READY"})
             mock_cls.return_value.nodes.assert_called_once_with(
-                state="READY", include_pending_only=False,
+                state="READY",
+                include_pending_only=False,
             )
 
     def test_list_with_pending_only(self):
@@ -716,7 +838,8 @@ class TestListNodes:
             mock_cls.return_value.nodes.return_value = _ok()
             self.fn(self.storage, {"include_pending_only": True})
             mock_cls.return_value.nodes.assert_called_once_with(
-                state=None, include_pending_only=True,
+                state=None,
+                include_pending_only=True,
             )
 
 
@@ -738,7 +861,10 @@ class TestHistory:
             r = self.fn(self.storage, {})
             assert r["success"] is True
             mock_cls.return_value.history.assert_called_once_with(
-                node_id="", event_type="", last_n=0, summary=False,
+                node_id="",
+                event_type="",
+                last_n=0,
+                summary=False,
             )
 
     def test_history_with_node_filter(self):
