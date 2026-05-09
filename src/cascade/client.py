@@ -135,7 +135,7 @@ class CascadeClient:
         If the event log is also unreadable, starts from an empty graph.
         """
         try:
-            backup_path = self._storage.backup_corrupt(error.reason)
+            backup_path = self._storage.backup_corrupt()
         except OSError:
             backup_path = None
 

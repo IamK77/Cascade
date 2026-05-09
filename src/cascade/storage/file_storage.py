@@ -215,7 +215,7 @@ class FileStorage:
                 path=str(graph_path),
             ) from e
 
-    def backup_corrupt(self, reason: str) -> str | None:
+    def backup_corrupt(self) -> str | None:
         """Rename corrupt graph.json for forensic preservation.
 
         Returns the backup path as string, or None if no file to back up.

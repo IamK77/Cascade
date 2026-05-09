@@ -411,7 +411,7 @@ class RedisStorage:
         self._r.set(self._lamport_key(), stored_lamport)
         return cascade
 
-    def backup_corrupt(self, reason: str) -> str | None:
+    def backup_corrupt(self) -> str | None:
         """Copy corrupt graph data to a backup key for forensics."""
         graph_key = f"{self._prefix}:graph"
         raw = self._r.get(graph_key)

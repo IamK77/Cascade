@@ -922,7 +922,7 @@ class TestBackupCorrupt:
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         gp = storage.base_dir / "graph.json"
         gp.write_text("CORRUPT", encoding="utf-8")
-        backup = storage.backup_corrupt("test reason")
+        backup = storage.backup_corrupt()
         assert backup is not None
         backup_path = Path(backup)
         assert backup_path.exists()
@@ -931,12 +931,12 @@ class TestBackupCorrupt:
 
     def test_backup_returns_none_when_no_file(self, storage: FileStorage):
         storage.base_dir.mkdir(parents=True, exist_ok=True)
-        assert storage.backup_corrupt("nothing to back up") is None
+        assert storage.backup_corrupt() is None
 
     def test_backup_path_contains_timestamp(self, storage: FileStorage):
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         (storage.base_dir / "graph.json").write_text("X", encoding="utf-8")
-        backup = storage.backup_corrupt("reason")
+        backup = storage.backup_corrupt()
         assert "graph.json.corrupt." in backup
 
     def test_multiple_backups_coexist(self, storage: FileStorage):
@@ -944,9 +944,9 @@ class TestBackupCorrupt:
         storage.base_dir.mkdir(parents=True, exist_ok=True)
         gp = storage.base_dir / "graph.json"
         gp.write_text("CORRUPT1", encoding="utf-8")
-        b1 = storage.backup_corrupt("first")
+        b1 = storage.backup_corrupt()
         gp.write_text("CORRUPT2", encoding="utf-8")
-        b2 = storage.backup_corrupt("second")
+        b2 = storage.backup_corrupt()
         assert Path(b1).exists()
         assert Path(b2).exists()
         assert b1 != b2
