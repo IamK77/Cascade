@@ -44,12 +44,3 @@ cascade check-timeouts --default-timeout 3600  # 1 hour default
 }
 ```
 
-## Use Cases
-
-- **Supervisor watchdog**: Run periodically to clean up stalled agents
-- **Before getting work**: Check timeouts before `get-task` to free up stalled tasks
-- **Health monitoring**: Track how often tasks time out
-
-## See Also
-
-- [get-task.md](get-task.md) — Setting per-task timeout

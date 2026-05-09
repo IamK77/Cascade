@@ -14,6 +14,7 @@ cascade remove-node --node <node-id> [options]
 |-----------|-------|----------|-------------|
 | `--node` | `-n` | Yes | Node ID to remove |
 | `--cascade` | `-c` | No | Also remove all nodes that depend on this node |
+| `--reason` | | No | Why this node is being removed (recorded in event log) |
 
 ## Behavior
 
@@ -90,12 +91,6 @@ cascade remove-node --node cancelled-root --cascade
 | `Node has dependents` | Has downstream nodes | Add `--cascade` or remove dependents first |
 | `Node is ACTIVE` | Being worked on | Finish or release first |
 
-## Safety Considerations
-
-- **Leaf nodes**: Safe to remove, no impact
-- **Internal nodes**: Requires `--cascade` or manual restructuring
-- **Root nodes**: Will cascade to entire downstream tree
-
 ## Recovery
 
 If you accidentally remove nodes:
@@ -103,7 +98,3 @@ If you accidentally remove nodes:
 2. Re-add dependencies with `refine-node`
 3. Context from completed nodes is preserved in storage
 
-## See Also
-
-- [split-node.md](split-node.md) - Replace node with children
-- [finish-task.md](finish-task.md) - Complete before removing

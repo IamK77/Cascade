@@ -13,7 +13,8 @@ cascade finish-task --task <task-id> [outcome] [context]
 | Parameter | Short | Required | Description |
 |-----------|-------|----------|-------------|
 | `--task` | `-t` | Yes | Task ID to finish |
-| `--agent` | `-a` | Recommended | Agent ID — must match the claimer. Without it, no agent verification (returns success even if you didn't claim). With it, the framework rejects mismatch with `WRONG_AGENT`. Workers should always pass it |
+| `--token` | | **Yes** | Fencing token issued by `get-task` (in the briefing footer as `fencing_token: <int>`). Calls without it fail with `STALE_TOKEN`; stale tokens (after rework/release re-issued the node) also fail with `STALE_TOKEN` |
+| `--agent` | `-a` | Yes | Agent ID — must match the claimer. The framework rejects mismatch with `WRONG_AGENT` |
 | Outcome (pick one) |||
 | `--success` | | No | Mark as COMPLETED, unblock dependents |
 | `--fail` | | No | Mark as FAILED |
@@ -22,6 +23,7 @@ cascade finish-task --task <task-id> [outcome] [context]
 | `--summary` | | No | Summary text for downstream tasks |
 | `--critical` | | No | JSON object of key-value pairs |
 | `--artifacts` | | No | Detailed output content |
+| `--deliver NODE TEXT` | | Sometimes | Delivery confirmation addressed to a specific downstream promise (repeatable: `--deliver foo "..." --deliver bar "..."`). When the node has outstanding promises and no `--deliver` is provided, `--success` returns `UNADDRESSED_PROMISES`. Each pair is stored under `provenance.deliverables[NODE]` and shown in the consumer's briefing as `<source> delivered: <text>` |
 | Failure options |||
 | `--reason` | | No | Reason for fail/release |
 | `--cascade` | | No | When failing, also fail all dependent tasks |
@@ -33,7 +35,7 @@ cascade finish-task --task <task-id> [outcome] [context]
 Task marked COMPLETED, downstream tasks unblocked.
 
 ```bash
-cascade finish-task --task design --success \
+cascade finish-task --task design --agent worker-1 --token <fencing-token> --success \
   --summary "UI design completed with Figma mockups" \
   --critical '{"component_count": 12, "design_system": "Material 3"}' \
   --artifacts "# Design System\n\n## Components\n- Button\n- Input\n- Form"
@@ -51,10 +53,12 @@ Task marked FAILED, downstream tasks blocked or cancelled.
 
 ```bash
 # Simple failure - downstream blocked
-cascade finish-task --task build --fail --reason "Compilation error in auth.ts"
+cascade finish-task --task build --agent worker-1 --token <fencing-token> \
+  --fail --reason "Compilation error in auth.ts"
 
 # Cascade failure - downstream also fails
-cascade finish-task --task api-core --fail --reason "Contract violation" --cascade
+cascade finish-task --task api-core --agent worker-1 --token <fencing-token> \
+  --fail --reason "Contract violation" --cascade
 ```
 
 **What happens without --cascade**:
@@ -71,7 +75,8 @@ cascade finish-task --task api-core --fail --reason "Contract violation" --casca
 Return task to READY state for retry.
 
 ```bash
-cascade finish-task --task build --release --reason "Need more information"
+cascade finish-task --task build --agent worker-1 --token <fencing-token> \
+  --release --reason "Need more information"
 ```
 
 **What happens**:
@@ -102,7 +107,7 @@ When you complete a task with context:
 
 ### critical (Key-Value Pairs)
 
-Each upstream ancestor's critical is delivered as a separate entry — no merging, no overwriting across sources. The framework also auto-injects `produced_at` (timestamp) and `git_ref` (HEAD commit) for freshness tracking.
+Each upstream ancestor's critical is delivered as a separate entry — no merging, no overwriting across sources. Framework metadata (`produced_at` timestamp, `git_ref` HEAD commit) lives in a separate `provenance` field on each entry, **not** inside `critical`.
 
 ### summary (Text)
 
@@ -131,43 +136,22 @@ Full content, propagated indefinitely via content-addressable storage.
 ### Complete with full context
 
 ```bash
-cascade finish-task --task analyze --success \
+cascade finish-task --task analyze --agent worker-1 --token <fencing-token> --success \
   --summary "Analyzed requirements, identified 3 core features" \
-  --critical '{
-    "features": ["auth", "dashboard", "api"],
-    "tech_stack": "Next.js + FastAPI",
-    "timeline": "2 weeks"
-  }' \
-  --artifacts "
-# Requirements Analysis
-
-## Features
-1. **Authentication**: OAuth2 with Google/GitHub
-2. **Dashboard**: Real-time metrics display
-3. **API**: RESTful endpoints for CRUD operations
-
-## Technical Decisions
-- Frontend: Next.js 14 with App Router
-- Backend: FastAPI with PostgreSQL
-- Auth: Clerk for OAuth2
-"
+  --critical '{"features": ["auth", "dashboard", "api"], "tech_stack": "Next.js + FastAPI"}' \
+  --artifacts "$(cat REQUIREMENTS.md)"
 ```
 
 ### Simple completion
 
 ```bash
-cascade finish-task --task unit-tests --success --summary "All tests passing"
+cascade finish-task --task unit-tests --agent worker-1 --token <fencing-token> \
+  --success --summary "All tests passing"
 ```
 
-### Fail and retry later
+### Fail
 
 ```bash
-cascade finish-task --task deploy --fail --reason "Environment not ready"
-# Later, after fixing environment:
-# Remove failed node and recreate, or use edit-node to reset state
+cascade finish-task --task deploy --agent worker-1 --token <fencing-token> \
+  --fail --reason "Environment not ready"
 ```
-
-## See Also
-
-- [get-task.md](get-task.md) - Claim a task first
-- [concepts.md](concepts.md) - Error recovery strategies

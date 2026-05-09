@@ -57,7 +57,3 @@ cascade rework \
 # - Your task becomes READY again with corrected context
 ```
 
-## See Also
-
-- [concepts.md](../concepts.md) — Rework section
-- [finish-task.md](finish-task.md) — Release as alternative

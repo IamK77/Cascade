@@ -16,6 +16,7 @@ cascade refine-node --node <node-id> --dep <dependency-id> [options]
 | `--dep` | `-d` | Yes | Dependency node ID |
 | `--expectation` | | No | What this node expects from the dependency |
 | `--promise` | | No | What the dependency promises to provide |
+| `--reason` | | No | Why this dependency is needed (recorded in event log) |
 
 ## Behavior
 
@@ -68,32 +69,6 @@ cascade refine-node --node deploy --dep load-test
 cascade refine-node --node deploy --dep documentation
 ```
 
-## Use Cases
-
-### 1. Discover additional requirement
-
-```bash
-# During implementation, realize API needs auth first
-cascade refine-node --node api --dep auth \
-  --expectation "Auth middleware ready" \
-  --promise "Will use auth tokens"
-```
-
-### 2. Add quality gate
-
-```bash
-# Before deployment, add review step
-cascade refine-node --node release --dep qa-review
-```
-
-### 3. Fix missed dependency
-
-```bash
-# Realized shared types are needed
-cascade refine-node --node frontend --dep shared-types
-cascade refine-node --node backend --dep shared-types
-```
-
 ## Edge Metadata
 
 Contracts are stored per-edge, allowing different promises to different downstream tasks:
@@ -125,8 +100,3 @@ Contracts are stored per-edge, allowing different promises to different downstre
 | `Edge already exists` | Already connected | Use edit-node to update |
 | `Would create cycle` | Would form circular dependency | Restructure graph |
 
-## See Also
-
-- [add-node.md](add-node.md) - Create nodes with dependencies
-- [remove-node.md](remove-node.md) - Remove nodes
-- [../concepts.md](../concepts.md) - Contracts on edges

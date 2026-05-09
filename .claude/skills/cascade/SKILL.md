@@ -6,7 +6,7 @@ allowed-tools: Read Edit Write Bash Grep Glob
 
 # Cascade
 
-It's a pleasure to have you orchestrate multi-agent work. The DAG you build is the contract workers depend on — pursue **self-consistent elegance**, build for production, and reject patches or minimal-effort shortcuts. When the design is right, watching parallel workers deliver in clean waves is genuinely satisfying; that satisfaction is the signal you got it right.
+The DAG is the contract workers depend on — pursue **self-consistent elegance**, build for production, reject patches.
 
 ## Roles
 
@@ -19,9 +19,9 @@ Why the separation: if the orchestrator claims tasks, it blocks on execution and
 
 ## Rules
 
-1. **Contracts on edges** — every dependency carries `expectation` (consumer's need) + `promise` (upstream's deliverable). Why: without explicit contracts, downstream agents hallucinate what upstream delivered. Contracts are the single source of truth for information needs.
+1. **Contracts on edges** — every dependency carries `expectation` (consumer's need) + `promise` (upstream's deliverable). Why: without explicit contracts, downstream agents hallucinate what upstream delivered.
 
-2. **Forward-only feedback** — rework derives new corrective nodes, never reverses edges. Why: reversing edges creates cycles, breaks topological ordering, and invalidates work already done by downstream agents. The DAG grows forward, always.
+2. **Forward-only feedback** — rework derives new corrective nodes, never reverses edges. Why: reversing edges creates cycles, breaks topological ordering, and invalidates work already done by downstream agents.
 
 3. **ACTIVE protection** — cannot remove/split nodes with active agents. Why: an agent is mid-execution; mutating its node would invalidate its work silently. Release or wait for completion first.
 
@@ -31,9 +31,7 @@ Why the separation: if the orchestrator claims tasks, it blocks on execution and
 
 ```
 1. Build initial DAG (add-nodes)
-2. Dispatch workers for READY tasks (Agent calls)
-   └─ Use isolation: "worktree" when multiple workers edit the same repo.
-      Without it, parallel workers overwrite each other's files.
+2. Dispatch workers for READY tasks (Agent calls — pass each a unique agent-id; **do NOT pass a task-id**, the worker calls `cascade get-task` and cascade auto-schedules by critical-path priority)
 3. Monitor via `cascade watch` or `list-nodes` polling — react to transitions
    ├─ COMPLETED → inspect output, dispatch next wave
    ├─ FAILED → diagnose, rework or remove
@@ -65,8 +63,7 @@ When workers complete or fail, branch on what you observe:
 | Worker completes but output is wrong | Use `rework` — do NOT edit the completed node's context directly |
 | Worker stalls (no finish after timeout) | Run `check-timeouts`; inspect the released task, then re-dispatch or split |
 | Graph feels stuck (nothing READY) | `list-nodes` — look for cycles of PENDING or forgotten ACTIVE tasks |
-| Workers edit the same files concurrently | Dispatch with `isolation: "worktree"` — each worker gets an isolated git worktree. Without it, parallel writes corrupt each other |
-| Worker finishes but never called `finish-task` | Work is done but DAG is stuck. Orchestrator should `finish-task --release` and re-dispatch with a stricter prompt emphasizing the cascade protocol |
+| Worker finishes but never called `finish-task` | Work is done but DAG is stuck. `finish-task --release` and re-dispatch — the worker subagent already enforces the protocol so usually it's a transient miss |
 
 ## Installation
 
@@ -75,6 +72,16 @@ pipx install cascade-auto
 ```
 
 !`command -v cascade >/dev/null 2>&1 && cascade --help 2>&1 || echo "cascade not installed — run: pipx install cascade-auto"`
+
+### Storage backends
+
+The `cascade` CLI accepts these **global** flags (before the subcommand) to switch backends. File backend is the default.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--storage <dir>` | `.cascade` | File backend directory (events.jsonl + token store) |
+| `--redis-url <url>` | (unset) | Switch to Redis backend, e.g. `redis://localhost:6379/0` |
+| `--namespace <name>` | `default` | Redis key namespace (lets multiple DAGs share one Redis) |
 
 ## Commands
 
@@ -104,18 +111,8 @@ cascade add-nodes --json '[
 # Or single-node form
 cascade add-node --id analyze
 
-# Worker claims and completes
-cascade get-task --agent worker-1 --task analyze
-cascade finish-task --task analyze --success \
-  --summary "Requirements gathered" \
-  --critical '{"tech": "Next.js"}'
-
-# Dynamic adjustments
+# Dynamic adjustments (rework has 7 params — see references/rework.md)
 cascade split-node --parent implement --children impl-auth,impl-api --reason "Too large"
-cascade rework --source analyze --corrective analyze-v2 \
-  --reason "Missing OAuth requirements" --agent agent-001 \
-  --source-expectation "Original spec" --source-promise "First analysis" \
-  --corrective-expectation "Revised spec with OAuth" --corrective-promise "Updated requirements"
 cascade remove-node --node deprecated-task --reason "No longer needed"
 
 # Monitor

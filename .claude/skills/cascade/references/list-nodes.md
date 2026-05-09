@@ -12,7 +12,7 @@ cascade list-nodes [options]
 
 | Parameter | Short | Required | Description |
 |-----------|-------|----------|-------------|
-| `--state` | `-s` | No | Filter by state (READY, PENDING, ACTIVE, COMPLETED, FAILED) |
+| `--state` | `-s` | No | Filter by state (PENDING, READY, ACTIVE, COMPLETED, FAILED, CANCELLED) |
 | `--pending-only` | | No | Show only PENDING tasks (waiting for dependencies) |
 
 ## Output
@@ -95,17 +95,4 @@ cascade list-nodes --pending-only
 # Equivalent to --state PENDING
 ```
 
-## State Meanings
-
-| State | Meaning |
-|-------|---------|
-| PENDING | Has uncompleted dependencies, waiting |
-| READY | All dependencies completed, can be claimed |
-| ACTIVE | Being worked on by an agent |
-| COMPLETED | Successfully finished |
-| FAILED | Failed (possibly cascaded) |
-| CANCELLED | Cancelled (possibly cascaded) |
-
-## See Also
-
-- [get-task.md](get-task.md) - Claim a READY task
+For state meanings, see [concepts.md](../concepts.md#node-states).
